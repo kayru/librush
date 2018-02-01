@@ -13,9 +13,9 @@ class Window;
 struct GfxConfig;
 struct WindowDesc;
 
-typedef void (*PlatformCallback_Startup)();
-typedef void (*PlatformCallback_Update)();
-typedef void (*PlatformCallback_Shutdown)();
+typedef void (*PlatformCallback_Startup)(void* userData);
+typedef void (*PlatformCallback_Update)(void* userData);
+typedef void (*PlatformCallback_Shutdown)(void* userData);
 
 struct AppConfig
 {
@@ -40,12 +40,38 @@ struct AppConfig
 
 	const GfxConfig* gfxConfig = nullptr;
 
+	void* userData = nullptr;
+
 	PlatformCallback_Startup  onStartup;
 	PlatformCallback_Update   onUpdate;
 	PlatformCallback_Shutdown onShutdown;
 };
 
+class Application
+{
+public:
+	virtual ~Application() = default;
+	virtual void update()  = 0;
+};
+
 int Platform_Main(const AppConfig& cfg);
+
+template <typename T> inline int Platform_Main(AppConfig cfg)
+{
+	struct Context
+	{
+		Application* app = nullptr;
+	} context;
+
+	AppConfig wrappedCfg = cfg;
+
+	wrappedCfg.userData   = &context;
+	wrappedCfg.onStartup  = [](void* context) { reinterpret_cast<Context*>(context)->app = new T; };
+	wrappedCfg.onShutdown = [](void* context) { delete reinterpret_cast<Context*>(context)->app; };
+	wrappedCfg.onUpdate   = [](void* context) { reinterpret_cast<Context*>(context)->app->update(); };
+
+	return Platform_Main(wrappedCfg);
+}
 
 const char* Platform_GetExecutableDirectory();
 void        Platform_TerminateProcess(int status);

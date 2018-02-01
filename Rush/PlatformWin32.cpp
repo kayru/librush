@@ -104,7 +104,7 @@ int Platform_Main(const AppConfig& cfg)
 
 	if (cfg.onStartup)
 	{
-		cfg.onStartup();
+		cfg.onStartup(cfg.userData);
 	}
 
 	while (window->isClosed() == false)
@@ -113,17 +113,17 @@ int Platform_Main(const AppConfig& cfg)
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
 
-#if RUSH_RENDER_API!=RUSH_RENDER_API_NONE
+#if RUSH_RENDER_API != RUSH_RENDER_API_NONE
 			Gfx_BeginFrame();
 
 			if (cfg.onUpdate)
 			{
-				cfg.onUpdate();
+				cfg.onUpdate(cfg.userData);
 			}
 
 			Gfx_EndFrame();
 			Gfx_Present();
-#endif //RUSH_RENDER_API!=RUSH_RENDER_API_NONE
+#endif // RUSH_RENDER_API!=RUSH_RENDER_API_NONE
 
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
@@ -132,7 +132,7 @@ int Platform_Main(const AppConfig& cfg)
 
 	if (cfg.onShutdown)
 	{
-		cfg.onShutdown();
+		cfg.onShutdown(cfg.userData);
 	}
 
 #if RUSH_RENDER_API != RUSH_RENDER_API_NULL
