@@ -26,8 +26,8 @@ struct AppConfig
 	int width  = 640;
 	int height = 480;
 
-	int maxWidth  = width;
-	int maxHeight = height;
+	int maxWidth  = 0;
+	int maxHeight = 0;
 
 	bool fullScreen      = false;
 	bool resizable       = false;
@@ -47,10 +47,13 @@ struct AppConfig
 
 int Platform_Main(const AppConfig& cfg);
 
+const char* Platform_GetExecutableDirectory();
+void        Platform_TerminateProcess(int status);
+
 GfxDevice*  Platform_GetGfxDevice();
 GfxContext* Platform_GetGfxContext();
+Window*     Platform_GetWindow();
 Window*     Platform_CreateWindow(const WindowDesc& desc);
-Window*     Platform_GetMainWindow();
 
 enum MessageBoxType
 {
