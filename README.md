@@ -1,0 +1,2 @@
+# librush
+Graphics prototyping framework
