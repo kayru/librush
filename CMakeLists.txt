@@ -42,6 +42,8 @@ set(RUSH_SRC
 	Rush/UtilLog.h
 	Rush/UtilResourcePool.h
 	Rush/UtilStaticArray.h
+	Rush/UtilTimer.cpp
+	Rush/UtilTimer.h
 	Rush/UtilTuple.h
 	Rush/Window.cpp
 	Rush/Window.h
