@@ -219,7 +219,7 @@ GfxBuffer       Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = n
 GfxMappedBuffer Gfx_MapBuffer(GfxBuffer h, u32 offset = 0, u32 size = 0);
 void            Gfx_UnmapBuffer(GfxMappedBuffer& lock);
 void            Gfx_UpdateBuffer(
-               GfxContext* rc, GfxBuffer h, const void* data, u32 offset = 0, u32 size = 0, bool discard = false);
+               GfxContext* rc, GfxBuffer h, const void* data, u32 size = 0);
 void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size);
 void  Gfx_EndUpdateBuffer(GfxContext* rc, GfxBuffer h);
 void  Gfx_DestroyBuffer(GfxBuffer h);

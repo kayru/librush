@@ -174,14 +174,14 @@ inline void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture t
 inline const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureRef h) { return Gfx_GetTextureDesc(h.get()); }
 
 inline void Gfx_UpdateBuffer(
-    GfxContext* rc, GfxBufferRef h, const void* data, u32 offset = 0, u32 size = 0, bool discard = false)
+    GfxContext* rc, GfxBufferRef h, const void* data, u32 size = 0)
 {
-	Gfx_UpdateBuffer(rc, h.get(), data, offset, size, discard);
+	Gfx_UpdateBuffer(rc, h.get(), data, size);
 }
 
 template <typename T> inline void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferRef h, const T& data)
 {
-	Gfx_UpdateBuffer(rc, h.get(), &data, 0, sizeof(data), true);
+	Gfx_UpdateBuffer(rc, h.get(), &data, sizeof(data));
 }
 
 template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferRef h, const T& data)

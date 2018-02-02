@@ -171,7 +171,7 @@ void PrimitiveBatch::flush()
 
 	GfxTechnique next_technique = getNextTechnique();
 
-	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), 0, (u32)m_vertices.sizeInBytes(), true);
+	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), (u32)m_vertices.sizeInBytes());
 	Gfx_SetTexture(m_context, GfxStage::Pixel, 0, m_currTexture, m_currSampler);
 	Gfx_SetTechnique(m_context, next_technique);
 	Gfx_SetVertexStream(m_context, 0, m_vertexBuffer);
@@ -181,7 +181,7 @@ void PrimitiveBatch::flush()
 	{
 		if (m_constantBufferDirty)
 		{
-			Gfx_UpdateBuffer(m_context, m_constantBuffer, &m_constants, 0, sizeof(m_constants), true);
+			Gfx_UpdateBuffer(m_context, m_constantBuffer, &m_constants, sizeof(m_constants));
 			m_constantBufferDirty = false;
 		}
 		Gfx_SetConstantBuffer(m_context, 0, m_constantBuffer);

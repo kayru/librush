@@ -3917,10 +3917,8 @@ static VkMemoryRequirements getBufferMemoryRequirements(const BufferVK& buffer)
 }
 #endif
 
-void Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 offset, u32 size, bool discard)
+void Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 size)
 {
-	RUSH_ASSERT(discard);
-	RUSH_ASSERT(offset == 0);
 	RUSH_ASSERT(data);
 
 	void* mappedBuffer = Gfx_BeginUpdateBuffer(rc, h, size);
