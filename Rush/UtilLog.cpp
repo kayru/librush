@@ -141,7 +141,7 @@ void Log::error(const char* msg, ...)
 		auto                       h = GetStdHandle(STD_OUTPUT_HANDLE);
 		CONSOLE_SCREEN_BUFFER_INFO csbi;
 		GetConsoleScreenBufferInfo(h, &csbi);
-		SetConsoleTextAttribute(h, 0x04);
+		SetConsoleTextAttribute(h, 0x0C);
 #endif
 
 		va_list varargs;
