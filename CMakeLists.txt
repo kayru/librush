@@ -19,6 +19,10 @@ set(RUSH_SRC
 	Rush/GfxDevice.h
 	Rush/GfxDeviceVK.cpp
 	Rush/GfxDeviceVK.h
+	Rush/GfxEmbeddedShaders.cpp
+	Rush/GfxEmbeddedShaders.h
+	Rush/GfxPrimitiveBatch.cpp
+	Rush/GfxPrimitiveBatch.h
 	Rush/GfxRef.h
 	Rush/MathCommon.h
 	Rush/MathTypes.cpp
@@ -28,6 +32,7 @@ set(RUSH_SRC
 	Rush/PlatformWin32.cpp
 	Rush/Rush.h
 	Rush/UtilColor.h
+	Rush/UtilLinearAllocator.h
 	Rush/UtilLog.cpp
 	Rush/UtilLog.h
 	Rush/UtilResourcePool.h
