@@ -33,6 +33,10 @@ set(RUSH_SRC
 	Rush/Platform.h
 	Rush/PlatformWin32.cpp
 	Rush/Rush.h
+	Rush/UtilCamera.cpp
+	Rush/UtilCamera.h
+	Rush/UtilCameraManipulator.cpp
+	Rush/UtilCameraManipulator.h
 	Rush/UtilColor.h
 	Rush/UtilDataStream.h
 	Rush/UtilFile.cpp
