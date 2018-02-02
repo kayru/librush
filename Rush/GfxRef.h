@@ -173,8 +173,7 @@ inline void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture t
 
 inline const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureRef h) { return Gfx_GetTextureDesc(h.get()); }
 
-inline void Gfx_UpdateBuffer(
-    GfxContext* rc, GfxBufferRef h, const void* data, u32 size = 0)
+inline void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferRef h, const void* data, u32 size = 0)
 {
 	Gfx_UpdateBuffer(rc, h.get(), data, size);
 }

@@ -218,11 +218,10 @@ void               Gfx_DestroyRasterizerState(GfxRasterizerState h);
 GfxBuffer       Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = nullptr);
 GfxMappedBuffer Gfx_MapBuffer(GfxBuffer h, u32 offset = 0, u32 size = 0);
 void            Gfx_UnmapBuffer(GfxMappedBuffer& lock);
-void            Gfx_UpdateBuffer(
-               GfxContext* rc, GfxBuffer h, const void* data, u32 size = 0);
-void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size);
-void  Gfx_EndUpdateBuffer(GfxContext* rc, GfxBuffer h);
-void  Gfx_DestroyBuffer(GfxBuffer h);
+void            Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 size = 0);
+void*           Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size);
+void            Gfx_EndUpdateBuffer(GfxContext* rc, GfxBuffer h);
+void            Gfx_DestroyBuffer(GfxBuffer h);
 
 // context
 GfxContext* Gfx_AcquireContext();
@@ -381,7 +380,7 @@ template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, 
 template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, const std::vector<T>& data)
 {
 	u32 dataSize = (u32)(data.size() * sizeof(data[0]));
-	Gfx_UpdateBuffer(rc, h, data.data(), 0, dataSize, true);
+	Gfx_UpdateBuffer(rc, h, data.data(), dataSize);
 	return dataSize;
 }
 
