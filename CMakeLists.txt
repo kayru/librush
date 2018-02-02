@@ -14,6 +14,8 @@ set_property(CACHE RUSH_RENDER_API PROPERTY STRINGS
 # Add source files
 
 set(RUSH_SRC
+	Rush/GfxBitmapFont.cpp
+	Rush/GfxBitmapFont.h
 	Rush/GfxCommon.cpp
 	Rush/GfxCommon.h
 	Rush/GfxDevice.h
@@ -32,6 +34,9 @@ set(RUSH_SRC
 	Rush/PlatformWin32.cpp
 	Rush/Rush.h
 	Rush/UtilColor.h
+	Rush/UtilDataStream.h
+	Rush/UtilFile.cpp
+	Rush/UtilFile.h
 	Rush/UtilLinearAllocator.h
 	Rush/UtilLog.cpp
 	Rush/UtilLog.h
