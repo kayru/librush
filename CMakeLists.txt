@@ -44,6 +44,7 @@ set(RUSH_SRC
 	Rush/UtilLinearAllocator.h
 	Rush/UtilLog.cpp
 	Rush/UtilLog.h
+	Rush/UtilRandom.h
 	Rush/UtilResourcePool.h
 	Rush/UtilStaticArray.h
 	Rush/UtilTimer.cpp
