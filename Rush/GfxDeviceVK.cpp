@@ -420,7 +420,7 @@ static bool enableExtension(std::vector<const char*>& extensions,
 
 inline void validateBufferUse(const BufferVK& buffer)
 {
-	if (buffer.descr.mode == GfxBufferMode::Temporary)
+	if (buffer.desc.mode == GfxBufferMode::Temporary)
 	{
 		RUSH_ASSERT_MSG(buffer.lastUpdateFrame == g_device->m_frameCount,
 		    "Trying to use stale buffer. Temporary buffers must be updated/filled and used on the same frame.");
@@ -828,10 +828,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_currentFrame                         = &m_frameData.back();
 	m_currentFrame->presentSemaphoreWaited = true;
 
-	BlendStateVK& defaultBlendState  = m_blendStates[InvalidResourceHandle()];
-	defaultBlendState.id             = generateId();
-	defaultBlendState.descr.src      = GfxBlendParam::One;
-	defaultBlendState.descr.alphaSrc = GfxBlendParam::One;
+	BlendStateVK& defaultBlendState = m_blendStates[InvalidResourceHandle()];
+	defaultBlendState.id            = generateId();
+	defaultBlendState.desc.src      = GfxBlendParam::One;
+	defaultBlendState.desc.alphaSrc = GfxBlendParam::One;
 
 	// Setup resize event notifications
 
@@ -1035,7 +1035,7 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 				{
 					u32  elementIndex = 0;
 					bool inputFound   = false;
-					for (const auto& element : vertexFormat.descr)
+					for (const auto& element : vertexFormat.desc)
 					{
 						if (element.semantic == inputMapping.semantic && element.index == inputMapping.semanticIndex)
 						{
@@ -1099,20 +1099,20 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 
 		// rasterizer
 
-		const GfxRasterizerDescr& rasterizerDescr = g_device->m_rasterizerStates[info.rasterizerStateHandle].descr;
+		const GfxRasterizerDesc& rasterizerDesc = g_device->m_rasterizerStates[info.rasterizerStateHandle].desc;
 
 		VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
 		createInfo.pRasterizationState            = &rs;
 		rs.depthClampEnable                       = false;
 		rs.rasterizerDiscardEnable                = false;
-		rs.polygonMode = rasterizerDescr.fillMode == GfxFillMode::Solid ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
-		rs.cullMode    = rasterizerDescr.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+		rs.polygonMode = rasterizerDesc.fillMode == GfxFillMode::Solid ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
+		rs.cullMode    = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
 		rs.frontFace =
-		    rasterizerDescr.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
-		rs.depthBiasEnable         = rasterizerDescr.depthBias != 0;
-		rs.depthBiasConstantFactor = rasterizerDescr.depthBias;
+		    rasterizerDesc.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+		rs.depthBiasEnable         = rasterizerDesc.depthBias != 0;
+		rs.depthBiasConstantFactor = rasterizerDesc.depthBias;
 		rs.depthBiasClamp          = 0.0f;
-		rs.depthBiasSlopeFactor    = rasterizerDescr.depthBiasSlopeScale;
+		rs.depthBiasSlopeFactor    = rasterizerDesc.depthBiasSlopeScale;
 		rs.lineWidth               = 1.0f;
 
 		// multisample
@@ -1128,14 +1128,13 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 
 		// depth stencil
 
-		const GfxDepthStencilDescr& depthStencilDescr =
-		    g_device->m_depthStencilStates[info.depthStencilStateHandle].descr;
+		const GfxDepthStencilDesc& depthStencilDesc = g_device->m_depthStencilStates[info.depthStencilStateHandle].desc;
 
 		VkPipelineDepthStencilStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
 		createInfo.pDepthStencilState            = &ds;
-		ds.depthTestEnable                       = depthStencilDescr.enable;
-		ds.depthWriteEnable                      = depthStencilDescr.writeEnable;
-		ds.depthCompareOp                        = convertCompareFunc(depthStencilDescr.compareFunc);
+		ds.depthTestEnable                       = depthStencilDesc.enable;
+		ds.depthWriteEnable                      = depthStencilDesc.writeEnable;
+		ds.depthCompareOp                        = convertCompareFunc(depthStencilDesc.compareFunc);
 		ds.depthBoundsTestEnable                 = false;
 		ds.stencilTestEnable                     = false;
 		ds.back.failOp                           = VK_STENCIL_OP_KEEP;
@@ -1149,19 +1148,19 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 
 		VkPipelineColorBlendStateCreateInfo cb = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
 		createInfo.pColorBlendState            = &cb;
-		VkPipelineColorBlendAttachmentState colorAttachments[GfxPassDescr::MaxTargets] = {};
+		VkPipelineColorBlendAttachmentState colorAttachments[GfxPassDesc::MaxTargets] = {};
 
 		BlendStateVK& blendState = g_device->m_blendStates[info.blendStateHandle];
 		// TODO: support separate target blend states
 		for (u32 i = 0; i < info.colorAttachmentCount; ++i)
 		{
-			colorAttachments[i].blendEnable         = blendState.descr.enable;
-			colorAttachments[i].colorBlendOp        = convertBlendOp(blendState.descr.op);
-			colorAttachments[i].srcColorBlendFactor = convertBlendParam(blendState.descr.src);
-			colorAttachments[i].dstColorBlendFactor = convertBlendParam(blendState.descr.dst);
-			colorAttachments[i].alphaBlendOp        = convertBlendOp(blendState.descr.alphaOp);
-			colorAttachments[i].srcAlphaBlendFactor = convertBlendParam(blendState.descr.alphaSrc);
-			colorAttachments[i].dstAlphaBlendFactor = convertBlendParam(blendState.descr.alphaDst);
+			colorAttachments[i].blendEnable         = blendState.desc.enable;
+			colorAttachments[i].colorBlendOp        = convertBlendOp(blendState.desc.op);
+			colorAttachments[i].srcColorBlendFactor = convertBlendParam(blendState.desc.src);
+			colorAttachments[i].dstColorBlendFactor = convertBlendParam(blendState.desc.dst);
+			colorAttachments[i].alphaBlendOp        = convertBlendOp(blendState.desc.alphaOp);
+			colorAttachments[i].srcAlphaBlendFactor = convertBlendParam(blendState.desc.alphaSrc);
+			colorAttachments[i].dstAlphaBlendFactor = convertBlendParam(blendState.desc.alphaDst);
 			colorAttachments[i].colorWriteMask      = 0xF; // TODO: support color write mask
 		}
 
@@ -1196,20 +1195,20 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 	return pipeline;
 }
 
-VkRenderPass GfxDevice::createRenderPass(const GfxPassDescr& descr)
+VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 {
 	RenderPassKey key = {};
 
-	key.flags              = descr.flags;
-	key.depthStencilFormat = g_device->m_textures[descr.depth].descr.format;
+	key.flags              = desc.flags;
+	key.depthStencilFormat = g_device->m_textures[desc.depth].desc.format;
 
 	u32 colorTargetCount = 0;
-	for (u32 i = 0; i < GfxPassDescr::MaxTargets; ++i)
+	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
-		if (descr.color[i].valid())
+		if (desc.color[i].valid())
 		{
 			colorTargetCount++;
-			key.colorFormats[i] = g_device->m_textures[descr.color[i]].descr.format;
+			key.colorFormats[i] = g_device->m_textures[desc.color[i]].desc.format;
 		}
 		else
 		{
@@ -1223,16 +1222,16 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDescr& descr)
 		return existingPass->second;
 	}
 
-	bool discardColor      = !!(descr.flags & GfxPassFlags::DiscardColor);
-	bool clearColor        = !!(descr.flags & GfxPassFlags::ClearColor);
-	bool clearDepthStencil = !!(descr.flags & GfxPassFlags::ClearDepthStencil);
+	bool discardColor      = !!(desc.flags & GfxPassFlags::DiscardColor);
+	bool clearColor        = !!(desc.flags & GfxPassFlags::ClearColor);
+	bool clearDepthStencil = !!(desc.flags & GfxPassFlags::ClearDepthStencil);
 
-	VkAttachmentDescription attachmentDesc[1 + GfxPassDescr::MaxTargets] = {};
-	u32                     attachmentCount                              = 0;
+	VkAttachmentDescription attachmentDesc[1 + GfxPassDesc::MaxTargets] = {};
+	u32                     attachmentCount                             = 0;
 
 	VkAttachmentReference depthAttachmentReference = {};
 
-	if (descr.depth.valid())
+	if (desc.depth.valid())
 	{
 		auto& attachment = attachmentDesc[attachmentCount];
 
@@ -1243,7 +1242,7 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDescr& descr)
 		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachment.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachment.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		attachment.format         = convertFormat(g_device->m_textures[descr.depth].descr.format);
+		attachment.format         = convertFormat(g_device->m_textures[desc.depth].desc.format);
 
 		depthAttachmentReference.attachment = attachmentCount;
 		depthAttachmentReference.layout     = attachment.initialLayout;
@@ -1251,12 +1250,12 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDescr& descr)
 		attachmentCount++;
 	}
 
-	VkAttachmentReference colorAttachmentReferences[GfxPassDescr::MaxTargets] = {};
+	VkAttachmentReference colorAttachmentReferences[GfxPassDesc::MaxTargets] = {};
 	for (u32 i = 0; i < colorTargetCount; ++i)
 	{
 		auto& attachment = attachmentDesc[attachmentCount];
 
-		attachment.format  = convertFormat(g_device->m_textures[descr.color[i]].descr.format);
+		attachment.format  = convertFormat(g_device->m_textures[desc.color[i]].desc.format);
 		attachment.samples = VK_SAMPLE_COUNT_1_BIT;
 		if (discardColor)
 		{
@@ -1286,7 +1285,7 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDescr& descr)
 	subpassDesc.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpassDesc.colorAttachmentCount    = colorTargetCount;
 	subpassDesc.pColorAttachments       = colorAttachmentReferences;
-	subpassDesc.pDepthStencilAttachment = descr.depth.valid() ? &depthAttachmentReference : nullptr;
+	subpassDesc.pDepthStencilAttachment = desc.depth.valid() ? &depthAttachmentReference : nullptr;
 
 	VkRenderPassCreateInfo renderPassCreateInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
 	renderPassCreateInfo.attachmentCount        = attachmentCount;
@@ -1304,17 +1303,17 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDescr& descr)
 	return renderPass;
 }
 
-VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDescr& descr, VkRenderPass renderPass)
+VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDesc& desc, VkRenderPass renderPass)
 {
 	FrameBufferKey key = {};
 
 	key.renderPass    = renderPass;
-	key.depthBufferId = g_device->m_textures[descr.depth].id;
-	for (u32 i = 0; i < GfxPassDescr::MaxTargets; ++i)
+	key.depthBufferId = g_device->m_textures[desc.depth].id;
+	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
-		if (descr.color[i].valid())
+		if (desc.color[i].valid())
 		{
-			key.colorBufferId[i] = g_device->m_textures[descr.color[i]].id;
+			key.colorBufferId[i] = g_device->m_textures[desc.color[i]].id;
 		}
 		else
 		{
@@ -1332,24 +1331,24 @@ VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDescr& descr, VkRenderPa
 	u32 height = UINT_MAX;
 
 	u32         attachmentCount = 0;
-	VkImageView frameBufferAttachments[1 + GfxPassDescr::MaxTargets];
+	VkImageView frameBufferAttachments[1 + GfxPassDesc::MaxTargets];
 
-	if (descr.depth.valid())
+	if (desc.depth.valid())
 	{
-		TextureVK& texture                      = g_device->m_textures[descr.depth];
-		width                                   = min(width, texture.descr.width);
-		height                                  = min(height, texture.descr.height);
+		TextureVK& texture                      = g_device->m_textures[desc.depth];
+		width                                   = min(width, texture.desc.width);
+		height                                  = min(height, texture.desc.height);
 		frameBufferAttachments[attachmentCount] = texture.depthStencilImageView;
 		attachmentCount++;
 	}
 
-	for (u32 i = 0; i < GfxPassDescr::MaxTargets; ++i)
+	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
-		if (descr.color[i].valid())
+		if (desc.color[i].valid())
 		{
-			TextureVK& texture                      = g_device->m_textures[descr.color[i]];
-			width                                   = min(width, texture.descr.width);
-			height                                  = min(height, texture.descr.height);
+			TextureVK& texture                      = g_device->m_textures[desc.color[i]];
+			width                                   = min(width, texture.desc.width);
+			height                                  = min(height, texture.desc.height);
 			frameBufferAttachments[attachmentCount] = texture.imageView;
 			attachmentCount++;
 		}
@@ -1438,11 +1437,11 @@ void GfxDevice::createSwapChain()
 	swapChainCreateInfo.clipped               = true;
 	swapChainCreateInfo.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
-	GfxTextureDescr depthBufferDescr = GfxTextureDescr::make2D(
+	GfxTextureDesc depthBufferDesc = GfxTextureDesc::make2D(
 	    m_swapChainExtent.width, m_swapChainExtent.height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil);
 
 	Gfx_Release(m_depthBufferTexture);
-	m_depthBufferTexture = retainResource(m_textures, TextureVK::create(depthBufferDescr, nullptr, 0));
+	m_depthBufferTexture = retainResource(m_textures, TextureVK::create(depthBufferDesc, nullptr, 0));
 
 	auto oldSwapChain = m_swapChain;
 
@@ -1481,10 +1480,10 @@ void GfxDevice::createSwapChain()
 		case VK_FORMAT_R8G8B8A8_UNORM: swapChainFormat = GfxFormat_RGBA8_Unorm; break;
 		}
 
-		GfxTextureDescr textureDescr = GfxTextureDescr::make2D(
+		GfxTextureDesc textureDesc = GfxTextureDesc::make2D(
 		    m_swapChainExtent.width, m_swapChainExtent.height, swapChainFormat, GfxUsageFlags::RenderTarget);
-		m_swapChainTextures[i] = retainResource(
-		    m_textures, TextureVK::create(textureDescr, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
+		m_swapChainTextures[i] =
+		    retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
 	}
 
 	m_swapChainPresentMode = m_pendingSwapChainPresentMode;
@@ -2004,24 +2003,24 @@ void GfxContext::flushBarriers()
 	m_pendingBarriers.dstStageMask = 0;
 }
 
-void GfxContext::beginRenderPass(const GfxPassDescr& descr)
+void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 {
 	RUSH_ASSERT(m_type == GfxContextType::Graphics);
 	RUSH_ASSERT(!m_isRenderPassActive);
 	RUSH_ASSERT(m_currentRenderPass == VK_NULL_HANDLE);
 
-	m_pendingClear.color   = descr.clearColors[0];
-	m_pendingClear.depth   = descr.clearDepth;
-	m_pendingClear.stencil = descr.clearStencil;
+	m_pendingClear.color   = desc.clearColors[0];
+	m_pendingClear.depth   = desc.clearDepth;
+	m_pendingClear.stencil = desc.clearStencil;
 
 	m_pendingClear.flags = GfxClearFlags::None;
 
-	if (!!(descr.flags & GfxPassFlags::ClearColor))
+	if (!!(desc.flags & GfxPassFlags::ClearColor))
 	{
 		m_pendingClear.flags = m_pendingClear.flags | GfxClearFlags::Color;
 	}
 
-	if (!!(descr.flags & GfxPassFlags::ClearDepthStencil))
+	if (!!(desc.flags & GfxPassFlags::ClearDepthStencil))
 	{
 		m_pendingClear.flags = m_pendingClear.flags | GfxClearFlags::DepthStencil;
 	}
@@ -2030,17 +2029,17 @@ void GfxContext::beginRenderPass(const GfxPassDescr& descr)
 	m_currentRenderRect.extent.height = UINT_MAX;
 
 	u32          clearValueCount = 0;
-	VkClearValue clearValues[1 + GfxPassDescr::MaxTargets];
-	if (descr.depth.valid())
+	VkClearValue clearValues[1 + GfxPassDesc::MaxTargets];
+	if (desc.depth.valid())
 	{
-		TextureVK& texture                = g_device->m_textures[descr.depth];
-		m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.descr.width);
-		m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.descr.height);
+		TextureVK& texture                = g_device->m_textures[desc.depth];
+		m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
+		m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
 
 		// TODO: track subresource states
 		// TODO: initialize default subresource range to cover entire image
 		VkImageSubresourceRange subresourceRange = {
-		    aspectFlagsFromFormat(texture.descr.format), 0, texture.descr.mips, 0, 1};
+		    aspectFlagsFromFormat(texture.desc.format), 0, texture.desc.mips, 0, 1};
 
 		addImageBarrier(
 		    texture.image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, texture.currentLayout, &subresourceRange);
@@ -2049,15 +2048,15 @@ void GfxContext::beginRenderPass(const GfxPassDescr& descr)
 		++clearValueCount;
 	}
 
-	const bool shouldClearColor = !!(descr.flags & GfxPassFlags::ClearColor);
+	const bool shouldClearColor = !!(desc.flags & GfxPassFlags::ClearColor);
 
-	for (u32 i = 0; i < GfxPassDescr::MaxTargets; ++i)
+	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
-		if (descr.color[i].valid())
+		if (desc.color[i].valid())
 		{
-			TextureVK& texture                = g_device->m_textures[descr.color[i]];
-			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.descr.width);
-			m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.descr.height);
+			TextureVK& texture                = g_device->m_textures[desc.color[i]];
+			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
+			m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
 			addImageBarrier(texture.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, texture.currentLayout);
 			texture.currentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			if (shouldClearColor)
@@ -2073,8 +2072,8 @@ void GfxContext::beginRenderPass(const GfxPassDescr& descr)
 	}
 
 	VkRenderPassBeginInfo renderPassBeginInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-	renderPassBeginInfo.renderPass            = g_device->createRenderPass(descr);
-	renderPassBeginInfo.framebuffer           = g_device->createFrameBuffer(descr, renderPassBeginInfo.renderPass);
+	renderPassBeginInfo.renderPass            = g_device->createRenderPass(desc);
+	renderPassBeginInfo.framebuffer           = g_device->createFrameBuffer(desc, renderPassBeginInfo.renderPass);
 	renderPassBeginInfo.renderArea            = m_currentRenderRect;
 	if (m_pendingClear.flags != GfxClearFlags::None)
 	{
@@ -2086,9 +2085,9 @@ void GfxContext::beginRenderPass(const GfxPassDescr& descr)
 
 	vkCmdBeginRenderPass(m_commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	m_currentRenderPassDescr      = descr;
+	m_currentRenderPassDesc       = desc;
 	m_currentRenderPass           = renderPassBeginInfo.renderPass;
-	m_currentColorAttachmentCount = descr.getColorTargetCount();
+	m_currentColorAttachmentCount = desc.getColorTargetCount();
 
 	m_isRenderPassActive = true;
 
@@ -2162,7 +2161,7 @@ void GfxContext::applyState()
 
 		VkDeviceSize offset = buffer.info.offset;
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
-		    buffer.descr.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+		    buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 	}
 
 	static const VkWriteDescriptorSet defaultDescriptor  = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -2265,7 +2264,7 @@ void GfxContext::applyState()
 
 		// TODO: track subresource states
 		VkImageSubresourceRange subresourceRange = {
-		    aspectFlagsFromFormat(texture.descr.format), 0, texture.descr.mips, 0, 1};
+		    aspectFlagsFromFormat(texture.desc.format), 0, texture.desc.mips, 0, 1};
 
 		addImageBarrier(
 		    texture.image, imageInfos[imageInfoCount].imageLayout, texture.currentLayout, &subresourceRange);
@@ -2327,7 +2326,7 @@ void GfxContext::applyState()
 
 		// TODO: track subresource states
 		VkImageSubresourceRange subresourceRange = {
-		    aspectFlagsFromFormat(texture.descr.format), 0, texture.descr.mips, 0, 1};
+		    aspectFlagsFromFormat(texture.desc.format), 0, texture.desc.mips, 0, 1};
 
 		addImageBarrier(
 		    texture.image, imageInfos[imageInfoCount].imageLayout, texture.currentLayout, &subresourceRange);
@@ -2724,35 +2723,35 @@ void Gfx_ResetStats() { g_device->m_stats = GfxStats(); }
 
 // vertex format
 
-static VkFormat convertFormat(const GfxVertexFormatDescr::Element& vertexElement)
+static VkFormat convertFormat(const GfxVertexFormatDesc::Element& vertexElement)
 {
 	switch (vertexElement.type)
 	{
-	case GfxVertexFormatDescr::DataType::Float1: return VK_FORMAT_R32_SFLOAT;
-	case GfxVertexFormatDescr::DataType::Float2: return VK_FORMAT_R32G32_SFLOAT;
-	case GfxVertexFormatDescr::DataType::Float3: return VK_FORMAT_R32G32B32_SFLOAT;
-	case GfxVertexFormatDescr::DataType::Float4: return VK_FORMAT_R32G32B32A32_SFLOAT;
-	case GfxVertexFormatDescr::DataType::Color: return VK_FORMAT_R8G8B8A8_UNORM;
-	case GfxVertexFormatDescr::DataType::UInt: return VK_FORMAT_R32_UINT;
-	case GfxVertexFormatDescr::DataType::Short2N: return VK_FORMAT_R16G16_UNORM;
+	case GfxVertexFormatDesc::DataType::Float1: return VK_FORMAT_R32_SFLOAT;
+	case GfxVertexFormatDesc::DataType::Float2: return VK_FORMAT_R32G32_SFLOAT;
+	case GfxVertexFormatDesc::DataType::Float3: return VK_FORMAT_R32G32B32_SFLOAT;
+	case GfxVertexFormatDesc::DataType::Float4: return VK_FORMAT_R32G32B32A32_SFLOAT;
+	case GfxVertexFormatDesc::DataType::Color: return VK_FORMAT_R8G8B8A8_UNORM;
+	case GfxVertexFormatDesc::DataType::UInt: return VK_FORMAT_R32_UINT;
+	case GfxVertexFormatDesc::DataType::Short2N: return VK_FORMAT_R16G16_UNORM;
 	default: Log::error("Unsupported vertex element format type"); return VK_FORMAT_UNDEFINED;
 	}
 }
 
-GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDescr& descr)
+GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 {
 	VertexFormatVK format;
 
-	format.id    = g_device->generateId();
-	format.descr = descr;
-	format.attributes.resize(descr.elementCount());
+	format.id   = g_device->generateId();
+	format.desc = desc;
+	format.attributes.resize(desc.elementCount());
 
-	for (u32 i = 0; i < (u32)descr.elementCount(); ++i)
+	for (u32 i = 0; i < (u32)desc.elementCount(); ++i)
 	{
-		const auto& element = descr.element(i);
+		const auto& element = desc.element(i);
 		RUSH_ASSERT(element.stream < GfxContext::MaxVertexStreams);
 
-		if (element.semantic == GfxVertexFormatDescr::Semantic::InstanceData)
+		if (element.semantic == GfxVertexFormatDesc::Semantic::InstanceData)
 		{
 			RUSH_ASSERT_MSG(format.instanceDataStream == 0xFFFFFFFF, "Only one instance data element is supported.");
 			format.instanceDataStream         = element.stream;
@@ -2790,7 +2789,7 @@ static ShaderVK::InputMapping parseVertexInputMapping(const std::string& vertexA
 {
 	ShaderVK::InputMapping result;
 	result.location      = 0;
-	result.semantic      = GfxVertexFormatDescr::Semantic::Unused;
+	result.semantic      = GfxVertexFormatDesc::Semantic::Unused;
 	result.semanticIndex = 0;
 
 	size_t attrLen = vertexAttributeName.length();
@@ -2799,28 +2798,28 @@ static ShaderVK::InputMapping parseVertexInputMapping(const std::string& vertexA
 
 	if (strstr(vertexAttributeName.c_str(), "a_pos"))
 	{
-		result.semantic = GfxVertexFormatDescr::Semantic::Position;
+		result.semantic = GfxVertexFormatDesc::Semantic::Position;
 	}
 	else if (strstr(vertexAttributeName.c_str(), "a_tex"))
 	{
-		result.semantic = GfxVertexFormatDescr::Semantic::Texcoord;
+		result.semantic = GfxVertexFormatDesc::Semantic::Texcoord;
 	}
 	else if (strstr(vertexAttributeName.c_str(), "a_col"))
 	{
-		result.semantic = GfxVertexFormatDescr::Semantic::Color;
+		result.semantic = GfxVertexFormatDesc::Semantic::Color;
 	}
 	else if (strstr(vertexAttributeName.c_str(), "a_nor"))
 	{
-		result.semantic = GfxVertexFormatDescr::Semantic::Normal;
+		result.semantic = GfxVertexFormatDesc::Semantic::Normal;
 	}
 	else if (strstr(vertexAttributeName.c_str(), "a_tan") || strstr(vertexAttributeName.c_str(), "a_tau"))
 	{
-		result.semantic = GfxVertexFormatDescr::Semantic::Tangent;
+		result.semantic = GfxVertexFormatDesc::Semantic::Tangent;
 	}
 	else if (strstr(vertexAttributeName.c_str(), "a_bin") || strstr(vertexAttributeName.c_str(), "a_bit") ||
 	         strstr(vertexAttributeName.c_str(), "a_tav"))
 	{
-		result.semantic = GfxVertexFormatDescr::Semantic::Bitangent;
+		result.semantic = GfxVertexFormatDesc::Semantic::Bitangent;
 	}
 
 	return result;
@@ -2887,7 +2886,7 @@ GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code)
 void Gfx_DestroyComputeShader(GfxComputeShader h) { releaseResource(g_device->m_computeShaders, h); }
 
 // technique
-GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr)
+GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 {
 	TechniqueVK res;
 
@@ -2899,52 +2898,52 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr)
 		for (u32 i = 0; i < u32(GfxStage::count); ++i)
 		{
 			res.waveLimits[i].sType      = VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD;
-			res.waveLimits[i].wavesPerCu = descr.waveLimits[i];
+			res.waveLimits[i].wavesPerCu = desc.waveLimits[i];
 		}
 	}
 
-	if (descr.specializationData)
+	if (desc.specializationData)
 	{
 		// todo: batch all allocations into one
 
-		size_t specializationEntriesSize = sizeof(VkSpecializationMapEntry) * descr.specializationConstantCount;
+		size_t specializationEntriesSize = sizeof(VkSpecializationMapEntry) * desc.specializationConstantCount;
 		void*  specializationEntriesCopy = malloc(specializationEntriesSize);
-		memcpy(specializationEntriesCopy, descr.specializationConstants, specializationEntriesSize);
+		memcpy(specializationEntriesCopy, desc.specializationConstants, specializationEntriesSize);
 
-		void* specializationDataCopy = malloc(descr.specializationDataSize);
-		memcpy(specializationDataCopy, descr.specializationData, descr.specializationDataSize);
+		void* specializationDataCopy = malloc(desc.specializationDataSize);
+		memcpy(specializationDataCopy, desc.specializationData, desc.specializationDataSize);
 
 		res.specializationInfo = (VkSpecializationInfo*)malloc(sizeof(VkSpecializationInfo));
 
-		res.specializationInfo->mapEntryCount = descr.specializationConstantCount;
+		res.specializationInfo->mapEntryCount = desc.specializationConstantCount;
 		res.specializationInfo->pMapEntries   = reinterpret_cast<VkSpecializationMapEntry*>(specializationEntriesCopy);
-		res.specializationInfo->dataSize      = descr.specializationDataSize;
+		res.specializationInfo->dataSize      = desc.specializationDataSize;
 		res.specializationInfo->pData         = specializationDataCopy;
 	}
 
-	if (descr.cs.valid())
+	if (desc.cs.valid())
 	{
 		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 		stageInfo.stage                           = VK_SHADER_STAGE_COMPUTE_BIT;
-		stageInfo.module                          = g_device->m_computeShaders[descr.cs].module;
-		stageInfo.pName                           = g_device->m_computeShaders[descr.cs].entry;
+		stageInfo.module                          = g_device->m_computeShaders[desc.cs].module;
+		stageInfo.pName                           = g_device->m_computeShaders[desc.cs].entry;
 		stageInfo.pSpecializationInfo             = res.specializationInfo;
 
-		if (g_device->m_supportedExtensions.AMD_wave_limits && descr.waveLimits[u32(GfxStage::Compute)] != 1.0f)
+		if (g_device->m_supportedExtensions.AMD_wave_limits && desc.waveLimits[u32(GfxStage::Compute)] != 1.0f)
 		{
 			res.waveLimits[u32(GfxStage::Compute)].pNext = stageInfo.pNext;
 			stageInfo.pNext                              = &res.waveLimits[u32(GfxStage::Compute)];
 		}
 
 		res.shaderStages.push_back(stageInfo);
-		res.cs.retain(descr.cs);
+		res.cs.retain(desc.cs);
 	}
 	else
 	{
-		RUSH_ASSERT(descr.vf.valid());
-		RUSH_ASSERT(descr.vs.valid());
+		RUSH_ASSERT(desc.vf.valid());
+		RUSH_ASSERT(desc.vs.valid());
 
-		res.vf.retain(descr.vf);
+		res.vf.retain(desc.vf);
 
 		if (res.vf.valid())
 		{
@@ -2953,40 +2952,40 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr)
 			res.vertexStreamCount              = vertexFormat.vertexStreamCount;
 		}
 
-		if (descr.vs.valid())
+		if (desc.vs.valid())
 		{
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_VERTEX_BIT;
-			stageInfo.module                          = g_device->m_vertexShaders[descr.vs].module;
-			stageInfo.pName                           = g_device->m_vertexShaders[descr.vs].entry;
+			stageInfo.module                          = g_device->m_vertexShaders[desc.vs].module;
+			stageInfo.pName                           = g_device->m_vertexShaders[desc.vs].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
-			if (g_device->m_supportedExtensions.AMD_wave_limits && descr.waveLimits[u32(GfxStage::Vertex)] != 1.0f)
+			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.waveLimits[u32(GfxStage::Vertex)] != 1.0f)
 			{
 				res.waveLimits[u32(GfxStage::Vertex)].pNext = stageInfo.pNext;
 				stageInfo.pNext                             = &res.waveLimits[u32(GfxStage::Vertex)];
 			}
 
 			res.shaderStages.push_back(stageInfo);
-			res.vs.retain(descr.vs);
+			res.vs.retain(desc.vs);
 		}
 
-		if (descr.ps.valid())
+		if (desc.ps.valid())
 		{
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_FRAGMENT_BIT;
-			stageInfo.module                          = g_device->m_pixelShaders[descr.ps].module;
-			stageInfo.pName                           = g_device->m_pixelShaders[descr.ps].entry;
+			stageInfo.module                          = g_device->m_pixelShaders[desc.ps].module;
+			stageInfo.pName                           = g_device->m_pixelShaders[desc.ps].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
-			if (g_device->m_supportedExtensions.AMD_wave_limits && descr.waveLimits[u32(GfxStage::Pixel)] != 1.0f)
+			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.waveLimits[u32(GfxStage::Pixel)] != 1.0f)
 			{
 				res.waveLimits[u32(GfxStage::Pixel)].pNext = stageInfo.pNext;
 				stageInfo.pNext                            = &res.waveLimits[u32(GfxStage::Pixel)];
 			}
 
 			res.shaderStages.push_back(stageInfo);
-			res.ps.retain(descr.ps);
+			res.ps.retain(desc.ps);
 		}
 	}
 
@@ -3012,11 +3011,11 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr)
 	GfxShaderBindings::BindingType currentBindingType = GfxShaderBindings::BindingType_Unknown;
 
 	u32 bindingSlot = 0;
-	if (descr.bindings)
+	if (desc.bindings)
 	{
-		res.bindings = *descr.bindings;
+		res.bindings = *desc.bindings;
 
-		for (const auto& item : descr.bindings->items)
+		for (const auto& item : desc.bindings->items)
 		{
 			RUSH_ASSERT_MSG(bindingOrderRequirements[currentBindingType] <= bindingOrderRequirements[item.type],
 			    "Resource bindings must be specified following the order specified in GfxShaderBindings");
@@ -3027,9 +3026,8 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr)
 			case GfxShaderBindings::BindingType_PushConstants:
 				RUSH_ASSERT(res.pushConstantsSize <= 128);
 				RUSH_ASSERT_MSG(res.pushConstantsSize == 0, "Only one push constant block is allowed.");
-				res.pushConstantsSize = item.pushConstants.size;
-				res.pushConstantStageFlags =
-				    descr.cs.valid() ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_VERTEX_BIT;
+				res.pushConstantsSize      = item.pushConstants.size;
+				res.pushConstantStageFlags = desc.cs.valid() ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_VERTEX_BIT;
 				break;
 
 			case GfxShaderBindings::BindingType_ConstantBuffer: ++res.constantBufferCount; break;
@@ -3064,7 +3062,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr)
 		RUSH_ASSERT(res.constantBufferCount <= GfxContext::MaxConstantBuffers);
 
 		u32 resourceStageFlags;
-		if (descr.cs.valid())
+		if (desc.cs.valid())
 		{
 			resourceStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 		}
@@ -3255,58 +3253,58 @@ inline VkImageViewType getDefaultImageViewType(TextureType type)
 	}
 }
 
-inline u32 getTextureArrayLayerCount(const GfxTextureDescr& descr)
+inline u32 getTextureArrayLayerCount(const GfxTextureDesc& desc)
 {
-	switch (descr.type)
+	switch (desc.type)
 	{
 	default: Log::error("Unsupported texture type"); return 0;
 	case TextureType::Tex1D:
 	case TextureType::Tex1DArray:
 	case TextureType::Tex2D:
-	case TextureType::Tex2DArray: return descr.depth;
+	case TextureType::Tex2DArray: return desc.depth;
 	case TextureType::TexCube:
-	case TextureType::TexCubeArray: return descr.depth * 6;
+	case TextureType::TexCubeArray: return desc.depth * 6;
 	case TextureType::Tex3D: return 1;
 	}
 }
 
-TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* data, u32 count)
+TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count)
 {
-	const bool isDepthBuffer  = !!(descr.usage & GfxUsageFlags::DepthStencil);
-	const bool isRenderTarget = !!(descr.usage & GfxUsageFlags::RenderTarget);
-	const bool isStorageImage = !!(descr.usage & GfxUsageFlags::StorageImage);
+	const bool isDepthBuffer  = !!(desc.usage & GfxUsageFlags::DepthStencil);
+	const bool isRenderTarget = !!(desc.usage & GfxUsageFlags::RenderTarget);
+	const bool isStorageImage = !!(desc.usage & GfxUsageFlags::StorageImage);
 
-	RUSH_ASSERT(!isDepthBuffer || (getGfxFormatComponent(descr.format) & GfxFormatComponent_Depth));
+	RUSH_ASSERT(!isDepthBuffer || (getGfxFormatComponent(desc.format) & GfxFormatComponent_Depth));
 	RUSH_ASSERT(data || isDepthBuffer || isRenderTarget || isStorageImage);
-	RUSH_ASSERT(descr.type == TextureType::Tex2D || descr.type == TextureType::TexCube);
-	RUSH_ASSERT(descr.mips != 0);
-	RUSH_ASSERT(descr.depth != 0);
-	RUSH_ASSERT(descr.usage != GfxUsageFlags::None);
+	RUSH_ASSERT(desc.type == TextureType::Tex2D || desc.type == TextureType::TexCube);
+	RUSH_ASSERT(desc.mips != 0);
+	RUSH_ASSERT(desc.depth != 0);
+	RUSH_ASSERT(desc.usage != GfxUsageFlags::None);
 
 	TextureVK res;
 	res.id            = g_device->generateId();
-	res.descr         = descr;
+	res.desc          = desc;
 	res.currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	VkImageCreateInfo imageCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
 
-	switch (descr.type)
+	switch (desc.type)
 	{
 	default: Log::error("Unsupported texture type");
 	case TextureType::Tex1D:
 	case TextureType::Tex1DArray:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_1D;
-		imageCreateInfo.arrayLayers = descr.depth;
+		imageCreateInfo.arrayLayers = desc.depth;
 		break;
 	case TextureType::Tex2D:
 	case TextureType::Tex2DArray:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_2D;
-		imageCreateInfo.arrayLayers = descr.depth;
+		imageCreateInfo.arrayLayers = desc.depth;
 		break;
 	case TextureType::TexCube:
 	case TextureType::TexCubeArray:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_2D;
-		imageCreateInfo.arrayLayers = descr.depth * 6;
+		imageCreateInfo.arrayLayers = desc.depth * 6;
 		break;
 	case TextureType::Tex3D:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_3D;
@@ -3314,25 +3312,25 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* 
 		break;
 	}
 
-	imageCreateInfo.format        = convertFormat(descr.format);
-	imageCreateInfo.extent.width  = descr.width;
-	imageCreateInfo.extent.height = descr.height;
-	imageCreateInfo.extent.depth  = descr.depth;
-	imageCreateInfo.mipLevels     = descr.mips;
+	imageCreateInfo.format        = convertFormat(desc.format);
+	imageCreateInfo.extent.width  = desc.width;
+	imageCreateInfo.extent.height = desc.height;
+	imageCreateInfo.extent.depth  = desc.depth;
+	imageCreateInfo.mipLevels     = desc.mips;
 	imageCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
 	imageCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
 
-	GfxFormat viewFormat = descr.format;
+	GfxFormat viewFormat = desc.format;
 
-	if (!!(descr.usage & GfxUsageFlags::DepthStencil))
+	if (!!(desc.usage & GfxUsageFlags::DepthStencil))
 	{
 		imageCreateInfo.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	}
 
-	if (!!(descr.usage & GfxUsageFlags::ShaderResource))
+	if (!!(desc.usage & GfxUsageFlags::ShaderResource))
 	{
 		imageCreateInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-		switch (descr.format)
+		switch (desc.format)
 		{
 		case GfxFormat_D32_Float:
 			// viewFormat = GfxFormat_R32_Float;
@@ -3346,12 +3344,12 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* 
 		}
 	}
 
-	if (!!(descr.usage & GfxUsageFlags::RenderTarget))
+	if (!!(desc.usage & GfxUsageFlags::RenderTarget))
 	{
 		imageCreateInfo.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	}
 
-	if (!!(descr.usage & GfxUsageFlags::StorageImage))
+	if (!!(desc.usage & GfxUsageFlags::StorageImage))
 	{
 		imageCreateInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	}
@@ -3379,20 +3377,20 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* 
 
 	V(vkBindImageMemory(g_vulkanDevice, res.image, res.memory, 0));
 
-	u32 aspectFlags = aspectFlagsFromFormat(descr.format);
+	u32 aspectFlags = aspectFlagsFromFormat(desc.format);
 
 	VkImageViewCreateInfo imageViewCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
 
-	imageViewCreateInfo.viewType   = getDefaultImageViewType(descr.type);
+	imageViewCreateInfo.viewType   = getDefaultImageViewType(desc.type);
 	imageViewCreateInfo.format     = convertFormat(viewFormat);
 	imageViewCreateInfo.components = {
 	    VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A};
-	imageViewCreateInfo.subresourceRange = {aspectFlags, 0, descr.mips, 0, imageCreateInfo.arrayLayers};
+	imageViewCreateInfo.subresourceRange = {aspectFlags, 0, desc.mips, 0, imageCreateInfo.arrayLayers};
 	imageViewCreateInfo.image            = res.image;
 
 	V(vkCreateImageView(g_vulkanDevice, &imageViewCreateInfo, nullptr, &res.imageView));
 
-	if (!!(descr.usage & GfxUsageFlags::DepthStencil))
+	if (!!(desc.usage & GfxUsageFlags::DepthStencil))
 	{
 		VkImageViewCreateInfo depthViewCreateInfo = imageViewCreateInfo;
 		depthViewCreateInfo.format                = imageCreateInfo.format;
@@ -3404,22 +3402,22 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* 
 		GfxContext* uploadContext = getUploadContext();
 
 		VkImageSubresourceRange subresourceRange = {
-		    VK_IMAGE_ASPECT_COLOR_BIT, 0, descr.mips, 0, imageCreateInfo.arrayLayers};
+		    VK_IMAGE_ASPECT_COLOR_BIT, 0, desc.mips, 0, imageCreateInfo.arrayLayers};
 		uploadContext->addImageBarrier(
 		    res.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, res.currentLayout, &subresourceRange);
 		uploadContext->flushBarriers();
 
-		const size_t bitsPerPixel   = getBitsPerPixel(descr.format);
-		const size_t bitsPerElement = (isGfxFormatBlockCompressed(descr.format) ? 16 * bitsPerPixel : bitsPerPixel);
+		const size_t bitsPerPixel   = getBitsPerPixel(desc.format);
+		const size_t bitsPerElement = (isGfxFormatBlockCompressed(desc.format) ? 16 * bitsPerPixel : bitsPerPixel);
 
 		size_t stagingBufferSize = 0;
 
 		for (u32 i = 0; i < count; ++i)
 		{
 			const u32 mipLevel  = data[i].mip;
-			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (descr.width >> mipLevel));
-			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (descr.height >> mipLevel));
-			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (descr.depth >> mipLevel));
+			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (desc.width >> mipLevel));
+			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (desc.height >> mipLevel));
+			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (desc.depth >> mipLevel));
 
 			const size_t levelSize = (size_t(mipWidth * mipHeight * mipDepth) * bitsPerPixel) / 8;
 			const size_t alignedLevelSize =
@@ -3457,9 +3455,9 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* 
 			RUSH_ASSERT(data[i].pixels);
 
 			const u32 mipLevel  = data[i].mip;
-			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (descr.width >> mipLevel));
-			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (descr.height >> mipLevel));
-			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (descr.depth >> mipLevel));
+			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (desc.width >> mipLevel));
+			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (desc.height >> mipLevel));
+			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (desc.depth >> mipLevel));
 
 			const size_t levelSize = (size_t(mipWidth * mipHeight * mipDepth) * bitsPerPixel) / 8;
 			const size_t alignedLevelSize =
@@ -3497,14 +3495,14 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, const GfxTextureData* 
 	return res;
 }
 
-TextureVK TextureVK::create(const GfxTextureDescr& descr, VkImage image, VkImageLayout initialLayout)
+TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLayout initialLayout)
 {
-	RUSH_ASSERT(descr.type == TextureType::Tex2D);
+	RUSH_ASSERT(desc.type == TextureType::Tex2D);
 
 	TextureVK res;
 
-	res.id    = g_device->generateId();
-	res.descr = descr;
+	res.id   = g_device->generateId();
+	res.desc = desc;
 
 	res.ownsMemory = false;
 	res.memory     = VK_NULL_HANDLE;
@@ -3514,14 +3512,14 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, VkImage image, VkImage
 
 	res.currentLayout = initialLayout;
 
-	u32 aspectFlags = aspectFlagsFromFormat(descr.format); // TODO: calculate from usage instead of just format
+	u32 aspectFlags = aspectFlagsFromFormat(desc.format); // TODO: calculate from usage instead of just format
 
 	VkImageViewCreateInfo viewCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
 	viewCreateInfo.image                 = res.image;
-	viewCreateInfo.format                = convertFormat(descr.format);
+	viewCreateInfo.format                = convertFormat(desc.format);
 	viewCreateInfo.components            = {
         VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A};
-	viewCreateInfo.subresourceRange = {aspectFlags, 0, descr.mips, 0, 1};
+	viewCreateInfo.subresourceRange = {aspectFlags, 0, desc.mips, 0, 1};
 	viewCreateInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
 
 	V(vkCreateImageView(g_vulkanDevice, &viewCreateInfo, nullptr, &res.imageView));
@@ -3529,21 +3527,21 @@ TextureVK TextureVK::create(const GfxTextureDescr& descr, VkImage image, VkImage
 	return res;
 }
 
-GfxTexture Gfx_CreateTexture(const GfxTextureDescr& descr, const GfxTextureData* data, u32 count)
+GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count)
 {
-	return retainResource(g_device->m_textures, TextureVK::create(descr, data, count));
+	return retainResource(g_device->m_textures, TextureVK::create(desc, data, count));
 }
 
-const GfxTextureDescr& Gfx_GetTextureDescr(GfxTexture h)
+const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
 {
 	if (h.valid())
 	{
-		return g_device->m_textures[h].descr;
+		return g_device->m_textures[h].desc;
 	}
 	else
 	{
-		static const GfxTextureDescr descr = GfxTextureDescr::make2D(1, 1, GfxFormat_Unknown);
-		return descr;
+		static const GfxTextureDesc desc = GfxTextureDesc::make2D(1, 1, GfxFormat_Unknown);
+		return desc;
 	}
 }
 
@@ -3577,11 +3575,11 @@ void TextureVK::destroy()
 void Gfx_DestroyTexture(GfxTexture h) { releaseResource(g_device->m_textures, h); }
 
 // blend state
-GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDescr& descr)
+GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 {
 	BlendStateVK res;
-	res.id    = g_device->generateId();
-	res.descr = descr;
+	res.id   = g_device->generateId();
+	res.desc = desc;
 
 	return retainResource(g_device->m_blendStates, res);
 }
@@ -3589,28 +3587,27 @@ GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDescr& descr)
 void Gfx_DestroyBlendState(GfxBlendState h) { releaseResource(g_device->m_blendStates, h); }
 
 // sampler state
-GfxSampler Gfx_CreateSamplerState(const GfxSamplerDescr& descr)
+GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 {
 	SamplerVK res;
 
-	res.id    = g_device->generateId();
-	res.descr = descr;
+	res.id   = g_device->generateId();
+	res.desc = desc;
 
 	VkSamplerCreateInfo samplerCreateInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-	samplerCreateInfo.magFilter           = convertFilter(descr.filterMag);
-	samplerCreateInfo.minFilter           = convertFilter(descr.filterMin);
-	samplerCreateInfo.mipmapMode          = convertMipmapMode(descr.filterMip);
-	samplerCreateInfo.addressModeU        = convertSamplerAddressMode(descr.wrapU);
-	samplerCreateInfo.addressModeV        = convertSamplerAddressMode(descr.wrapV);
-	samplerCreateInfo.addressModeW        = convertSamplerAddressMode(descr.wrapW);
+	samplerCreateInfo.magFilter           = convertFilter(desc.filterMag);
+	samplerCreateInfo.minFilter           = convertFilter(desc.filterMin);
+	samplerCreateInfo.mipmapMode          = convertMipmapMode(desc.filterMip);
+	samplerCreateInfo.addressModeU        = convertSamplerAddressMode(desc.wrapU);
+	samplerCreateInfo.addressModeV        = convertSamplerAddressMode(desc.wrapV);
+	samplerCreateInfo.addressModeW        = convertSamplerAddressMode(desc.wrapW);
 	samplerCreateInfo.mipLodBias          = 0.0f;
-	samplerCreateInfo.anisotropyEnable    = descr.anisotropy > 1.0f;
-	samplerCreateInfo.maxAnisotropy =
-	    min(descr.anisotropy, g_device->m_physicalDeviceProps.limits.maxSamplerAnisotropy);
-	samplerCreateInfo.compareOp               = VK_COMPARE_OP_NEVER;
-	samplerCreateInfo.minLod                  = 0.0f;
-	samplerCreateInfo.maxLod                  = FLT_MAX;
-	samplerCreateInfo.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+	samplerCreateInfo.anisotropyEnable    = desc.anisotropy > 1.0f;
+	samplerCreateInfo.maxAnisotropy = min(desc.anisotropy, g_device->m_physicalDeviceProps.limits.maxSamplerAnisotropy);
+	samplerCreateInfo.compareOp     = VK_COMPARE_OP_NEVER;
+	samplerCreateInfo.minLod        = 0.0f;
+	samplerCreateInfo.maxLod        = FLT_MAX;
+	samplerCreateInfo.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 	samplerCreateInfo.unnormalizedCoordinates = false;
 
 	V(vkCreateSampler(g_vulkanDevice, &samplerCreateInfo, nullptr, &res.native));
@@ -3623,11 +3620,11 @@ void SamplerVK::destroy() { g_device->enqueueDestroySampler(native); }
 void Gfx_DestroySamplerState(GfxSampler h) { releaseResource(g_device->m_samplers, h); }
 
 // depth stencil state
-GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDescr& descr)
+GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
 {
 	DepthStencilStateVK res;
-	res.id    = g_device->generateId();
-	res.descr = descr;
+	res.id   = g_device->generateId();
+	res.desc = desc;
 
 	return retainResource(g_device->m_depthStencilStates, res);
 }
@@ -3635,28 +3632,28 @@ GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDescr& des
 void Gfx_DestroyDepthStencilState(GfxDepthStencilState h) { releaseResource(g_device->m_depthStencilStates, h); }
 
 // rasterizer state
-GfxRasterizerState Gfx_CreateRasterizerState(const GfxRasterizerDescr& descr)
+GfxRasterizerState Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
 {
 	RasterizerStateVK res;
-	res.id    = g_device->generateId();
-	res.descr = descr;
+	res.id   = g_device->generateId();
+	res.desc = desc;
 
 	return retainResource(g_device->m_rasterizerStates, res);
 }
 
 void Gfx_DestroyRasterizerState(GfxRasterizerState h) { releaseResource(g_device->m_rasterizerStates, h); }
 
-static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDescr& descr)
+static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 {
 	VkBufferCreateInfo bufferCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-	switch (descr.type)
+	switch (desc.type)
 	{
 	case GfxBufferType::Vertex: bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; break;
 	case GfxBufferType::Index: bufferCreateInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT; break;
 	case GfxBufferType::Constant: bufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; break;
 	case GfxBufferType::Storage:
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		if (descr.format != GfxFormat_Unknown)
+		if (desc.format != GfxFormat_Unknown)
 		{
 			bufferCreateInfo.usage |=
 			    VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
@@ -3668,26 +3665,26 @@ static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDescr& descr)
 	default: Log::error("Unexpected buffer type");
 	}
 
-	bufferCreateInfo.size = descr.count * descr.stride;
+	bufferCreateInfo.size = desc.count * desc.stride;
 
 	return bufferCreateInfo;
 }
 
 // buffers
-GfxBuffer Gfx_CreateBuffer(const GfxBufferDescr& descr, const void* data)
+GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 {
 	BufferVK res;
 
-	res.id    = g_device->generateId();
-	res.descr = descr;
+	res.id   = g_device->generateId();
+	res.desc = desc;
 
-	VkBufferCreateInfo bufferCreateInfo = makeBufferCreateInfo(descr);
+	VkBufferCreateInfo bufferCreateInfo = makeBufferCreateInfo(desc);
 
 	// Always allow buffers to be copied to and from
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
-	if (data || descr.mode == GfxBufferMode::Static)
+	if (data || desc.mode == GfxBufferMode::Static)
 	{
 		V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, nullptr, &res.info.buffer));
 		res.ownsBuffer = true;
@@ -3749,13 +3746,13 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDescr& descr, const void* data)
 
 		res.lastUpdateFrame = g_device->m_frameCount;
 	}
-	else if (descr.mode == GfxBufferMode::Static)
+	else if (desc.mode == GfxBufferMode::Static)
 	{
 		VkMemoryRequirements memoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
 
 		VkFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		if (descr.hostVisible)
+		if (desc.hostVisible)
 		{
 			memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		}
@@ -3769,19 +3766,19 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDescr& descr, const void* data)
 
 		V(vkBindBufferMemory(g_vulkanDevice, res.info.buffer, res.memory, 0));
 
-		if (descr.hostVisible)
+		if (desc.hostVisible)
 		{
 			V(vkMapMemory(g_vulkanDevice, res.memory, 0, allocInfo.allocationSize, 0, &res.mappedMemory));
 			RUSH_ASSERT(res.mappedMemory);
 		}
 	}
 
-	if (descr.format != GfxFormat_Unknown && descr.type == GfxBufferType::Storage &&
-	    (data || descr.mode == GfxBufferMode::Static))
+	if (desc.format != GfxFormat_Unknown && desc.type == GfxBufferType::Storage &&
+	    (data || desc.mode == GfxBufferMode::Static))
 	{
 		VkBufferViewCreateInfo bufferViewCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
 		bufferViewCreateInfo.buffer                 = res.info.buffer;
-		bufferViewCreateInfo.format                 = convertFormat(descr.format);
+		bufferViewCreateInfo.format                 = convertFormat(desc.format);
 		bufferViewCreateInfo.offset                 = res.info.offset;
 		bufferViewCreateInfo.range                  = res.info.range;
 		V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &res.bufferView));
@@ -3843,17 +3840,17 @@ void Gfx_vkFlushMappedBuffer(GfxBuffer h)
 
 GfxMappedBuffer Gfx_MapBuffer(GfxBuffer vb, u32 offset, u32 size)
 {
-	const auto& descr = g_device->m_buffers[vb].descr;
+	const auto& desc = g_device->m_buffers[vb].desc;
 
-	RUSH_ASSERT_MSG(descr.mode != GfxBufferMode::Temporary,
+	RUSH_ASSERT_MSG(desc.mode != GfxBufferMode::Temporary,
 	    "Temporary buffers can't be mapped, as their memory is frequently recycled.")
 
 	RUSH_ASSERT(offset == 0 && size == 0);
-	RUSH_ASSERT(descr.hostVisible);
+	RUSH_ASSERT(desc.hostVisible);
 
 	GfxMappedBuffer result;
 	result.data   = g_device->m_buffers[vb].mappedMemory;
-	result.size   = descr.stride * descr.count;
+	result.size   = desc.stride * desc.count;
 	result.handle = vb;
 
 	return result;
@@ -3914,7 +3911,7 @@ static VkMemoryRequirements getBufferMemoryRequirements(const BufferVK& buffer)
 	VkMemoryRequirements memoryReq;
 	vkGetBufferMemoryRequirements(g_vulkanDevice, buffer.info.buffer, &memoryReq);
 
-	memoryReq.alignment = max(memoryReq.alignment, getBufferAlignmentRequirements(buffer.descr.type));
+	memoryReq.alignment = max(memoryReq.alignment, getBufferAlignmentRequirements(buffer.desc.type));
 
 	return memoryReq;
 }
@@ -3942,7 +3939,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 	markDirtyIfBound(rc, buffer);
 
 	RUSH_ASSERT_MSG(
-	    buffer.descr.mode == GfxBufferMode::Temporary, "Only temporary buffers can be dynamically updated/renamed.");
+	    buffer.desc.mode == GfxBufferMode::Temporary, "Only temporary buffers can be dynamically updated/renamed.");
 
 	buffer.lastUpdateFrame = g_device->m_frameCount;
 
@@ -3963,7 +3960,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 			g_device->enqueueDestroyBuffer(buffer.info.buffer);
 		}
 
-		const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.descr.type);
+		const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.desc.type);
 		MemoryBlockVK      block     = g_device->m_currentFrame->localOnlyAllocator.alloc(size, alignment);
 
 		buffer.memory     = block.memory;
@@ -3974,11 +3971,11 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 		buffer.info.offset = block.offset;
 		buffer.info.range  = size;
 
-		if (buffer.descr.format != GfxFormat_Unknown && buffer.descr.type == GfxBufferType::Storage)
+		if (buffer.desc.format != GfxFormat_Unknown && buffer.desc.type == GfxBufferType::Storage)
 		{
 			VkBufferViewCreateInfo bufferViewCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
 			bufferViewCreateInfo.buffer                 = buffer.info.buffer;
-			bufferViewCreateInfo.format                 = convertFormat(buffer.descr.format);
+			bufferViewCreateInfo.format                 = convertFormat(buffer.desc.format);
 			bufferViewCreateInfo.offset                 = buffer.info.offset;
 			bufferViewCreateInfo.range                  = buffer.info.range;
 			V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &buffer.bufferView));
@@ -4194,7 +4191,7 @@ void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBuffer h)
 
 		if (h.valid())
 		{
-			rc->m_pending.vertexBufferStride[idx] = g_device->m_buffers[h].descr.stride;
+			rc->m_pending.vertexBufferStride[idx] = g_device->m_buffers[h].desc.stride;
 		}
 		else
 		{
@@ -4212,8 +4209,8 @@ void Gfx_SetStorageImage(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
 	{
 		if (h.valid())
 		{
-			const auto& descr = g_device->m_textures[h].descr;
-			RUSH_ASSERT(!!(descr.usage & GfxUsageFlags::StorageImage));
+			const auto& desc = g_device->m_textures[h].desc;
+			RUSH_ASSERT(!!(desc.usage & GfxUsageFlags::StorageImage));
 		}
 
 		rc->m_pending.storageImages[idx].retain(h);
@@ -4310,8 +4307,8 @@ void Gfx_AddImageBarrier(
 
 	VkImageLayout desiredLayout = convertImageLayout(desiredState);
 
-	VkImageSubresourceRange subresourceRangeVk = {aspectFlagsFromFormat(texture.descr.format), 0, texture.descr.mips, 0,
-	    getTextureArrayLayerCount(texture.descr)};
+	VkImageSubresourceRange subresourceRangeVk = {
+	    aspectFlagsFromFormat(texture.desc.format), 0, texture.desc.mips, 0, getTextureArrayLayerCount(texture.desc)};
 
 	if (subresourceRange)
 	{
@@ -4323,18 +4320,18 @@ void Gfx_AddImageBarrier(
 	texture.currentLayout = desiredLayout;
 }
 
-void Gfx_BeginPass(GfxContext* rc, const GfxPassDescr& descr)
+void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
-	if (!descr.depth.valid() && !descr.color[0].valid())
+	if (!desc.depth.valid() && !desc.color[0].valid())
 	{
-		GfxPassDescr backBufferPassDescr = descr;
-		backBufferPassDescr.depth        = Gfx_GetBackBufferDepthTexture();
-		backBufferPassDescr.color[0]     = Gfx_GetBackBufferColorTexture();
-		rc->beginRenderPass(backBufferPassDescr);
+		GfxPassDesc backBufferPassDesc = desc;
+		backBufferPassDesc.depth       = Gfx_GetBackBufferDepthTexture();
+		backBufferPassDesc.color[0]    = Gfx_GetBackBufferColorTexture();
+		rc->beginRenderPass(backBufferPassDesc);
 	}
 	else
 	{
-		rc->beginRenderPass(descr);
+		rc->beginRenderPass(desc);
 	}
 }
 
@@ -4449,7 +4446,7 @@ void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBuffer argsBuffer, size_t argsBu
 
 	// TODO: insert buffer barrier (VK_ACCESS_INDIRECT_COMMAND_READ_BIT)
 	vkCmdDrawIndexedIndirect(
-	    rc->m_commandBuffer, buffer.info.buffer, buffer.info.offset + argsBufferOffset, drawCount, buffer.descr.stride);
+	    rc->m_commandBuffer, buffer.info.buffer, buffer.info.offset + argsBufferOffset, drawCount, buffer.desc.stride);
 
 	g_device->m_stats.drawCalls++;
 }

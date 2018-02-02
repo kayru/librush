@@ -132,7 +132,7 @@ enum class GfxPassFlags : u32
 };
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxPassFlags, u32);
 
-struct GfxPassDescr
+struct GfxPassDesc
 {
 	static const u32 MaxTargets = 8;
 
@@ -170,7 +170,7 @@ const GfxStats& Gfx_Stats();
 void            Gfx_ResetStats();
 
 // vertex format
-GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDescr& fmt);
+GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDesc& fmt);
 void            Gfx_DestroyVertexFormat(GfxVertexFormat h);
 
 // vertex shader
@@ -186,36 +186,36 @@ GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code);
 void             Gfx_DestroyComputeShader(GfxComputeShader psh);
 
 // technique
-GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDescr& descr);
+GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc);
 void         Gfx_DestroyTechnique(GfxTechnique h);
 
 // texture
-GfxTexture Gfx_CreateTextureFromFile(const char* filename, TextureType type = TextureType::Tex2D);
-GfxTexture Gfx_CreateTexture(const GfxTextureDescr& tex, const GfxTextureData* data = nullptr, u32 count = 0);
-const GfxTextureDescr& Gfx_GetTextureDescr(GfxTexture h);
-void                   Gfx_DestroyTexture(GfxTexture th);
+GfxTexture            Gfx_CreateTextureFromFile(const char* filename, TextureType type = TextureType::Tex2D);
+GfxTexture            Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data = nullptr, u32 count = 0);
+const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h);
+void                  Gfx_DestroyTexture(GfxTexture th);
 
 GfxTexture Gfx_GetBackBufferColorTexture();
 GfxTexture Gfx_GetBackBufferDepthTexture();
 
 // blend state
-GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDescr& descr);
+GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDesc& desc);
 void          Gfx_DestroyBlendState(GfxBlendState h);
 
 // sampler state
-GfxSampler Gfx_CreateSamplerState(const GfxSamplerDescr& descr);
+GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc);
 void       Gfx_DestroySamplerState(GfxSampler h);
 
 // depth stencil state
-GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDescr& descr);
+GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc);
 void                 Gfx_DestroyDepthStencilState(GfxDepthStencilState h);
 
 // rasterizer state
-GfxRasterizerState Gfx_CreateRasterizerState(const GfxRasterizerDescr& descr);
+GfxRasterizerState Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc);
 void               Gfx_DestroyRasterizerState(GfxRasterizerState h);
 
 // buffers
-GfxBuffer       Gfx_CreateBuffer(const GfxBufferDescr& descr, const void* data = nullptr);
+GfxBuffer       Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = nullptr);
 GfxMappedBuffer Gfx_MapBuffer(GfxBuffer h, u32 offset = 0, u32 size = 0);
 void            Gfx_UnmapBuffer(GfxMappedBuffer& lock);
 void            Gfx_UpdateBuffer(
@@ -231,7 +231,7 @@ void        Gfx_Release(GfxContext* rc);
 GfxContext* Gfx_BeginAsyncCompute(GfxContext* ctx);
 void        Gfx_EndAsyncCompute(GfxContext* parentContext, GfxContext* asyncContext);
 
-void Gfx_BeginPass(GfxContext* rc, const GfxPassDescr& descr);
+void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc);
 void Gfx_EndPass(GfxContext* rc);
 
 void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags = GfxClearFlags::All, float depth = 1.0f,
@@ -330,20 +330,20 @@ template <typename T> inline void Gfx_SetScissorRect(GfxContext* rc, const Tuple
 	Gfx_SetScissorRect(rc, rect);
 }
 
-inline GfxTexture Gfx_CreateTexture(const GfxTextureDescr& descr, const void* pixels)
+inline GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const void* pixels)
 {
 	GfxTextureData data(pixels);
-	return Gfx_CreateTexture(descr, &data, 1);
+	return Gfx_CreateTexture(desc, &data, 1);
 }
 
-inline GfxTexture Gfx_CreateTexture(const GfxTextureDescr& descr, const GfxTextureData& data)
+inline GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData& data)
 {
-	return Gfx_CreateTexture(descr, &data, 1);
+	return Gfx_CreateTexture(desc, &data, 1);
 }
 
-inline GfxTexture Gfx_CreateTexture(const GfxTextureDescr& descr, const std::initializer_list<GfxTextureData>& data)
+inline GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const std::initializer_list<GfxTextureData>& data)
 {
-	return Gfx_CreateTexture(descr, data.begin(), (u32)data.size());
+	return Gfx_CreateTexture(desc, data.begin(), (u32)data.size());
 }
 
 struct GfxMarkerScope
@@ -368,8 +368,8 @@ struct GfxTimerScope
 
 inline GfxBuffer Gfx_CreateConstantBuffer(GfxBufferMode mode, u32 size, const void* data = nullptr)
 {
-	GfxBufferDescr descr(GfxBufferType::Constant, mode, GfxFormat_Unknown, 1, size);
-	return Gfx_CreateBuffer(descr, data);
+	GfxBufferDesc desc(GfxBufferType::Constant, mode, GfxFormat_Unknown, 1, size);
+	return Gfx_CreateBuffer(desc, data);
 }
 
 template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, const T& data)

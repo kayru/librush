@@ -6,7 +6,7 @@
 
 namespace Rush
 {
-class BatchVertexFormat : public GfxVertexFormatDescr
+class BatchVertexFormat : public GfxVertexFormatDesc
 {
 public:
 	BatchVertexFormat()
@@ -77,34 +77,33 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	{
 		bindings.addConstantBuffer("Global", 0);
 
-		GfxBufferDescr descr(
-		    GfxBufferType::Constant, GfxBufferMode::Temporary, GfxFormat_Unknown, 1, sizeof(Constants));
-		m_constantBuffer = Gfx_CreateBuffer(descr, nullptr);
+		GfxBufferDesc desc(GfxBufferType::Constant, GfxBufferMode::Temporary, GfxFormat_Unknown, 1, sizeof(Constants));
+		m_constantBuffer = Gfx_CreateBuffer(desc, nullptr);
 	}
 
 	m_techniques[TechniqueID_Plain2D] =
-	    Gfx_CreateTechnique(GfxTechniqueDescr(m_pixelShaderPlain, m_vertexShader2D, m_vertexFormat2D, &bindings));
+	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader2D, m_vertexFormat2D, &bindings));
 	m_techniques[TechniqueID_Plain3D] =
-	    Gfx_CreateTechnique(GfxTechniqueDescr(m_pixelShaderPlain, m_vertexShader3D, m_vertexFormat3D, &bindings));
+	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader3D, m_vertexFormat3D, &bindings));
 
 	bindings.addSeparateSampler("sampler0", 0);
 	bindings.addTexture("texture0", 0);
 
 	m_techniques[TechniqueID_Textured2D] =
-	    Gfx_CreateTechnique(GfxTechniqueDescr(m_pixelShaderTextured, m_vertexShader2D, m_vertexFormat2D, &bindings));
+	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader2D, m_vertexFormat2D, &bindings));
 	m_techniques[TechniqueID_Textured3D] =
-	    Gfx_CreateTechnique(GfxTechniqueDescr(m_pixelShaderTextured, m_vertexShader3D, m_vertexFormat3D, &bindings));
+	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader3D, m_vertexFormat3D, &bindings));
 
-	GfxBufferDescr vb_descr(
+	GfxBufferDesc vbDesc(
 	    GfxBufferType::Vertex, GfxBufferMode::Temporary, GfxFormat_Unknown, m_maxBatchVertices, sizeof(BatchVertex));
 
-	m_vertexBuffer = Gfx_CreateBuffer(vb_descr);
+	m_vertexBuffer = Gfx_CreateBuffer(vbDesc);
 
 	BatchVertex* vertex_data = new BatchVertex[m_maxBatchVertices];
-	m_vertices = LinearAllocator<BatchVertex>(vertex_data, m_maxBatchVertices);
+	m_vertices               = LinearAllocator<BatchVertex>(vertex_data, m_maxBatchVertices);
 
-	m_samplerLiner = Gfx_CreateSamplerState(GfxSamplerDescr::makeLinear());
-	m_samplerPoint = Gfx_CreateSamplerState(GfxSamplerDescr::makePoint());
+	m_samplerLiner = Gfx_CreateSamplerState(GfxSamplerDesc::makeLinear());
+	m_samplerPoint = Gfx_CreateSamplerState(GfxSamplerDesc::makePoint());
 
 	m_currSampler = m_samplerPoint;
 

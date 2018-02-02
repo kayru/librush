@@ -40,8 +40,8 @@ struct Log
 		                                                                             "\nExpression: " #v,              \
 		    "Assert"))                                                                                                 \
 		{                                                                                                              \
-		case MessageBoxResult_Retry: RUSH_BREAK; break;                                                            \
-		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                 \
+		case MessageBoxResult_Retry: RUSH_BREAK; break;                                                                \
+		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                     \
 		default: break;                                                                                                \
 		}
 #define RUSH_ASSERT_MSG(v, msg)                                                                                        \
@@ -50,8 +50,8 @@ struct Log
 		                                __LINE__) ")\nFunction: " RUSH_FUNCTION "\nExpression: " #v "\nMessage: " msg, \
 		    "Assert"))                                                                                                 \
 		{                                                                                                              \
-		case MessageBoxResult_Retry: RUSH_BREAK; break;                                                            \
-		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                 \
+		case MessageBoxResult_Retry: RUSH_BREAK; break;                                                                \
+		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                     \
 		default: break;                                                                                                \
 		}
 #define RUSH_ERROR RUSH_BREAK

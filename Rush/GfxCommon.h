@@ -82,29 +82,29 @@ struct Vec3;
 struct Vec4;
 struct Mat4;
 
-class GfxVertexFormatDescr;
-struct GfxVertexShaderDescr;
-struct GfxPixelShaderDescr;
-struct GfxComputeShaderDescr;
-struct GfxTextureDescr;
-struct GfxBufferDescr;
-struct GfxSamplerDescr;
-struct GfxBlendStateDescr;
-struct GfxTechniqueDescr;
-struct GfxDepthStencilDescr;
-struct GfxRasterizerDescr;
+class GfxVertexFormatDesc;
+struct GfxVertexShaderDesc;
+struct GfxPixelShaderDesc;
+struct GfxComputeShaderDesc;
+struct GfxTextureDesc;
+struct GfxBufferDesc;
+struct GfxSamplerDesc;
+struct GfxBlendStateDesc;
+struct GfxTechniqueDesc;
+struct GfxDepthStencilDesc;
+struct GfxRasterizerDesc;
 
-typedef ResourceHandle<GfxVertexFormatDescr>  GfxVertexFormat;
-typedef ResourceHandle<GfxVertexShaderDescr>  GfxVertexShader;
-typedef ResourceHandle<GfxPixelShaderDescr>   GfxPixelShader;
-typedef ResourceHandle<GfxComputeShaderDescr> GfxComputeShader;
-typedef ResourceHandle<GfxTextureDescr>       GfxTexture;
-typedef ResourceHandle<GfxBufferDescr>        GfxBuffer;
-typedef ResourceHandle<GfxSamplerDescr>       GfxSampler;
-typedef ResourceHandle<GfxBlendStateDescr>    GfxBlendState;
-typedef ResourceHandle<GfxDepthStencilDescr>  GfxDepthStencilState;
-typedef ResourceHandle<GfxRasterizerDescr>    GfxRasterizerState;
-typedef ResourceHandle<GfxTechniqueDescr>     GfxTechnique;
+typedef ResourceHandle<GfxVertexFormatDesc>  GfxVertexFormat;
+typedef ResourceHandle<GfxVertexShaderDesc>  GfxVertexShader;
+typedef ResourceHandle<GfxPixelShaderDesc>   GfxPixelShader;
+typedef ResourceHandle<GfxComputeShaderDesc> GfxComputeShader;
+typedef ResourceHandle<GfxTextureDesc>       GfxTexture;
+typedef ResourceHandle<GfxBufferDesc>        GfxBuffer;
+typedef ResourceHandle<GfxSamplerDesc>       GfxSampler;
+typedef ResourceHandle<GfxBlendStateDesc>    GfxBlendState;
+typedef ResourceHandle<GfxDepthStencilDesc>  GfxDepthStencilState;
+typedef ResourceHandle<GfxRasterizerDesc>    GfxRasterizerState;
+typedef ResourceHandle<GfxTechniqueDesc>     GfxTechnique;
 
 enum class GfxContextType : u8
 {
@@ -449,11 +449,11 @@ struct GfxRect
 	int left, top, right, bottom;
 };
 
-struct GfxBufferDescr
+struct GfxBufferDesc
 {
-	GfxBufferDescr() = default;
-	GfxBufferDescr(GfxBufferType _type, GfxBufferMode _mode, GfxFormat _format, u32 _count, u32 _stride);
-	GfxBufferDescr(GfxBufferType _type, GfxBufferMode _mode, u32 _count, u32 _stride);
+	GfxBufferDesc() = default;
+	GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, GfxFormat _format, u32 _count, u32 _stride);
+	GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, u32 _count, u32 _stride);
 
 	GfxBufferType type        = GfxBufferType::Vertex;
 	GfxBufferMode mode        = GfxBufferMode::Static;
@@ -463,7 +463,7 @@ struct GfxBufferDescr
 	bool          hostVisible = false;
 };
 
-struct GfxBlendStateDescr
+struct GfxBlendStateDesc
 {
 	GfxBlendParam src = GfxBlendParam::One;
 	GfxBlendParam dst = GfxBlendParam::Zero;
@@ -478,13 +478,13 @@ struct GfxBlendStateDescr
 
 	// Helper functions to create common blend states
 
-	static GfxBlendStateDescr makeOpaque();
-	static GfxBlendStateDescr makeLerp();
-	static GfxBlendStateDescr makeAdditive();
-	static GfxBlendStateDescr makePremultiplied();
+	static GfxBlendStateDesc makeOpaque();
+	static GfxBlendStateDesc makeLerp();
+	static GfxBlendStateDesc makeAdditive();
+	static GfxBlendStateDesc makePremultiplied();
 };
 
-struct GfxSamplerDescr
+struct GfxSamplerDesc
 {
 	GfxTextureFilter filterMin = GfxTextureFilter::Linear;
 	GfxTextureFilter filterMag = GfxTextureFilter::Linear;
@@ -498,11 +498,11 @@ struct GfxSamplerDescr
 
 	// Helper functions
 
-	static GfxSamplerDescr makeLinear();
-	static GfxSamplerDescr makePoint();
+	static GfxSamplerDesc makeLinear();
+	static GfxSamplerDesc makePoint();
 };
 
-struct GfxDepthStencilDescr
+struct GfxDepthStencilDesc
 {
 	GfxCompareFunc compareFunc = GfxCompareFunc::LessEqual;
 	bool           enable      = true;
@@ -511,7 +511,7 @@ struct GfxDepthStencilDescr
 	// TODO: Stencil and others
 };
 
-struct GfxRasterizerDescr
+struct GfxRasterizerDesc
 {
 	GfxFillMode fillMode            = GfxFillMode::Solid;
 	GfxCullMode cullMode            = GfxCullMode::CCW;
@@ -519,7 +519,7 @@ struct GfxRasterizerDescr
 	float       depthBiasSlopeScale = 0.0f;
 };
 
-class GfxVertexFormatDescr
+class GfxVertexFormatDesc
 {
 
 	static const u32 MaxStreams  = 8;
@@ -580,7 +580,7 @@ public:
 	};
 
 public:
-	GfxVertexFormatDescr();
+	GfxVertexFormatDesc();
 
 	inline const Element& element(u32 n) const { return m_elements[n]; }
 	inline size_t         elementCount() const { return m_elements.size(); }
@@ -590,7 +590,7 @@ public:
 	inline bool hasNormal() const { return m_hasNormal; }
 	inline bool hasColor() const { return m_hasColor; }
 
-	bool operator==(const GfxVertexFormatDescr& rhs) const;
+	bool operator==(const GfxVertexFormatDesc& rhs) const;
 
 	inline void add(u16 _stream, DataType _type, Semantic _usage, u8 _index)
 	{
@@ -613,9 +613,9 @@ private:
 	bool m_hasColor;
 };
 
-const char* toString(GfxVertexFormatDescr::Semantic type);
+const char* toString(GfxVertexFormatDesc::Semantic type);
 
-u16 dataTypeSize(GfxVertexFormatDescr::DataType type);
+u16 dataTypeSize(GfxVertexFormatDesc::DataType type);
 
 struct ShaderConstantIndex
 {
@@ -629,15 +629,15 @@ struct ShaderConstantIndex
 	u32 count;
 };
 
-struct ShaderConstantDescr
+struct ShaderConstantDesc
 {
 	std::string name;
 	u32         registerIndex;
 	u32         registerCount;
 
-	ShaderConstantDescr() : name(), registerIndex(0), registerCount(0) {}
+	ShaderConstantDesc() : name(), registerIndex(0), registerCount(0) {}
 
-	inline bool operator==(const ShaderConstantDescr& rhs) const
+	inline bool operator==(const ShaderConstantDesc& rhs) const
 	{
 		return registerIndex == rhs.registerIndex && registerCount == rhs.registerCount && name == rhs.name;
 	}
@@ -753,15 +753,15 @@ struct GfxSpecializationConstant
 	size_t size;
 };
 
-struct GfxTechniqueDescr
+struct GfxTechniqueDesc
 {
-	GfxTechniqueDescr(
+	GfxTechniqueDesc(
 	    GfxPixelShader _ps, GfxVertexShader _vs, GfxVertexFormat _vf, const GfxShaderBindings* _bindings = nullptr)
 	: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
 	{
 	}
 
-	GfxTechniqueDescr(GfxComputeShader _cs, const GfxShaderBindings* _bindings = nullptr) : cs(_cs), bindings(_bindings)
+	GfxTechniqueDesc(GfxComputeShader _cs, const GfxShaderBindings* _bindings = nullptr) : cs(_cs), bindings(_bindings)
 	{
 	}
 
@@ -779,19 +779,19 @@ struct GfxTechniqueDescr
 	float waveLimits[u32(GfxStage::count)] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 };
 
-struct GfxTextureDescr
+struct GfxTextureDesc
 {
-	static GfxTextureDescr make2D(u32 _width, u32 _height, GfxFormat _format = GfxFormat_RGBA8_Unorm,
+	static GfxTextureDesc make2D(u32 _width, u32 _height, GfxFormat _format = GfxFormat_RGBA8_Unorm,
 	    GfxUsageFlags _usage = GfxUsageFlags::ShaderResource);
 
-	static GfxTextureDescr make3D(u32 _width, u32 _height, u32 _depth, GfxFormat _format = GfxFormat_RGBA8_Unorm,
+	static GfxTextureDesc make3D(u32 _width, u32 _height, u32 _depth, GfxFormat _format = GfxFormat_RGBA8_Unorm,
 	    GfxUsageFlags _usage = GfxUsageFlags::ShaderResource);
 
-	static GfxTextureDescr makeCube(
+	static GfxTextureDesc makeCube(
 	    u32 _size, GfxFormat _format = GfxFormat_RGBA8_Unorm, GfxUsageFlags _usage = GfxUsageFlags::ShaderResource);
 
-	bool operator==(const GfxTextureDescr& rhs);
-	bool operator!=(const GfxTextureDescr& rhs);
+	bool operator==(const GfxTextureDesc& rhs);
+	bool operator!=(const GfxTextureDesc& rhs);
 
 	u32 getPixelCount() const { return width * height * depth; }
 

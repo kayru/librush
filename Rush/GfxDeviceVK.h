@@ -37,9 +37,9 @@ struct ShaderVK : GfxRefCount
 
 	struct InputMapping
 	{
-		GfxVertexFormatDescr::Semantic semantic : 4;
-		u8                             semanticIndex : 4;
-		u8                             location = 0;
+		GfxVertexFormatDesc::Semantic semantic : 4;
+		u8                            semanticIndex : 4;
+		u8                            location = 0;
 	};
 	static_assert(sizeof(InputMapping) == 2, "InputMapping is expected to be exactly 2 bytes");
 	std::vector<InputMapping> inputMappings;
@@ -86,7 +86,7 @@ struct TechniqueVK : GfxRefCount
 struct VertexFormatVK : GfxRefCount
 {
 	u32                                            id = 0;
-	GfxVertexFormatDescr                           descr;
+	GfxVertexFormatDesc                            desc;
 	std::vector<VkVertexInputAttributeDescription> attributes;
 	u32                                            vertexStreamCount          = 0;
 	u32                                            instanceDataStream         = 0xFFFFFFFF;
@@ -97,7 +97,7 @@ struct VertexFormatVK : GfxRefCount
 struct BufferVK : GfxRefCount
 {
 	u32                    id = 0;
-	GfxBufferDescr         descr;
+	GfxBufferDesc          desc;
 	VkDeviceMemory         memory          = VK_NULL_HANDLE;
 	VkDescriptorBufferInfo info            = {};
 	VkBufferView           bufferView      = VK_NULL_HANDLE;
@@ -112,32 +112,32 @@ struct BufferVK : GfxRefCount
 
 struct DepthStencilStateVK : GfxRefCount
 {
-	u32                  id = 0;
-	GfxDepthStencilDescr descr;
+	u32                 id = 0;
+	GfxDepthStencilDesc desc;
 
 	void destroy(){};
 };
 
 struct RasterizerStateVK : GfxRefCount
 {
-	u32                id = 0;
-	GfxRasterizerDescr descr;
+	u32               id = 0;
+	GfxRasterizerDesc desc;
 
 	void destroy(){};
 };
 
 struct BlendStateVK : GfxRefCount
 {
-	u32                id = 0;
-	GfxBlendStateDescr descr;
+	u32               id = 0;
+	GfxBlendStateDesc desc;
 
 	void destroy(){};
 };
 
 struct TextureVK : GfxRefCount
 {
-	u32             id = 0;
-	GfxTextureDescr descr;
+	u32            id = 0;
+	GfxTextureDesc desc;
 
 	bool           ownsMemory = false;
 	VkDeviceMemory memory     = VK_NULL_HANDLE;
@@ -149,17 +149,17 @@ struct TextureVK : GfxRefCount
 	VkImageView   depthStencilImageView = VK_NULL_HANDLE;
 	VkImageLayout currentLayout         = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	static TextureVK create(const GfxTextureDescr& descr, const GfxTextureData* data, u32 count);
-	static TextureVK create(const GfxTextureDescr& descr, VkImage image, VkImageLayout initialLayout);
+	static TextureVK create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count);
+	static TextureVK create(const GfxTextureDesc& desc, VkImage image, VkImageLayout initialLayout);
 
 	void destroy();
 };
 
 struct SamplerVK : GfxRefCount
 {
-	u32             id = 0;
-	GfxSamplerDescr descr;
-	VkSampler       native = VK_NULL_HANDLE;
+	u32            id = 0;
+	GfxSamplerDesc desc;
+	VkSampler      native = VK_NULL_HANDLE;
 
 	void destroy();
 };
@@ -218,8 +218,8 @@ public:
 	~GfxDevice();
 
 	VkPipeline    createPipeline(const PipelineInfoVK& info);
-	VkRenderPass  createRenderPass(const GfxPassDescr& descr);
-	VkFramebuffer createFrameBuffer(const GfxPassDescr& descr, VkRenderPass renderPass);
+	VkRenderPass  createRenderPass(const GfxPassDesc& desc);
+	VkFramebuffer createFrameBuffer(const GfxPassDesc& desc, VkRenderPass renderPass);
 	void          createSwapChain();
 
 	void beginFrame();
@@ -246,11 +246,11 @@ public:
 	{
 		VkRenderPass renderPass;
 		u32          depthBufferId;
-		u32          colorBufferId[GfxPassDescr::MaxTargets];
+		u32          colorBufferId[GfxPassDesc::MaxTargets];
 
 		bool operator==(const FrameBufferKey& other) const
 		{
-			for (u32 i = 0; i < GfxPassDescr::MaxTargets; ++i)
+			for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 			{
 				if (colorBufferId[i] != other.colorBufferId[i])
 				{
@@ -270,12 +270,12 @@ public:
 	struct RenderPassKey
 	{
 		GfxFormat    depthStencilFormat;
-		GfxFormat    colorFormats[GfxPassDescr::MaxTargets];
+		GfxFormat    colorFormats[GfxPassDesc::MaxTargets];
 		GfxPassFlags flags;
 
 		bool operator==(const RenderPassKey& other) const
 		{
-			for (u32 i = 0; i < GfxPassDescr::MaxTargets; ++i)
+			for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 			{
 				if (colorFormats[i] != other.colorFormats[i])
 				{
@@ -524,7 +524,7 @@ public:
 	    VkPipelineStageFlagBits srcStage, VkPipelineStageFlagBits dstStage);
 	void flushBarriers();
 
-	void beginRenderPass(const GfxPassDescr& descr);
+	void beginRenderPass(const GfxPassDesc& desc);
 	void endRenderPass();
 
 	void applyState();
@@ -581,7 +581,7 @@ public:
 
 	VkFramebuffer m_currentFrameBuffer = VK_NULL_HANDLE;
 	VkRenderPass  m_currentRenderPass  = VK_NULL_HANDLE;
-	GfxPassDescr  m_currentRenderPassDescr;
+	GfxPassDesc   m_currentRenderPassDesc;
 	u32           m_currentColorAttachmentCount = 0;
 
 	VkRect2D m_currentRenderRect = {};

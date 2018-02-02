@@ -87,45 +87,45 @@ const char* toString(GfxFormatType type)
 	}
 }
 
-const char* toString(GfxVertexFormatDescr::Semantic type)
+const char* toString(GfxVertexFormatDesc::Semantic type)
 {
 	switch (type)
 	{
-	case GfxVertexFormatDescr::Semantic::Position: return "Position";
-	case GfxVertexFormatDescr::Semantic::Texcoord: return "Texcoord";
-	case GfxVertexFormatDescr::Semantic::Color: return "Color";
-	case GfxVertexFormatDescr::Semantic::Normal: return "Normal";
-	case GfxVertexFormatDescr::Semantic::TangentU: return "TangentU";
-	case GfxVertexFormatDescr::Semantic::TangentV: return "TangentV";
-	case GfxVertexFormatDescr::Semantic::InstanceData: return "InstanceData";
-	case GfxVertexFormatDescr::Semantic::BoneIndex: return "BoneIndex";
-	case GfxVertexFormatDescr::Semantic::BoneWeight: return "BoneWeight";
+	case GfxVertexFormatDesc::Semantic::Position: return "Position";
+	case GfxVertexFormatDesc::Semantic::Texcoord: return "Texcoord";
+	case GfxVertexFormatDesc::Semantic::Color: return "Color";
+	case GfxVertexFormatDesc::Semantic::Normal: return "Normal";
+	case GfxVertexFormatDesc::Semantic::TangentU: return "TangentU";
+	case GfxVertexFormatDesc::Semantic::TangentV: return "TangentV";
+	case GfxVertexFormatDesc::Semantic::InstanceData: return "InstanceData";
+	case GfxVertexFormatDesc::Semantic::BoneIndex: return "BoneIndex";
+	case GfxVertexFormatDesc::Semantic::BoneWeight: return "BoneWeight";
 
 	default: RUSH_ERROR; return "Unknown";
 	}
 }
 
-u16 dataTypeSize(GfxVertexFormatDescr::DataType type)
+u16 dataTypeSize(GfxVertexFormatDesc::DataType type)
 {
 	switch (type)
 	{
-	case GfxVertexFormatDescr::DataType::Float1: return 4;
-	case GfxVertexFormatDescr::DataType::Float2: return 8;
-	case GfxVertexFormatDescr::DataType::Float3: return 12;
-	case GfxVertexFormatDescr::DataType::Float4: return 16;
-	case GfxVertexFormatDescr::DataType::Half2: return 4;
-	case GfxVertexFormatDescr::DataType::Half4: return 8;
-	case GfxVertexFormatDescr::DataType::Short2: return 4;
-	case GfxVertexFormatDescr::DataType::Short2N: return 4;
-	case GfxVertexFormatDescr::DataType::UByte4: return 4;
-	case GfxVertexFormatDescr::DataType::Dec3N: return 4;
-	case GfxVertexFormatDescr::DataType::Color: return 4;
-	case GfxVertexFormatDescr::DataType::UInt: return 4;
+	case GfxVertexFormatDesc::DataType::Float1: return 4;
+	case GfxVertexFormatDesc::DataType::Float2: return 8;
+	case GfxVertexFormatDesc::DataType::Float3: return 12;
+	case GfxVertexFormatDesc::DataType::Float4: return 16;
+	case GfxVertexFormatDesc::DataType::Half2: return 4;
+	case GfxVertexFormatDesc::DataType::Half4: return 8;
+	case GfxVertexFormatDesc::DataType::Short2: return 4;
+	case GfxVertexFormatDesc::DataType::Short2N: return 4;
+	case GfxVertexFormatDesc::DataType::UByte4: return 4;
+	case GfxVertexFormatDesc::DataType::Dec3N: return 4;
+	case GfxVertexFormatDesc::DataType::Color: return 4;
+	case GfxVertexFormatDesc::DataType::UInt: return 4;
 	default: return 0;
 	}
 }
 
-GfxVertexFormatDescr::GfxVertexFormatDescr() : m_hasPosition(false), m_hasNormal(false), m_hasColor(false)
+GfxVertexFormatDesc::GfxVertexFormatDesc() : m_hasPosition(false), m_hasNormal(false), m_hasColor(false)
 {
 	for (u32 i = 0; i < MaxStreams; ++i)
 	{
@@ -137,7 +137,7 @@ GfxVertexFormatDescr::GfxVertexFormatDescr() : m_hasPosition(false), m_hasNormal
 	}
 }
 
-void GfxVertexFormatDescr::add(Element element)
+void GfxVertexFormatDesc::add(Element element)
 {
 	if (element.semantic == Semantic::Position)
 		m_hasPosition = true;
@@ -153,7 +153,7 @@ void GfxVertexFormatDescr::add(Element element)
 	m_elements.pushBack(element);
 }
 
-bool GfxVertexFormatDescr::operator==(const GfxVertexFormatDescr& rhs) const
+bool GfxVertexFormatDesc::operator==(const GfxVertexFormatDesc& rhs) const
 {
 	if (elementCount() == rhs.elementCount())
 	{
@@ -170,14 +170,14 @@ bool GfxVertexFormatDescr::operator==(const GfxVertexFormatDescr& rhs) const
 	}
 }
 
-GfxVertexFormatDescr::Element::Element(u16 _stream, DataType _type, Semantic _semantic, u8 _index)
+GfxVertexFormatDesc::Element::Element(u16 _stream, DataType _type, Semantic _semantic, u8 _index)
 : stream(_stream), size(dataTypeSize(_type)), offset(0), index(_index), type(_type), semantic(_semantic)
 {
 }
 
-GfxBlendStateDescr GfxBlendStateDescr::makeOpaque()
+GfxBlendStateDesc GfxBlendStateDesc::makeOpaque()
 {
-	GfxBlendStateDescr res;
+	GfxBlendStateDesc res;
 
 	res.enable        = false;
 	res.src           = GfxBlendParam::One;
@@ -191,9 +191,9 @@ GfxBlendStateDescr GfxBlendStateDescr::makeOpaque()
 	return res;
 }
 
-GfxBlendStateDescr GfxBlendStateDescr::makeLerp()
+GfxBlendStateDesc GfxBlendStateDesc::makeLerp()
 {
-	GfxBlendStateDescr res;
+	GfxBlendStateDesc res;
 
 	res.enable        = true;
 	res.src           = GfxBlendParam::SrcAlpha;
@@ -207,9 +207,9 @@ GfxBlendStateDescr GfxBlendStateDescr::makeLerp()
 	return res;
 }
 
-GfxBlendStateDescr GfxBlendStateDescr::makeAdditive()
+GfxBlendStateDesc GfxBlendStateDesc::makeAdditive()
 {
-	GfxBlendStateDescr res;
+	GfxBlendStateDesc res;
 
 	res.enable        = true;
 	res.src           = GfxBlendParam::One;
@@ -223,9 +223,9 @@ GfxBlendStateDescr GfxBlendStateDescr::makeAdditive()
 	return res;
 }
 
-GfxBlendStateDescr GfxBlendStateDescr::makePremultiplied()
+GfxBlendStateDesc GfxBlendStateDesc::makePremultiplied()
 {
-	GfxBlendStateDescr res;
+	GfxBlendStateDesc res;
 
 	res.enable        = true;
 	res.src           = GfxBlendParam::One;
@@ -239,9 +239,9 @@ GfxBlendStateDescr GfxBlendStateDescr::makePremultiplied()
 	return res;
 }
 
-GfxSamplerDescr GfxSamplerDescr::makeLinear()
+GfxSamplerDesc GfxSamplerDesc::makeLinear()
 {
-	GfxSamplerDescr res;
+	GfxSamplerDesc res;
 
 	res.filterMin = GfxTextureFilter::Linear;
 	res.filterMag = GfxTextureFilter::Linear;
@@ -250,9 +250,9 @@ GfxSamplerDescr GfxSamplerDescr::makeLinear()
 	return res;
 }
 
-GfxSamplerDescr GfxSamplerDescr::makePoint()
+GfxSamplerDesc GfxSamplerDesc::makePoint()
 {
-	GfxSamplerDescr res;
+	GfxSamplerDesc res;
 
 	res.filterMin = GfxTextureFilter::Point;
 	res.filterMag = GfxTextureFilter::Point;
@@ -284,12 +284,12 @@ bool GfxViewport::operator==(const GfxViewport& rhs) const
 
 bool GfxViewport::operator!=(const GfxViewport& rhs) const { return !(*this == rhs); }
 
-GfxBufferDescr::GfxBufferDescr(GfxBufferType _type, GfxBufferMode _mode, GfxFormat _format, u32 _count, u32 _stride)
+GfxBufferDesc::GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, GfxFormat _format, u32 _count, u32 _stride)
 : type(_type), mode(_mode), format(_format), stride(_stride), count(_count)
 {
 }
 
-GfxBufferDescr::GfxBufferDescr(GfxBufferType _type, GfxBufferMode _mode, u32 _count, u32 _stride)
+GfxBufferDesc::GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, u32 _count, u32 _stride)
 : type(_type), mode(_mode), format(GfxFormat_Unknown), stride(_stride), count(_count)
 {
 }
@@ -456,17 +456,17 @@ bool GfxShaderBindings::addPushConstants(const char* name, GfxStageFlags stageFl
 	return items.pushBack(it);
 }
 
-bool GfxTextureDescr::operator==(const GfxTextureDescr& rhs)
+bool GfxTextureDesc::operator==(const GfxTextureDesc& rhs)
 {
 	return width == rhs.width && height == rhs.height && depth == rhs.depth && mips == rhs.mips &&
 	       format == rhs.format && type == rhs.type && usage == rhs.usage;
 }
 
-bool GfxTextureDescr::operator!=(const GfxTextureDescr& rhs) { return !(*this == rhs); }
+bool GfxTextureDesc::operator!=(const GfxTextureDesc& rhs) { return !(*this == rhs); }
 
-GfxTextureDescr GfxTextureDescr::make2D(u32 _width, u32 _height, GfxFormat _format, GfxUsageFlags _usage)
+GfxTextureDesc GfxTextureDesc::make2D(u32 _width, u32 _height, GfxFormat _format, GfxUsageFlags _usage)
 {
-	GfxTextureDescr res;
+	GfxTextureDesc res;
 	res.width  = _width;
 	res.height = _height;
 	res.depth  = 1;
@@ -477,9 +477,9 @@ GfxTextureDescr GfxTextureDescr::make2D(u32 _width, u32 _height, GfxFormat _form
 	return res;
 }
 
-GfxTextureDescr GfxTextureDescr::make3D(u32 _width, u32 _height, u32 _depth, GfxFormat _format, GfxUsageFlags _usage)
+GfxTextureDesc GfxTextureDesc::make3D(u32 _width, u32 _height, u32 _depth, GfxFormat _format, GfxUsageFlags _usage)
 {
-	GfxTextureDescr res;
+	GfxTextureDesc res;
 	res.width  = _width;
 	res.height = _height;
 	res.depth  = _depth;
@@ -490,9 +490,9 @@ GfxTextureDescr GfxTextureDescr::make3D(u32 _width, u32 _height, u32 _depth, Gfx
 	return res;
 }
 
-GfxTextureDescr GfxTextureDescr::makeCube(u32 _size, GfxFormat _format, GfxUsageFlags _usage)
+GfxTextureDesc GfxTextureDesc::makeCube(u32 _size, GfxFormat _format, GfxUsageFlags _usage)
 {
-	GfxTextureDescr res;
+	GfxTextureDesc res;
 	res.width  = _size;
 	res.height = _size;
 	res.depth  = 1;

@@ -166,4 +166,3 @@ private:
 	float m_depth;
 };
 }
-
