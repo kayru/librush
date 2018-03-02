@@ -109,7 +109,7 @@ bool BitmapFontDesc::read(DataStream& stream)
 
 	if (magicFound == false)
 	{
-		Log::error("BitmapFontDesc::read() BMF file identifier not found.");
+		RUSH_LOG_ERROR("BitmapFontDesc::read() BMF file identifier not found.");
 		return false;
 	}
 
@@ -213,7 +213,7 @@ bool BitmapFontDesc::read(DataStream& stream)
 	}
 	else
 	{
-		Log::error("BitmapFontDesc::read() Failed to load font data (info, pages or chars).");
+		RUSH_LOG_ERROR("BitmapFontDesc::read() Failed to load font data (info, pages or chars).");
 	}
 
 	free(info);
@@ -287,7 +287,7 @@ BitmapFontRenderer::BitmapFontRenderer(const char* fontFilename, const char* tex
 	}
 	else
 	{
-		Log::error("Failed to load bitmap font '%s' (texture path '%')", fontFilename, texturePath);
+		RUSH_LOG_ERROR("Failed to load bitmap font '%s' (texture path '%')", fontFilename, texturePath);
 	}
 }
 

@@ -119,9 +119,6 @@ void Log::warning(const char* msg, ...)
 		SetConsoleTextAttribute(h, csbi.wAttributes);
 #endif
 	}
-
-	if (breakOnWarning)
-		RUSH_BREAK;
 }
 
 void Log::error(const char* msg, ...)
@@ -155,14 +152,6 @@ void Log::error(const char* msg, ...)
 #ifdef RUSH_PLATFORM_WINDOWS
 		SetConsoleTextAttribute(h, csbi.wAttributes);
 #endif
-	}
-
-	if (breakOnError)
-	{
-#ifdef __EMSCRIPTEN__
-		emscripten_log(EM_LOG_C_STACK);
-#endif
-		RUSH_BREAK;
 	}
 }
 
@@ -198,9 +187,6 @@ void Log::fatal(const char* msg, ...)
 		SetConsoleTextAttribute(h, csbi.wAttributes);
 #endif
 	}
-
-	if (breakOnError)
-		RUSH_BREAK;
 
 	exit(EXIT_FAILURE);
 }

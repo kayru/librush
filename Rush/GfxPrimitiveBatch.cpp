@@ -57,7 +57,7 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	}
 	else
 	{
-		Log::error("Rendering back-end does not support SPIR-V or DXBC shaders.");
+		RUSH_LOG_ERROR("Rendering back-end does not support SPIR-V or DXBC shaders.");
 	}
 
 	BatchVertexFormat fmt_desc;

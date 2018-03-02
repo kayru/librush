@@ -222,9 +222,9 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
 	{
 	default:
 	case Severity_Ignore: break;
-	case Severity_Message: Log::message("Vulkan debug: %s", pMessage); break;
-	case Severity_Warning: Log::warning("Vulkan debug: %s", pMessage); break;
-	case Severity_Error: Log::error("Vulkan debug: %s", pMessage); break;
+	case Severity_Message: RUSH_LOG("Vulkan debug: %s", pMessage); break;
+	case Severity_Warning: RUSH_LOG_WARNING("Vulkan debug: %s", pMessage); break;
+	case Severity_Error: RUSH_LOG_ERROR("Vulkan debug: %s", pMessage); break;
 	}
 
 	return VK_FALSE;
@@ -261,7 +261,7 @@ static VkCompareOp convertCompareFunc(GfxCompareFunc compareFunc)
 	case GfxCompareFunc::GreaterEqual: return VK_COMPARE_OP_GREATER_OR_EQUAL;
 	case GfxCompareFunc::Always: return VK_COMPARE_OP_ALWAYS;
 	case GfxCompareFunc::Never: return VK_COMPARE_OP_NEVER;
-	default: Log::error("Unexpected compare function"); return VK_COMPARE_OP_NEVER;
+	default: RUSH_LOG_ERROR("Unexpected compare function"); return VK_COMPARE_OP_NEVER;
 	}
 }
 
@@ -271,7 +271,7 @@ static VkFilter convertFilter(GfxTextureFilter filter)
 	{
 	case GfxTextureFilter::Point: return VK_FILTER_NEAREST;
 	case GfxTextureFilter::Linear: return VK_FILTER_LINEAR;
-	default: Log::error("Unexpected filter"); return VK_FILTER_NEAREST;
+	default: RUSH_LOG_ERROR("Unexpected filter"); return VK_FILTER_NEAREST;
 	}
 }
 
@@ -281,7 +281,7 @@ static VkSamplerMipmapMode convertMipmapMode(GfxTextureFilter mip)
 	{
 	case GfxTextureFilter::Point: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
 	case GfxTextureFilter::Linear: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	default: Log::error("Unexpected mipmap mode"); return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	default: RUSH_LOG_ERROR("Unexpected mipmap mode"); return VK_SAMPLER_MIPMAP_MODE_NEAREST;
 	}
 }
 
@@ -292,7 +292,7 @@ static VkSamplerAddressMode convertSamplerAddressMode(GfxTextureWrap mode)
 	case GfxTextureWrap::Wrap: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	case GfxTextureWrap::Mirror: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
 	case GfxTextureWrap::Clamp: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	default: Log::error("Unexpected wrap mode"); return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	default: RUSH_LOG_ERROR("Unexpected wrap mode"); return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	}
 }
 
@@ -300,7 +300,7 @@ static VkBlendFactor convertBlendParam(GfxBlendParam blendParam)
 {
 	switch (blendParam)
 	{
-	default: Log::error("Unexpected blend factor"); return VK_BLEND_FACTOR_ZERO;
+	default: RUSH_LOG_ERROR("Unexpected blend factor"); return VK_BLEND_FACTOR_ZERO;
 	case GfxBlendParam::Zero: return VK_BLEND_FACTOR_ZERO;
 	case GfxBlendParam::One: return VK_BLEND_FACTOR_ONE;
 	case GfxBlendParam::SrcColor: return VK_BLEND_FACTOR_SRC_COLOR;
@@ -318,7 +318,7 @@ static VkBlendOp convertBlendOp(GfxBlendOp blendOp)
 {
 	switch (blendOp)
 	{
-	default: Log::error("Unexpected blend operation"); return VK_BLEND_OP_ADD;
+	default: RUSH_LOG_ERROR("Unexpected blend operation"); return VK_BLEND_OP_ADD;
 	case GfxBlendOp::Add: return VK_BLEND_OP_ADD;
 	case GfxBlendOp::Subtract: return VK_BLEND_OP_SUBTRACT;
 	case GfxBlendOp::RevSubtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
@@ -331,7 +331,7 @@ static VkPrimitiveTopology convertPrimitiveType(GfxPrimitive primitiveType)
 {
 	switch (primitiveType)
 	{
-	default: Log::error("Unexpected primitive type"); return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
+	default: RUSH_LOG_ERROR("Unexpected primitive type"); return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 	case GfxPrimitive::PointList: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 	case GfxPrimitive::LineList: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 	case GfxPrimitive::LineStrip: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
@@ -365,7 +365,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_BC6H_UFloat: return VK_FORMAT_BC6H_UFLOAT_BLOCK;
 	case GfxFormat_BC7_Unorm: return VK_FORMAT_BC7_UNORM_BLOCK;
 	case GfxFormat_BC7_Unorm_sRGB: return VK_FORMAT_BC7_SRGB_BLOCK;
-	default: Log::error("Unsupported format"); return VK_FORMAT_UNDEFINED;
+	default: RUSH_LOG_ERROR("Unsupported format"); return VK_FORMAT_UNDEFINED;
 	}
 }
 
@@ -403,7 +403,7 @@ static bool enableLayer(std::vector<const char*>& layers, const std::vector<VkLa
 	}
 	else if (required)
 	{
-		Log::error("Required Vulkan layer '%s' is not supported.", name);
+		RUSH_LOG_ERROR("Required Vulkan layer '%s' is not supported.", name);
 	}
 
 	return false;
@@ -419,7 +419,7 @@ static bool enableExtension(std::vector<const char*>& extensions,
 	}
 	else if (required)
 	{
-		Log::error("Required Vulkan extension '%s' is not supported.", name);
+		RUSH_LOG_ERROR("Required Vulkan extension '%s' is not supported.", name);
 	}
 
 	return false;
@@ -1059,7 +1059,7 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 					}
 					if (!inputFound)
 					{
-						Log::error("Vertex shader input '%s%d' not found in vertex format declaration.",
+						RUSH_LOG_ERROR("Vertex shader input '%s%d' not found in vertex format declaration.",
 						    toString(inputMapping.semantic), inputMapping.semanticIndex);
 					}
 				}
@@ -1894,7 +1894,7 @@ void GfxContext::addImageBarrier(VkImage image, VkImageLayout nextLayout, VkImag
 
 	switch (currentLayout)
 	{
-	default: Log::error("Unexpected layout"); break;
+	default: RUSH_LOG_ERROR("Unexpected layout"); break;
 	case VK_IMAGE_LAYOUT_UNDEFINED:
 		// nothing
 		break;
@@ -1928,7 +1928,7 @@ void GfxContext::addImageBarrier(VkImage image, VkImageLayout nextLayout, VkImag
 
 	switch (nextLayout)
 	{
-	default: Log::error("Unexpected layout"); break;
+	default: RUSH_LOG_ERROR("Unexpected layout"); break;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 		barrierDesc.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
 		// TODO: vertex shader read?
@@ -2551,7 +2551,7 @@ void Gfx_BeginFrame()
 #if 0
 	if (vkGetFenceStatus(g_vulkanDevice, g_context->m_fence) == VK_NOT_READY)
 	{
-		Log::warning("Allocated immediage context is still in used by GPU. This is likely a bug in command buffer management implementation.");
+		RUSH_LOG_ERROR("Allocated immediage context is still in used by GPU. This is likely a bug in command buffer management implementation.");
 	}
 #endif
 
@@ -2741,7 +2741,7 @@ static VkFormat convertFormat(const GfxVertexFormatDesc::Element& vertexElement)
 	case GfxVertexFormatDesc::DataType::Color: return VK_FORMAT_R8G8B8A8_UNORM;
 	case GfxVertexFormatDesc::DataType::UInt: return VK_FORMAT_R32_UINT;
 	case GfxVertexFormatDesc::DataType::Short2N: return VK_FORMAT_R16G16_UNORM;
-	default: Log::error("Unsupported vertex element format type"); return VK_FORMAT_UNDEFINED;
+	default: RUSH_LOG_ERROR("Unsupported vertex element format type"); return VK_FORMAT_UNDEFINED;
 	}
 }
 
@@ -3058,10 +3058,10 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			case GfxShaderBindings::BindingType_Vec3:
 			case GfxShaderBindings::BindingType_Vec4:
 			case GfxShaderBindings::BindingType_Matrix:
-				Log::error("Loose constant bindings are not supported in Vulkan");
+				RUSH_LOG_ERROR("Loose constant bindings are not supported in Vulkan");
 				break;
 
-			default: Log::error("Unexpected binding type"); break;
+			default: RUSH_LOG_ERROR("Unexpected binding type"); break;
 			}
 		}
 
@@ -3194,7 +3194,7 @@ void Gfx_DestroyTechnique(GfxTechnique h) { releaseResource(g_device->m_techniqu
 // texture
 GfxTexture Gfx_CreateTextureFromFile(const char* filename, TextureType type)
 {
-	Log::error("Not implemented");
+	RUSH_LOG_ERROR("Not implemented");
 	return GfxTexture();
 }
 
@@ -3264,7 +3264,7 @@ inline u32 getTextureArrayLayerCount(const GfxTextureDesc& desc)
 {
 	switch (desc.type)
 	{
-	default: Log::error("Unsupported texture type"); return 0;
+	default: RUSH_LOG_ERROR("Unsupported texture type"); return 0;
 	case TextureType::Tex1D:
 	case TextureType::Tex1DArray:
 	case TextureType::Tex2D:
@@ -3297,7 +3297,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 	switch (desc.type)
 	{
-	default: Log::error("Unsupported texture type");
+	default: RUSH_LOG_ERROR("Unsupported texture type");
 	case TextureType::Tex1D:
 	case TextureType::Tex1DArray:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_1D;
@@ -3344,7 +3344,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			break;
 		case GfxFormat_D24_Unorm_S8_Uint:
 		case GfxFormat_D24_Unorm_X8:
-		case GfxFormat_D32_Float_S8_Uint: Log::error("Unsupported resource format"); break;
+		case GfxFormat_D32_Float_S8_Uint: RUSH_LOG_ERROR("Unsupported resource format"); break;
 		default:
 			// nothing
 			break;
@@ -3669,7 +3669,7 @@ static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 	case GfxBufferType::IndirectArgs:
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		break;
-	default: Log::error("Unexpected buffer type");
+	default: RUSH_LOG_ERROR("Unexpected buffer type");
 	}
 
 	bufferCreateInfo.size = desc.count * desc.stride;
@@ -4031,7 +4031,7 @@ GfxContext* Gfx_BeginAsyncCompute(GfxContext* parentContext)
 #if 0
 	if (vkGetFenceStatus(g_vulkanDevice, asyncContext->m_fence) == VK_NOT_READY)
 	{
-		Log::warning("Allocated async compute context is still in used by GPU. This is likely a bug in command buffer management implementation.");
+		RUSH_LOG_ERROR("Allocated async compute context is still in used by GPU. This is likely a bug in command buffer management implementation.");
 	}
 #endif
 
@@ -4317,7 +4317,7 @@ void Gfx_AddImageBarrier(
 
 	if (subresourceRange)
 	{
-		Log::error("Gfx_AddImageBarrier with subresource range is not implemented");
+		RUSH_LOG_ERROR("Gfx_AddImageBarrier with subresource range is not implemented");
 		return;
 	}
 
