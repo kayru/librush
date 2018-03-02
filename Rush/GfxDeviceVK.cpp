@@ -209,6 +209,13 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
 		{
 			severity = Severity_Warning;
 		}
+
+		if (strstr(pMessage, "Cannot get query results on queryPool"))
+		{
+			// TODO: current implementation of timestamp queries appears to be buggy.
+			// Ignore this validation error for now.
+			severity = Severity_Ignore;
+		}
 	}
 
 	switch (severity)
