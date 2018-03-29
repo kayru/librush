@@ -296,25 +296,26 @@ enum class GfxClearFlags : u8
 
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxClearFlags, u8);
 
-enum class GfxBufferType : u8
+enum class GfxBufferFlags : u32
 {
-	Vertex,
-	Index,
-	Constant,
-	Storage,
-	Texel,
-	IndirectArgs,
+	None = 0,
+	Vertex = 1 << 0,
+	Index = 1 << 1,
+	Constant = 1 << 2,
+	Storage = 1 << 3,
+	Texel = 1 << 4,
+	IndirectArgs = 1 << 5,
 
-	count
+	Transient = 1 << 7,
+
+	TransientVertex = Transient | Vertex,
+	TransientIndex = Transient | Index,
+	TransientConstant = Transient | Index,
+
+	TypeMask = Vertex | Index | Constant | Storage | Texel | IndirectArgs,
 };
 
-enum class GfxBufferMode : u8
-{
-	Static,    // persistent GPU memory
-	Temporary, // frame-scoped GPU memory
-
-	count
-};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxBufferFlags, u32);
 
 enum class GfxShaderType : u8
 {
@@ -452,15 +453,14 @@ struct GfxRect
 struct GfxBufferDesc
 {
 	GfxBufferDesc() = default;
-	GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, GfxFormat _format, u32 _count, u32 _stride);
-	GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, u32 _count, u32 _stride);
+	GfxBufferDesc(GfxBufferFlags _flags, GfxFormat _format, u32 _count, u32 _stride);
+	GfxBufferDesc(GfxBufferFlags _flags, u32 _count, u32 _stride);
 
-	GfxBufferType type        = GfxBufferType::Vertex;
-	GfxBufferMode mode        = GfxBufferMode::Static;
-	GfxFormat     format      = GfxFormat_Unknown;
-	u32           stride      = 0;
-	u32           count       = 0;
-	bool          hostVisible = false;
+	GfxBufferFlags flags       = GfxBufferFlags::None;
+	GfxFormat      format      = GfxFormat_Unknown;
+	u32            stride      = 0;
+	u32            count       = 0;
+	bool           hostVisible = false;
 };
 
 struct GfxBlendStateDesc

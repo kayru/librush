@@ -77,7 +77,7 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	{
 		bindings.addConstantBuffer("Global", 0);
 
-		GfxBufferDesc desc(GfxBufferType::Constant, GfxBufferMode::Temporary, GfxFormat_Unknown, 1, sizeof(Constants));
+		GfxBufferDesc desc(GfxBufferFlags::TransientConstant, GfxFormat_Unknown, 1, sizeof(Constants));
 		m_constantBuffer = Gfx_CreateBuffer(desc, nullptr);
 	}
 
@@ -95,7 +95,7 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader3D, m_vertexFormat3D, &bindings));
 
 	GfxBufferDesc vbDesc(
-	    GfxBufferType::Vertex, GfxBufferMode::Temporary, GfxFormat_Unknown, m_maxBatchVertices, sizeof(BatchVertex));
+	    GfxBufferFlags::TransientVertex, GfxFormat_Unknown, m_maxBatchVertices, sizeof(BatchVertex));
 
 	m_vertexBuffer = Gfx_CreateBuffer(vbDesc);
 

@@ -284,13 +284,13 @@ bool GfxViewport::operator==(const GfxViewport& rhs) const
 
 bool GfxViewport::operator!=(const GfxViewport& rhs) const { return !(*this == rhs); }
 
-GfxBufferDesc::GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, GfxFormat _format, u32 _count, u32 _stride)
-: type(_type), mode(_mode), format(_format), stride(_stride), count(_count)
+GfxBufferDesc::GfxBufferDesc(GfxBufferFlags _flags, GfxFormat _format, u32 _count, u32 _stride)
+: flags(_flags), format(_format), stride(_stride), count(_count)
 {
 }
 
-GfxBufferDesc::GfxBufferDesc(GfxBufferType _type, GfxBufferMode _mode, u32 _count, u32 _stride)
-: type(_type), mode(_mode), format(GfxFormat_Unknown), stride(_stride), count(_count)
+GfxBufferDesc::GfxBufferDesc(GfxBufferFlags _flags, u32 _count, u32 _stride)
+: flags(_flags), format(GfxFormat_Unknown), stride(_stride), count(_count)
 {
 }
 

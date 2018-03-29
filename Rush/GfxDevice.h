@@ -365,12 +365,6 @@ struct GfxTimerScope
 	u32         m_timestampId;
 };
 
-inline GfxBuffer Gfx_CreateConstantBuffer(GfxBufferMode mode, u32 size, const void* data = nullptr)
-{
-	GfxBufferDesc desc(GfxBufferType::Constant, mode, GfxFormat_Unknown, 1, size);
-	return Gfx_CreateBuffer(desc, data);
-}
-
 template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, const T& data)
 {
 	Gfx_UpdateBuffer(rc, h, &data, 0, sizeof(data), true);

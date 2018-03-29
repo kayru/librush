@@ -427,7 +427,7 @@ static bool enableExtension(std::vector<const char*>& extensions,
 
 inline void validateBufferUse(const BufferVK& buffer)
 {
-	if (buffer.desc.mode == GfxBufferMode::Temporary)
+	if (!!(buffer.desc.flags & GfxBufferFlags::Transient))
 	{
 		RUSH_ASSERT_MSG(buffer.lastUpdateFrame == g_device->m_frameCount,
 		    "Trying to use stale buffer. Temporary buffers must be updated/filled and used on the same frame.");
@@ -3658,23 +3658,41 @@ void Gfx_DestroyRasterizerState(GfxRasterizerState h) { releaseResource(g_device
 static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 {
 	VkBufferCreateInfo bufferCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-	switch (desc.type)
+	GfxBufferFlags bufferType = desc.flags & GfxBufferFlags::TypeMask;
+
+	if (!!(desc.flags & GfxBufferFlags::Vertex))
 	{
-	case GfxBufferType::Vertex: bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; break;
-	case GfxBufferType::Index: bufferCreateInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT; break;
-	case GfxBufferType::Constant: bufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; break;
-	case GfxBufferType::Storage:
-		bufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	}
+
+	if (!!(desc.flags & GfxBufferFlags::Index))
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	}
+
+	if (!!(desc.flags & GfxBufferFlags::Constant))
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	}
+
+	if (!!(desc.flags & GfxBufferFlags::Storage))
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		if (desc.format != GfxFormat_Unknown)
 		{
 			bufferCreateInfo.usage |=
-			    VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+				VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 		}
-		break;
-	case GfxBufferType::IndirectArgs:
+	}
+
+	if (!!(desc.flags & GfxBufferFlags::Texel))
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+	}
+
+	if (!!(desc.flags & GfxBufferFlags::IndirectArgs))
+	{
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		break;
-	default: RUSH_LOG_ERROR("Unexpected buffer type");
 	}
 
 	bufferCreateInfo.size = desc.count * desc.stride;
@@ -3696,7 +3714,9 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
-	if (data || desc.mode == GfxBufferMode::Static)
+	const bool isStatic = !(desc.flags & GfxBufferFlags::Transient);
+
+	if (data || isStatic)
 	{
 		V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, nullptr, &res.info.buffer));
 		res.ownsBuffer = true;
@@ -3758,7 +3778,7 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 
 		res.lastUpdateFrame = g_device->m_frameCount;
 	}
-	else if (desc.mode == GfxBufferMode::Static)
+	else if (isStatic)
 	{
 		VkMemoryRequirements memoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
@@ -3785,8 +3805,8 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		}
 	}
 
-	if (desc.format != GfxFormat_Unknown && desc.type == GfxBufferType::Storage &&
-	    (data || desc.mode == GfxBufferMode::Static))
+	if (desc.format != GfxFormat_Unknown && !!(desc.flags & GfxBufferFlags::Storage) &&
+	    (data || isStatic))
 	{
 		VkBufferViewCreateInfo bufferViewCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
 		bufferViewCreateInfo.buffer                 = res.info.buffer;
@@ -3854,8 +3874,8 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBuffer vb, u32 offset, u32 size)
 {
 	const auto& desc = g_device->m_buffers[vb].desc;
 
-	RUSH_ASSERT_MSG(desc.mode != GfxBufferMode::Temporary,
-	    "Temporary buffers can't be mapped, as their memory is frequently recycled.")
+	RUSH_ASSERT_MSG(!(desc.flags & GfxBufferFlags::Transient),
+	    "Transient buffers can't be mapped, as their memory is frequently recycled.")
 
 	RUSH_ASSERT(offset == 0 && size == 0);
 	RUSH_ASSERT(desc.hostVisible);
@@ -3905,16 +3925,41 @@ static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
 	}
 }
 
-static VkDeviceSize getBufferAlignmentRequirements(GfxBufferType type)
+static VkDeviceSize getBufferAlignmentRequirements(GfxBufferFlags flags)
 {
-	switch (type)
+	VkDeviceSize alignment = 1;
+
+	if (!!(flags & GfxBufferFlags::Vertex))
 	{
-	case GfxBufferType::Constant: return g_device->m_physicalDeviceProps.limits.minUniformBufferOffsetAlignment;
-	case GfxBufferType::Storage: return g_device->m_physicalDeviceProps.limits.minStorageBufferOffsetAlignment;
-	case GfxBufferType::Texel: return g_device->m_physicalDeviceProps.limits.minTexelBufferOffsetAlignment;
-	default:
-		return 16; // TODO: what's a sensible default alignment?
+		alignment = 16; // What's a sensible alignment?
 	}
+
+	if (!!(flags & GfxBufferFlags::Index))
+	{
+		alignment = 16; // What's a sensible alignment?
+	}
+
+	if (!!(flags & GfxBufferFlags::Constant))
+	{
+		alignment = max(alignment, g_device->m_physicalDeviceProps.limits.minUniformBufferOffsetAlignment);
+	}
+
+	if (!!(flags & GfxBufferFlags::Storage))
+	{
+		alignment = max(alignment, g_device->m_physicalDeviceProps.limits.minStorageBufferOffsetAlignment);
+	}
+
+	if (!!(flags & GfxBufferFlags::Texel))
+	{
+		alignment = max(alignment, g_device->m_physicalDeviceProps.limits.minTexelBufferOffsetAlignment);
+	}
+
+	if (!!(flags & GfxBufferFlags::IndirectArgs))
+	{
+		alignment = max(alignment, g_device->m_physicalDeviceProps.limits.minStorageBufferOffsetAlignment);
+	}
+
+	return alignment;
 }
 
 #if 0
@@ -3949,7 +3994,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 	markDirtyIfBound(rc, buffer);
 
 	RUSH_ASSERT_MSG(
-	    buffer.desc.mode == GfxBufferMode::Temporary, "Only temporary buffers can be dynamically updated/renamed.");
+	    !!(buffer.desc.flags & GfxBufferFlags::Transient), "Only temporary buffers can be dynamically updated/renamed.");
 
 	buffer.lastUpdateFrame = g_device->m_frameCount;
 
@@ -3970,7 +4015,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 			g_device->enqueueDestroyBuffer(buffer.info.buffer);
 		}
 
-		const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.desc.type);
+		const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.desc.flags);
 		MemoryBlockVK      block     = g_device->m_currentFrame->localOnlyAllocator.alloc(size, alignment);
 
 		buffer.memory     = block.memory;
@@ -3981,7 +4026,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 		buffer.info.offset = block.offset;
 		buffer.info.range  = size;
 
-		if (buffer.desc.format != GfxFormat_Unknown && buffer.desc.type == GfxBufferType::Storage)
+		if (buffer.desc.format != GfxFormat_Unknown && !!(buffer.desc.flags & GfxBufferFlags::Storage))
 		{
 			VkBufferViewCreateInfo bufferViewCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
 			bufferViewCreateInfo.buffer                 = buffer.info.buffer;
