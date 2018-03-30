@@ -650,6 +650,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	}
 
 	VkPhysicalDeviceFeatures enabledDeviceFeatures = {};
+	enabledDeviceFeatures.geometryShader           = m_physicalDeviceFeatures.geometryShader;
 	enabledDeviceFeatures.shaderClipDistance       = m_physicalDeviceFeatures.shaderClipDistance;
 	enabledDeviceFeatures.shaderInt64              = m_physicalDeviceFeatures.shaderInt64;
 	enabledDeviceFeatures.samplerAnisotropy        = m_physicalDeviceFeatures.samplerAnisotropy;
