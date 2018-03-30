@@ -4255,9 +4255,8 @@ void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBuffer h)
 	}
 }
 
-void Gfx_SetStorageImage(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
+void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTexture h)
 {
-	RUSH_ASSERT(stage == GfxStage::Compute);
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.storageImages));
 
 	if (rc->m_pending.storageImages[idx] != h)
@@ -4273,9 +4272,8 @@ void Gfx_SetStorageImage(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
 	}
 }
 
-void Gfx_SetStorageBuffer(GfxContext* rc, GfxStage stage, u32 idx, GfxBuffer h)
+void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
 {
-	RUSH_ASSERT(stage == GfxStage::Compute);
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.storageBuffers));
 
 	if (rc->m_pending.storageBuffers[idx] != h)

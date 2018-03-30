@@ -132,14 +132,14 @@ inline void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerRe
 	Gfx_SetSampler(rc, stage, idx, h.get());
 }
 
-inline void Gfx_SetStorageImage(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureRef h)
+inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureRef h)
 {
-	Gfx_SetStorageImage(rc, stage, idx, h.get());
+	Gfx_SetStorageImage(rc, idx, h.get());
 }
 
-inline void Gfx_SetStorageBuffer(GfxContext* rc, GfxStage stage, u32 idx, GfxBufferRef h)
+inline void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferRef h)
 {
-	Gfx_SetStorageBuffer(rc, stage, idx, h.get());
+	Gfx_SetStorageBuffer(rc, idx, h.get());
 }
 
 inline void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateRef h) { Gfx_SetBlendState(rc, h.get()); }
