@@ -423,6 +423,7 @@ public:
 
 		VkQueryPool      timestampPool = VK_NULL_HANDLE;
 		std::vector<u64> timestampPoolData;
+		std::vector<u8>  timestampSlotMap;
 		u32              timestampIssuedCount = 0;
 
 		DestructionQueue destructionQueue;

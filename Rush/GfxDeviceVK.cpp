@@ -209,13 +209,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
 		{
 			severity = Severity_Warning;
 		}
-
-		if (strstr(pMessage, "Cannot get query results on queryPool"))
-		{
-			// TODO: current implementation of timestamp queries appears to be buggy.
-			// Ignore this validation error for now.
-			severity = Severity_Ignore;
-		}
 	}
 
 	switch (severity)
@@ -826,6 +819,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 		V(vkCreateQueryPool(m_vulkanDevice, &timestampPoolCreateInfo, nullptr, &it.timestampPool));
 		it.timestampPoolData.resize(timestampPoolCreateInfo.queryCount);
+		it.timestampSlotMap.resize(timestampPoolCreateInfo.queryCount);
 
 		it.localOnlyAllocator.init(m_memoryTypes.local, false);
 		it.hostVisibleAllocator.init(m_memoryTypes.hostVisible, true);
@@ -2481,11 +2475,7 @@ void Gfx_Release(GfxDevice* dev)
 static void getQueryPoolResults(VkDevice device, VkQueryPool pool, u32 count, std::vector<u64>& output)
 {
 	output.resize(count);
-
 	u32 stride = sizeof(*output.data());
-
-	// TODO: Add indirection to handle sparse queries properly.
-	// Ignore the return value of vkGetQueryPoolResults meanwhile.
 	vkGetQueryPoolResults(device,
 	    pool,
 	    0,
@@ -2535,6 +2525,16 @@ void GfxDevice::flushUploadContext(GfxContext* dependentContext, bool waitForCom
 	}
 }
 
+static void writeTimestamp(GfxContext* context, u32 slotIndex, bool isEnd)
+{
+	g_device->m_currentFrame->timestampSlotMap[slotIndex] = g_device->m_currentFrame->timestampIssuedCount;
+	VkPipelineStageFlagBits stageFlags = isEnd ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	vkCmdWriteTimestamp(context->m_commandBuffer,
+		stageFlags,
+		g_device->m_currentFrame->timestampPool,
+		g_device->m_currentFrame->timestampIssuedCount++);
+}
+
 void Gfx_BeginFrame()
 {
 	if (!g_device->m_resizeEvents.empty() ||
@@ -2567,7 +2567,7 @@ void Gfx_BeginFrame()
 	{
 		getQueryPoolResults(g_vulkanDevice,
 		    g_device->m_currentFrame->timestampPool,
-		    2 * (GfxStats::MaxCustomTimers + 1),
+			g_device->m_currentFrame->timestampIssuedCount,
 		    g_device->m_currentFrame->timestampPoolData);
 
 		g_device->m_currentFrame->timestampIssuedCount = 0;
@@ -2577,21 +2577,23 @@ void Gfx_BeginFrame()
 
 		for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
 		{
-			u64 timestampDelta = g_device->m_currentFrame->timestampPoolData[2 * i + 1] -
-			                     g_device->m_currentFrame->timestampPoolData[2 * i];
+			u8 slotBegin = g_device->m_currentFrame->timestampSlotMap[2 * i + 0];
+			u8 slotEnd = g_device->m_currentFrame->timestampSlotMap[2 * i + 1];
+
+			u64 timestampDelta = g_device->m_currentFrame->timestampPoolData[slotEnd] -
+				g_device->m_currentFrame->timestampPoolData[slotBegin];
+
 			g_device->m_stats.customTimer[i] = timestampDelta * secondsPerTick;
 		}
 
-		u32 frameBeginSlot = 2 * GfxStats::MaxCustomTimers;
-		u32 frameEndSlot   = 2 * GfxStats::MaxCustomTimers + 1;
+		u32 frameBeginSlot = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers];
+		u32 frameEndSlot = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers + 1];
 		u64 timestampDelta = g_device->m_currentFrame->timestampPoolData[frameEndSlot] -
-		                     g_device->m_currentFrame->timestampPoolData[frameBeginSlot];
+			g_device->m_currentFrame->timestampPoolData[frameBeginSlot];
 		g_device->m_stats.lastFrameGpuTime = timestampDelta * secondsPerTick;
 	}
 
-	vkCmdWriteTimestamp(g_context->m_commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-	    g_device->m_currentFrame->timestampPool, 2 * GfxStats::MaxCustomTimers);
-	g_device->m_currentFrame->timestampIssuedCount++;
+	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers, false);
 }
 
 void GfxDevice::captureScreenshot()
@@ -2662,9 +2664,7 @@ void Gfx_EndFrame()
 {
 	RUSH_ASSERT(!g_context->m_isRenderPassActive);
 
-	vkCmdWriteTimestamp(g_context->m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-	    g_device->m_currentFrame->timestampPool, 2 * GfxStats::MaxCustomTimers + 1);
-	g_device->m_currentFrame->timestampIssuedCount++;
+	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers + 1, true);
 
 	TextureVK& backBufferTexture = g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex]];
 	g_context->addImageBarrier(
@@ -4531,16 +4531,14 @@ void Gfx_PopMarker(GfxContext* rc)
 
 void Gfx_BeginTimer(GfxContext* rc, u32 timestampId)
 {
-	vkCmdWriteTimestamp(rc->m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-	    g_device->m_currentFrame->timestampPool, 2 * timestampId);
-	g_device->m_currentFrame->timestampIssuedCount++;
+	RUSH_ASSERT(timestampId < GfxStats::MaxCustomTimers);
+	writeTimestamp(g_context, timestampId * 2, false);
 }
 
 void Gfx_EndTimer(GfxContext* rc, u32 timestampId)
 {
-	vkCmdWriteTimestamp(rc->m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-	    g_device->m_currentFrame->timestampPool, 2 * timestampId + 1);
-	g_device->m_currentFrame->timestampIssuedCount++;
+	RUSH_ASSERT(timestampId < GfxStats::MaxCustomTimers);
+	writeTimestamp(g_context, timestampId * 2 + 1, true);
 }
 
 void Gfx_Retain(GfxDevice* dev) { dev->addReference(); }
