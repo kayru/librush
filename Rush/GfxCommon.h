@@ -658,7 +658,7 @@ enum GfxBindingType
 	// Bindings must be specified in the exact order:
 	GfxBindingType_PushConstants,
 	GfxBindingType_ConstantBuffer,
-	GfxBindingType_CombinedSampler, // sampler & texture in the same slot (Vulkan only)
+	GfxBindingType_CombinedSampler, // sampler & texture in the same slot (Vulkan & OpenGL only)
 	GfxBindingType_Sampler,
 	GfxBindingType_Texture,
 	GfxBindingType_RWImage,
@@ -676,34 +676,6 @@ enum GfxBindingType
 
 struct GfxShaderBindings
 {
-	enum BindingType : u8 // TODO: deprecate this in favor of using GfxBindingType directly
-	{
-		BindingType_Unknown = GfxBindingType_Unknown,
-
-		// Bindings must be specified in the exact order:
-		BindingType_PushConstants  = GfxBindingType_PushConstants,
-		BindingType_ConstantBuffer = GfxBindingType_ConstantBuffer,
-		BindingType_CombinedSampler =
-		    GfxBindingType_CombinedSampler, // sampler & texture in the same slot (Vulkan only)
-		BindingType_Sampler       = GfxBindingType_Sampler,
-		BindingType_Texture       = GfxBindingType_Texture,
-		BindingType_RWImage       = GfxBindingType_RWImage,
-		BindingType_RWBuffer      = GfxBindingType_RWBuffer,
-		BindingType_RWTypedBuffer = GfxBindingType_RWTypedBuffer,
-
-		// Loose constant bindings (OpenGL only)
-		BindingType_Int    = GfxBindingType_Int,
-		BindingType_Scalar = GfxBindingType_Scalar,
-		BindingType_Vec2   = GfxBindingType_Vec2,
-		BindingType_Vec3   = GfxBindingType_Vec3,
-		BindingType_Vec4   = GfxBindingType_Vec4,
-		BindingType_Matrix = GfxBindingType_Matrix,
-
-		// Backwards-compatibility aliases
-		BindingType_StorageImage  = GfxBindingType_RWImage,
-		BindingType_StorageBuffer = GfxBindingType_RWBuffer
-	};
-
 	struct Item
 	{
 		const char* name;
@@ -721,7 +693,7 @@ struct GfxShaderBindings
 			};
 		};
 
-		BindingType type;
+		GfxBindingType type;
 	};
 
 	bool addConstant(const char* name, const int* data, u32 count = 1);

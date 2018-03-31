@@ -3009,19 +3009,19 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	u32 bindingOrderRequirements[256] = {};
 	{
-		u32 orderIndex                                                           = 1;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_PushConstants]   = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_ConstantBuffer]  = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_CombinedSampler] = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_Sampler]         = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_Texture]         = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_RWImage]         = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_RWBuffer]        = orderIndex++;
-		bindingOrderRequirements[GfxShaderBindings::BindingType_RWTypedBuffer] =
-		    bindingOrderRequirements[GfxShaderBindings::BindingType_RWBuffer];
+		u32 orderIndex                                           = 1;
+		bindingOrderRequirements[GfxBindingType_PushConstants]   = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_ConstantBuffer]  = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_CombinedSampler] = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_Sampler]         = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_Texture]         = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_RWImage]         = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_RWBuffer]        = orderIndex++;
+		bindingOrderRequirements[GfxBindingType_RWTypedBuffer] =
+		    bindingOrderRequirements[GfxBindingType_RWBuffer];
 	}
 
-	GfxShaderBindings::BindingType currentBindingType = GfxShaderBindings::BindingType_Unknown;
+	GfxBindingType currentBindingType = GfxBindingType_Unknown;
 
 	u32 bindingSlot = 0;
 	if (desc.bindings)
@@ -3036,34 +3036,34 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 			switch (item.type)
 			{
-			case GfxShaderBindings::BindingType_PushConstants:
+			case GfxBindingType_PushConstants:
 				RUSH_ASSERT(res.pushConstantsSize <= 128);
 				RUSH_ASSERT_MSG(res.pushConstantsSize == 0, "Only one push constant block is allowed.");
 				res.pushConstantsSize      = item.pushConstants.size;
 				res.pushConstantStageFlags = desc.cs.valid() ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_VERTEX_BIT;
 				break;
 
-			case GfxShaderBindings::BindingType_ConstantBuffer: ++res.constantBufferCount; break;
+			case GfxBindingType_ConstantBuffer: ++res.constantBufferCount; break;
 
-			case GfxShaderBindings::BindingType_CombinedSampler: ++res.combinedSamplerCount; break;
+			case GfxBindingType_CombinedSampler: ++res.combinedSamplerCount; break;
 
-			case GfxShaderBindings::BindingType_Sampler: ++res.samplerCount; break;
+			case GfxBindingType_Sampler: ++res.samplerCount; break;
 
-			case GfxShaderBindings::BindingType_Texture: ++res.sampledImageCount; break;
+			case GfxBindingType_Texture: ++res.sampledImageCount; break;
 
-			case GfxShaderBindings::BindingType_RWImage: ++res.storageImageCount; break;
+			case GfxBindingType_RWImage: ++res.storageImageCount; break;
 
-			case GfxShaderBindings::BindingType_RWTypedBuffer:
+			case GfxBindingType_RWTypedBuffer:
 				res.typedStorageBufferMask |= 1 << res.storageBufferCount;
 				// fall-through to BindingType_RWBuffer
-			case GfxShaderBindings::BindingType_RWBuffer: ++res.storageBufferCount; break;
+			case GfxBindingType_RWBuffer: ++res.storageBufferCount; break;
 
-			case GfxShaderBindings::BindingType_Int:
-			case GfxShaderBindings::BindingType_Scalar:
-			case GfxShaderBindings::BindingType_Vec2:
-			case GfxShaderBindings::BindingType_Vec3:
-			case GfxShaderBindings::BindingType_Vec4:
-			case GfxShaderBindings::BindingType_Matrix:
+			case GfxBindingType_Int:
+			case GfxBindingType_Scalar:
+			case GfxBindingType_Vec2:
+			case GfxBindingType_Vec3:
+			case GfxBindingType_Vec4:
+			case GfxBindingType_Matrix:
 				RUSH_LOG_ERROR("Loose constant bindings are not supported in Vulkan");
 				break;
 

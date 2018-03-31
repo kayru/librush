@@ -319,7 +319,7 @@ bool GfxShaderBindings::addConstant(const char* name, const int* data, u32 count
 	it.data  = data;
 	it.count = count;
 	it.idx   = 0;
-	it.type  = BindingType_Int;
+	it.type  = GfxBindingType_Int;
 	return items.pushBack(it);
 }
 
@@ -330,7 +330,7 @@ bool GfxShaderBindings::addConstant(const char* name, const float* data, u32 cou
 	it.data  = data;
 	it.count = count;
 	it.idx   = 0;
-	it.type  = BindingType_Scalar;
+	it.type  = GfxBindingType_Scalar;
 	return items.pushBack(it);
 }
 
@@ -341,7 +341,7 @@ bool GfxShaderBindings::addConstant(const char* name, const Vec2* data, u32 coun
 	it.data  = data;
 	it.count = count;
 	it.idx   = 0;
-	it.type  = BindingType_Vec2;
+	it.type  = GfxBindingType_Vec2;
 	return items.pushBack(it);
 }
 
@@ -352,7 +352,7 @@ bool GfxShaderBindings::addConstant(const char* name, const Vec3* data, u32 coun
 	it.data  = data;
 	it.count = count;
 	it.idx   = 0;
-	it.type  = BindingType_Vec3;
+	it.type  = GfxBindingType_Vec3;
 	return items.pushBack(it);
 }
 
@@ -363,7 +363,7 @@ bool GfxShaderBindings::addConstant(const char* name, const Vec4* data, u32 coun
 	it.data  = data;
 	it.count = count;
 	it.idx   = 0;
-	it.type  = BindingType_Vec4;
+	it.type  = GfxBindingType_Vec4;
 	return items.pushBack(it);
 }
 
@@ -374,7 +374,7 @@ bool GfxShaderBindings::addConstant(const char* name, const Mat4* data, u32 coun
 	it.data  = data;
 	it.count = count;
 	it.idx   = 0;
-	it.type  = BindingType_Matrix;
+	it.type  = GfxBindingType_Matrix;
 	return items.pushBack(it);
 }
 
@@ -385,7 +385,7 @@ bool GfxShaderBindings::addConstantBuffer(const char* name, u32 idx)
 	it.data  = nullptr;
 	it.count = 1;
 	it.idx   = idx;
-	it.type  = BindingType_ConstantBuffer;
+	it.type  = GfxBindingType_ConstantBuffer;
 	return items.pushBack(it);
 }
 
@@ -396,7 +396,7 @@ bool GfxShaderBindings::addTexture(const char* name, u32 idx)
 	it.data  = nullptr;
 	it.count = 1;
 	it.idx   = idx;
-	it.type  = BindingType_Texture;
+	it.type  = GfxBindingType_Texture;
 	return items.pushBack(it);
 }
 
@@ -407,7 +407,7 @@ bool GfxShaderBindings::addSampler(const char* name, u32 idx, bool combined)
 	it.data  = nullptr;
 	it.count = 1;
 	it.idx   = idx;
-	it.type  = combined ? BindingType_CombinedSampler : BindingType_Sampler;
+	it.type  = combined ? GfxBindingType_CombinedSampler : GfxBindingType_Sampler;
 	return items.pushBack(it);
 }
 
@@ -418,7 +418,7 @@ bool GfxShaderBindings::addStorageImage(const char* name, u32 idx)
 	it.data  = nullptr;
 	it.count = 1;
 	it.idx   = idx;
-	it.type  = BindingType_StorageImage;
+	it.type  = GfxBindingType_RWImage;
 	return items.pushBack(it);
 }
 
@@ -429,7 +429,7 @@ bool GfxShaderBindings::addRWBuffer(const char* name, u32 idx)
 	it.data  = nullptr;
 	it.count = 1;
 	it.idx   = idx;
-	it.type  = BindingType_RWBuffer;
+	it.type  = GfxBindingType_RWBuffer;
 	return items.pushBack(it);
 }
 
@@ -440,7 +440,7 @@ bool GfxShaderBindings::addTypedRWBuffer(const char* name, u32 idx)
 	it.data  = nullptr;
 	it.count = 1;
 	it.idx   = idx;
-	it.type  = BindingType_RWTypedBuffer;
+	it.type  = GfxBindingType_RWTypedBuffer;
 	return items.pushBack(it);
 }
 
@@ -452,7 +452,7 @@ bool GfxShaderBindings::addPushConstants(const char* name, GfxStageFlags stageFl
 	it.name                     = name;
 	it.pushConstants.size       = size;
 	it.pushConstants.stageFlags = stageFlags;
-	it.type                     = BindingType_PushConstants;
+	it.type                     = GfxBindingType_PushConstants;
 	return items.pushBack(it);
 }
 
