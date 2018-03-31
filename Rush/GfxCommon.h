@@ -310,7 +310,7 @@ enum class GfxBufferFlags : u32
 
 	TransientVertex = Transient | Vertex,
 	TransientIndex = Transient | Index,
-	TransientConstant = Transient | Index,
+	TransientConstant = Transient | Constant,
 
 	TypeMask = Vertex | Index | Constant | Storage | Texel | IndirectArgs,
 };
