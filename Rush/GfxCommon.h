@@ -703,14 +703,12 @@ struct GfxShaderBindings
 	bool addConstant(const char* name, const Vec4* data, u32 count = 1);
 	bool addConstant(const char* name, const Mat4* data, u32 count = 1);
 	bool addConstantBuffer(const char* name, u32 idx);
-	// TODO: replace with explicit separate / combined sampler declaration API (leaving this for back-compat)
-	bool        addSampler(const char* name, u32 idx, bool combined = true);
-	inline bool addCombinedSampler(const char* name, u32 idx) { return addSampler(name, idx, true); }
-	inline bool addSeparateSampler(const char* name, u32 idx) { return addSampler(name, idx, false); }
-	bool        addTexture(const char* name, u32 idx);
-	bool        addStorageImage(const char* name, u32 idx);
-	bool        addStorageBuffer(const char* name, u32 idx) { return addRWBuffer(name, idx); }
-	bool        addPushConstants(const char* name, GfxStageFlags stageFlags, u32 size);
+	bool addCombinedSampler(const char* name, u32 idx);
+	bool addSeparateSampler(const char* name, u32 idx);
+	bool addTexture(const char* name, u32 idx);
+	bool addStorageImage(const char* name, u32 idx);
+	bool addStorageBuffer(const char* name, u32 idx) { return addRWBuffer(name, idx); }
+	bool addPushConstants(const char* name, GfxStageFlags stageFlags, u32 size);
 
 	bool addRWBuffer(const char* name, u32 idx);
 	bool addTypedRWBuffer(const char* name, u32 idx);
