@@ -595,6 +595,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
 
+	m_supportedExtensions.NV_geometry_shader_passthrough =
+		enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NV_geometry_shader_passthrough", false);
+
 	m_supportedExtensions.AMD_wave_limits =
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
 
@@ -871,6 +874,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.asyncCompute     = m_computeQueueIndex != invalidIndex;
 	m_caps.shaderWaveIntrinsics =
 	    m_supportedExtensions.EXT_shader_subgroup_ballot && m_supportedExtensions.EXT_shader_subgroup_vote;
+	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 
 	switch (m_physicalDeviceProps.vendorID)
 	{

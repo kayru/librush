@@ -468,6 +468,7 @@ public:
 		bool AMD_wave_limits              = false;
 		bool EXT_shader_subgroup_vote     = false;
 		bool EXT_shader_subgroup_ballot   = false;
+		bool NV_geometry_shader_passthrough = false;
 	} m_supportedExtensions;
 
 	bool m_useNegativeViewport = false;

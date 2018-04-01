@@ -92,6 +92,8 @@ struct GfxCapability
 	bool        shaderWaveIntrinsics = false;
 	bool        asyncCompute         = false;
 
+	bool        geometryShaderPassthroughNV = false;
+
 	float deviceFarDepth  = 1.0f;
 	float deviceNearDepth = 0.0f;
 	Vec2  deviceTopLeft   = Vec2(-1.0f, -1.0f);
