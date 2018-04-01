@@ -469,6 +469,7 @@ public:
 		bool EXT_shader_subgroup_vote     = false;
 		bool EXT_shader_subgroup_ballot   = false;
 		bool NV_geometry_shader_passthrough = false;
+		bool AMD_shader_explicit_vertex_parameter = false;
 	} m_supportedExtensions;
 
 	bool m_useNegativeViewport = false;

@@ -598,6 +598,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.NV_geometry_shader_passthrough =
 		enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NV_geometry_shader_passthrough", false);
 
+	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = 
+		enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
+
 	m_supportedExtensions.AMD_wave_limits =
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
 
@@ -875,6 +878,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.shaderWaveIntrinsics =
 	    m_supportedExtensions.EXT_shader_subgroup_ballot && m_supportedExtensions.EXT_shader_subgroup_vote;
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
+	m_caps.explicitVertexParameterAMD = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
 	switch (m_physicalDeviceProps.vendorID)
 	{
