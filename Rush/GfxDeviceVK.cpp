@@ -2878,6 +2878,26 @@ GfxPixelShader Gfx_CreatePixelShader(const GfxShaderSource& code)
 
 void Gfx_DestroyPixelShader(GfxPixelShader h) { releaseResource(g_device->m_pixelShaders, h); }
 
+// geometry shader
+GfxGeometryShader Gfx_CreateGeometryShader(const GfxShaderSource& code)
+{
+	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
+
+	ShaderVK res = createShader(g_vulkanDevice, code);
+	res.id = g_device->generateId();
+
+	if (res.module)
+	{
+		return retainResource(g_device->m_geometryShaders, res);
+	}
+	else
+	{
+		return InvalidResourceHandle();
+	}
+}
+
+void Gfx_DestroyGeometryShader(GfxGeometryShader h) { releaseResource(g_device->m_geometryShaders, h); }
+
 // compute shader
 GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code)
 {
@@ -2981,6 +3001,18 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 			res.shaderStages.push_back(stageInfo);
 			res.vs.retain(desc.vs);
+		}
+
+		if (desc.gs.valid())
+		{
+			VkPipelineShaderStageCreateInfo stageInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+			stageInfo.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+			stageInfo.module = g_device->m_geometryShaders[desc.gs].module;
+			stageInfo.pName = g_device->m_geometryShaders[desc.gs].entry;
+			stageInfo.pSpecializationInfo = res.specializationInfo;
+
+			res.shaderStages.push_back(stageInfo);
+			res.gs.retain(desc.gs);
 		}
 
 		if (desc.ps.valid())
@@ -4550,6 +4582,8 @@ void Gfx_Retain(GfxVertexFormat h) { g_device->m_vertexFormats[h].addReference()
 void Gfx_Retain(GfxVertexShader h) { g_device->m_vertexShaders[h].addReference(); }
 
 void Gfx_Retain(GfxPixelShader h) { g_device->m_pixelShaders[h].addReference(); }
+
+void Gfx_Retain(GfxGeometryShader h) { g_device->m_geometryShaders[h].addReference(); }
 
 void Gfx_Retain(GfxComputeShader h) { g_device->m_computeShaders[h].addReference(); }
 

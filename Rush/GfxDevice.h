@@ -185,6 +185,10 @@ void           Gfx_DestroyPixelShader(GfxPixelShader psh);
 GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code);
 void             Gfx_DestroyComputeShader(GfxComputeShader psh);
 
+// geometry shader
+GfxGeometryShader Gfx_CreateGeometryShader(const GfxShaderSource& code);
+void              Gfx_DestroyGeometryShader(GfxGeometryShader psh);
+
 // technique
 GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc);
 void         Gfx_DestroyTechnique(GfxTechnique h);
@@ -282,6 +286,7 @@ void Gfx_Retain(GfxContext* rc);
 void Gfx_Retain(GfxVertexFormat h);
 void Gfx_Retain(GfxVertexShader h);
 void Gfx_Retain(GfxPixelShader h);
+void Gfx_Retain(GfxGeometryShader h);
 void Gfx_Retain(GfxComputeShader h);
 void Gfx_Retain(GfxTechnique h);
 void Gfx_Retain(GfxTexture h);
@@ -294,6 +299,7 @@ void Gfx_Retain(GfxBuffer h);
 inline void Gfx_Release(GfxVertexFormat h) { Gfx_DestroyVertexFormat(h); }
 inline void Gfx_Release(GfxVertexShader h) { Gfx_DestroyVertexShader(h); }
 inline void Gfx_Release(GfxPixelShader h) { Gfx_DestroyPixelShader(h); }
+inline void Gfx_Release(GfxGeometryShader h) { Gfx_DestroyGeometryShader(h); }
 inline void Gfx_Release(GfxComputeShader h) { Gfx_DestroyComputeShader(h); }
 inline void Gfx_Release(GfxTechnique h) { Gfx_DestroyTechnique(h); }
 inline void Gfx_Release(GfxTexture h) { Gfx_DestroyTexture(h); }

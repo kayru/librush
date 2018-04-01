@@ -85,6 +85,7 @@ struct Mat4;
 class GfxVertexFormatDesc;
 struct GfxVertexShaderDesc;
 struct GfxPixelShaderDesc;
+struct GfxGeometryShaderDesc;
 struct GfxComputeShaderDesc;
 struct GfxTextureDesc;
 struct GfxBufferDesc;
@@ -94,17 +95,18 @@ struct GfxTechniqueDesc;
 struct GfxDepthStencilDesc;
 struct GfxRasterizerDesc;
 
-typedef ResourceHandle<GfxVertexFormatDesc>  GfxVertexFormat;
-typedef ResourceHandle<GfxVertexShaderDesc>  GfxVertexShader;
-typedef ResourceHandle<GfxPixelShaderDesc>   GfxPixelShader;
-typedef ResourceHandle<GfxComputeShaderDesc> GfxComputeShader;
-typedef ResourceHandle<GfxTextureDesc>       GfxTexture;
-typedef ResourceHandle<GfxBufferDesc>        GfxBuffer;
-typedef ResourceHandle<GfxSamplerDesc>       GfxSampler;
-typedef ResourceHandle<GfxBlendStateDesc>    GfxBlendState;
-typedef ResourceHandle<GfxDepthStencilDesc>  GfxDepthStencilState;
-typedef ResourceHandle<GfxRasterizerDesc>    GfxRasterizerState;
-typedef ResourceHandle<GfxTechniqueDesc>     GfxTechnique;
+typedef ResourceHandle<GfxVertexFormatDesc>   GfxVertexFormat;
+typedef ResourceHandle<GfxVertexShaderDesc>   GfxVertexShader;
+typedef ResourceHandle<GfxPixelShaderDesc>    GfxPixelShader;
+typedef ResourceHandle<GfxGeometryShaderDesc> GfxGeometryShader;
+typedef ResourceHandle<GfxComputeShaderDesc>  GfxComputeShader;
+typedef ResourceHandle<GfxTextureDesc>        GfxTexture;
+typedef ResourceHandle<GfxBufferDesc>         GfxBuffer;
+typedef ResourceHandle<GfxSamplerDesc>        GfxSampler;
+typedef ResourceHandle<GfxBlendStateDesc>     GfxBlendState;
+typedef ResourceHandle<GfxDepthStencilDesc>   GfxDepthStencilState;
+typedef ResourceHandle<GfxRasterizerDesc>     GfxRasterizerState;
+typedef ResourceHandle<GfxTechniqueDesc>      GfxTechnique;
 
 enum class GfxContextType : u8
 {
@@ -250,6 +252,7 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxUsageFlags, u8);
 enum class GfxStage : u8
 {
 	Vertex,
+	Geometry,
 	Pixel,
 	Hull,
 	Domain,
@@ -259,11 +262,12 @@ enum class GfxStage : u8
 
 enum class GfxStageFlags : u8
 {
-	Vertex  = 1 << (u32)GfxStage::Vertex,
-	Pixel   = 1 << (u32)GfxStage::Pixel,
-	Hull    = 1 << (u32)GfxStage::Hull,
-	Domain  = 1 << (u32)GfxStage::Domain,
-	Compute = 1 << (u32)GfxStage::Compute,
+	Vertex   = 1 << (u32)GfxStage::Vertex,
+	Geometry = 1 << (u32)GfxStage::Geometry,
+	Pixel    = 1 << (u32)GfxStage::Pixel,
+	Hull     = 1 << (u32)GfxStage::Hull,
+	Domain   = 1 << (u32)GfxStage::Domain,
+	Compute  = 1 << (u32)GfxStage::Compute,
 };
 
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxStageFlags, u8);
@@ -320,8 +324,8 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxBufferFlags, u32);
 enum class GfxShaderType : u8
 {
 	Vertex,
-	Pixel,
 	Geometry,
+	Pixel,
 	Hull,
 	Domain,
 	Compute
@@ -737,6 +741,7 @@ struct GfxTechniqueDesc
 
 	GfxComputeShader         cs;
 	GfxPixelShader           ps;
+	GfxGeometryShader        gs;
 	GfxVertexShader          vs;
 	GfxVertexFormat          vf;
 	const GfxShaderBindings* bindings = nullptr;

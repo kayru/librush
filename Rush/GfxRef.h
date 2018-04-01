@@ -107,6 +107,7 @@ private:
 typedef GfxRef<GfxVertexFormat>      GfxVertexFormatRef;
 typedef GfxRef<GfxVertexShader>      GfxVertexShaderRef;
 typedef GfxRef<GfxPixelShader>       GfxPixelShaderRef;
+typedef GfxRef<GfxGeometryShader>    GfxGeometryShaderRef;
 typedef GfxRef<GfxComputeShader>     GfxComputeShaderRef;
 typedef GfxRef<GfxTexture>           GfxTextureRef;
 typedef GfxRef<GfxBuffer>            GfxBufferRef;

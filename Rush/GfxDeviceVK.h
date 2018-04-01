@@ -54,6 +54,7 @@ struct TechniqueVK : GfxRefCount
 	GfxShaderBindings                            bindings;
 	GfxRef<GfxVertexFormat>                      vf;
 	GfxRef<GfxVertexShader>                      vs;
+	GfxRef<GfxGeometryShader>                    gs;
 	GfxRef<GfxPixelShader>                       ps;
 	GfxRef<GfxComputeShader>                     cs;
 	VkDescriptorSetLayout                        descriptorSetLayout = VK_NULL_HANDLE;
@@ -394,6 +395,7 @@ public:
 
 	DynamicResourcePool<ShaderVK, GfxVertexShader>                 m_vertexShaders;
 	DynamicResourcePool<ShaderVK, GfxPixelShader>                  m_pixelShaders;
+	DynamicResourcePool<ShaderVK, GfxGeometryShader>               m_geometryShaders;
 	DynamicResourcePool<ShaderVK, GfxComputeShader>                m_computeShaders;
 	DynamicResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
 	DynamicResourcePool<BufferVK, GfxBuffer>                       m_buffers;
