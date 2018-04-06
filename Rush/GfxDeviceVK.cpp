@@ -3114,15 +3114,11 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		RUSH_ASSERT(res.storageBufferCount <= GfxContext::MaxStorageBuffers);
 		RUSH_ASSERT(res.constantBufferCount <= GfxContext::MaxConstantBuffers);
 
-		u32 resourceStageFlags;
-		if (desc.cs.valid())
-		{
-			resourceStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-		}
-		else
-		{
-			resourceStageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
-		}
+		u32 resourceStageFlags = 0;
+		if (desc.cs.valid()) resourceStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+		if (desc.vs.valid()) resourceStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
+		if (desc.gs.valid()) resourceStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+		if (desc.ps.valid()) resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
 
 		for (u32 i = 0; i < res.constantBufferCount; ++i)
 		{
