@@ -733,10 +733,12 @@ struct GfxTechniqueDesc
 	    GfxPixelShader _ps, GfxVertexShader _vs, GfxVertexFormat _vf, const GfxShaderBindings* _bindings = nullptr)
 	: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
 	{
+		for (float& v : waveLimits) v = 1.0f;
 	}
 
 	GfxTechniqueDesc(GfxComputeShader _cs, const GfxShaderBindings* _bindings = nullptr) : cs(_cs), bindings(_bindings)
 	{
+		for (float& v : waveLimits) v = 1.0f;
 	}
 
 	GfxComputeShader         cs;
@@ -751,7 +753,7 @@ struct GfxTechniqueDesc
 	const void*                      specializationData          = nullptr;
 	u32                              specializationDataSize      = 0;
 
-	float waveLimits[u32(GfxStage::count)] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+	float waveLimits[u32(GfxStage::count)];
 };
 
 struct GfxTextureDesc
