@@ -55,7 +55,7 @@ public:
 		pos2     = min(pos2, m_size);
 		size     = pos2 - m_pos;
 
-		std::memcpy(buf, &m_dataRW[m_pos], size);
+		std::memcpy(buf, &m_dataRO[m_pos], size);
 		m_pos = pos2;
 
 		return size;
