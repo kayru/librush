@@ -40,18 +40,31 @@ void Timer::reset()
 u64 Timer::microTime() const
 {
 #if defined(RUSH_PLATFORM_WINDOWS)
-	u64 curtime;
-	u64 elapsed;
-	QueryPerformanceCounter((LARGE_INTEGER*)&curtime);
-	elapsed = curtime - m_start;
-	return elapsed * m_numer / m_denom;
+	return ticks() * m_numer / m_denom;
 #else
-	timeval curtime;
-	gettimeofday(&curtime, nullptr);
-	u64 elapsed = u64(curtime.tv_sec) * 1000000ULL + u64(curtime.tv_usec) - m_start;
-	return elapsed;
+	return ticks();
 #endif
 }
 
 double Timer::time() const { return double(microTime()) / 1e6; }
+
+u64 Timer::ticks() const
+{
+#if defined(RUSH_PLATFORM_WINDOWS)
+	u64 curtime;
+	QueryPerformanceCounter((LARGE_INTEGER*)&curtime);
+	return curtime - m_start;
+#else
+	timeval curtime;
+	gettimeofday(&curtime, nullptr);
+	u64 elapsed = u64(curtime.tv_sec) * 1000000ULL + u64(curtime.tv_usec);
+	return elapsed;
+#endif
+}
+
+u64 Timer::ticksPerSecond() const
+{
+	return m_denom;
+}
+
 }

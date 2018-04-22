@@ -15,6 +15,9 @@ public:
 	u64    microTime() const; // elapsed time in microseconds
 	double time() const;      // elapsed time in seconds
 
+	u64 ticks() const;
+	u64 ticksPerSecond() const;
+
 private:
 	u64 m_start;
 	u64 m_numer;
