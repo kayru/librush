@@ -165,10 +165,11 @@ public:
 
 struct WindowDesc
 {
-	const char* caption   = nullptr;
-	int         width     = 0;
-	int         height    = 0;
-	bool        resizable = false;
+	const char* caption    = nullptr;
+	int         width      = 0;
+	int         height     = 0;
+	bool        resizable  = false;
+	bool        fullScreen = false;
 };
 
 class Window
@@ -183,6 +184,7 @@ public:
 	virtual void  setSize(const Tuple2i& size) = 0;
 	virtual void  setPosition(const Tuple2i& position){};
 	virtual void  setMouseLock(bool state){};
+	virtual bool  setFullscreen(bool state) { return false; }
 
 	void close() { m_closed = true; }
 	bool isClosed() const { return m_closed; }

@@ -4,6 +4,7 @@
 
 #include "Platform.h"
 #include "WindowWin32.h"
+#include "UtilLog.h"
 
 #include <stdio.h>
 #include <tchar.h>
@@ -123,7 +124,7 @@ static Key translateKeyWin32(int key)
 }
 
 WindowWin32::WindowWin32(const WindowDesc& desc)
-: Window(desc), m_hwnd(0), m_pendingSize(m_size), m_maximized(false), m_minimized(false), m_resizing(false)
+: Window(desc), m_hwnd(0), m_pendingSize(m_size), m_windowedSize(m_size)
 {
 	SetProcessDPIAware();
 
@@ -165,6 +166,9 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	RECT clientRect = {posX, posY, posX + m_size.x, posY + m_size.y};
 	AdjustWindowRect(&clientRect, m_windowStyle, FALSE);
 
+	m_windowedPos.x = posX;
+	m_windowedPos.y = posY;
+
 	// create window
 
 	m_hwnd = CreateWindowA("RushWindowWin32",
@@ -182,6 +186,11 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	// setup window owner for message handling
 
 	SetWindowLongPtr(m_hwnd, GWLP_USERDATA, (LONG_PTR)this);
+
+	if (desc.fullScreen)
+	{
+		setFullscreen(true);
+	}
 
 	ShowWindow(m_hwnd, SW_SHOWNORMAL);
 	UpdateWindow(m_hwnd);
@@ -397,6 +406,47 @@ void WindowWin32::setSize(const Tuple2i& size)
 
 	SetWindowPos(m_hwnd, HWND_TOP, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
 	    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+
+	if (!m_fullscreen)
+	{
+		m_windowedSize = size;
+	}
+}
+bool WindowWin32::setFullscreen(bool wantFullScreen)
+{
+	if (wantFullScreen == m_fullscreen)
+	{
+		return true;
+	}
+
+	if (wantFullScreen)
+	{
+		m_windowedSize = m_size;
+
+		RECT rect = {};
+		GetWindowRect(m_hwnd, &rect);
+		m_windowedPos.x = rect.left;
+		m_windowedPos.y = rect.top;
+
+		int w = GetSystemMetrics(SM_CXSCREEN);
+		int h = GetSystemMetrics(SM_CYSCREEN);
+		SetWindowLongPtr(m_hwnd, GWL_STYLE, WS_VISIBLE | WS_POPUP);
+		SetWindowPos(m_hwnd, HWND_TOP, 0, 0, w, h, SWP_FRAMECHANGED);
+	}
+	else
+	{
+		SetWindowLongPtr(m_hwnd, GWL_STYLE, WS_VISIBLE | m_windowStyle);
+		RECT rect = { 0, 0, m_windowedSize.x, m_windowedSize.y };
+		AdjustWindowRect(&rect, m_windowStyle, FALSE);
+		SetWindowPos(m_hwnd, HWND_TOP,
+			m_windowedPos.x, m_windowedPos.y,
+			rect.right - rect.left, rect.bottom - rect.top,
+			SWP_FRAMECHANGED);
+	}
+
+	m_fullscreen = wantFullScreen;
+
+	return true;
 }
 }
 

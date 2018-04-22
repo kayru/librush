@@ -80,11 +80,13 @@ MessageBoxResult Platform_MessageBox(const char* text, const char* caption, Mess
 int Platform_Main(const AppConfig& cfg)
 {
 	WindowDesc windowDesc;
-	windowDesc.width     = cfg.width;
-	windowDesc.height    = cfg.height;
-	windowDesc.resizable = cfg.resizable;
-	windowDesc.caption   = cfg.name;
-	Window* window       = Platform_CreateWindow(windowDesc);
+	windowDesc.width      = cfg.width;
+	windowDesc.height     = cfg.height;
+	windowDesc.resizable  = cfg.resizable;
+	windowDesc.caption    = cfg.name;
+	windowDesc.fullScreen = cfg.fullScreen;
+
+	Window* window = Platform_CreateWindow(windowDesc);
 
 	g_mainWindow = window;
 

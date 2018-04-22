@@ -20,6 +20,7 @@ public:
 	virtual void* nativeHandle();
 	virtual void  setCaption(const char* str);
 	virtual void  setSize(const Tuple2i& size);
+	virtual bool  setFullscreen(bool state);
 
 private:
 	bool processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -39,9 +40,12 @@ private:
 
 	Tuple2i m_pendingSize;
 
-	bool m_maximized;
-	bool m_minimized;
-	bool m_resizing;
+	bool m_maximized = false;
+	bool m_minimized = false;
+	bool m_resizing = false;
+	bool m_fullscreen = false;
+	Tuple2i m_windowedSize;
+	Tuple2i m_windowedPos;
 
 	u32 m_windowStyle = 0;
 };
