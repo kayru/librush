@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 // clang-format off
 namespace Rush
 {

@@ -11,6 +11,7 @@
 
 #ifdef __GNUC__
 #include <limits.h>
+#define _strdup strdup
 #endif
 
 #include <stdlib.h>
@@ -442,8 +443,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	std::vector<const char*> enabledInstanceLayers;
 	std::vector<const char*> enabledInstanceExtensions;
 
+
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_SURFACE_EXTENSION_NAME, true);
+
+#if defined(RUSH_PLATFORM_WINDOWS)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, true);
+#else
+	// TODO
+#endif
 
 	if (cfg.debug)
 	{
@@ -1396,11 +1403,15 @@ void GfxDevice::createSwapChain()
 
 	if (!m_swapChainSurface)
 	{
+#if defined(RUSH_PLATFORM_WINDOWS)
 		VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
 		surfaceCreateInfo.hinstance                   = (HINSTANCE)GetModuleHandle(nullptr);
 		surfaceCreateInfo.hwnd                        = *(HWND*)m_window->nativeHandle();
 
 		V(vkCreateWin32SurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, nullptr, &m_swapChainSurface));
+#else
+		// TODO
+#endif
 	}
 
 	VkBool32 graphicsQueueSupportsPresent = false;

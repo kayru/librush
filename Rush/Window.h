@@ -6,6 +6,7 @@
 #include "UtilTuple.h"
 
 #include <vector>
+#include <cstring>
 
 namespace Rush
 {

@@ -61,9 +61,16 @@ struct Log
 #define RUSH_ERROR
 #endif
 
+#ifdef __GNUC__
+#define RUSH_LOG(text, ...)         {Rush::Log::message(text, ##__VA_ARGS__);}
+#define RUSH_LOG_WARNING(text, ...) {Rush::Log::warning(text, ##__VA_ARGS__); if(Rush::Log::breakOnWarning) RUSH_BREAK;}
+#define RUSH_LOG_ERROR(text, ...)   {Rush::Log::error(text, ##__VA_ARGS__); if(Rush::Log::breakOnError) RUSH_BREAK;}
+#define RUSH_LOG_FATAL(text, ...)   {Rush::Log::fatal(text, ##__VA_ARGS__); if(Rush::Log::breakOnError) RUSH_BREAK;}
+#else
 #define RUSH_LOG(text, ...)         {Rush::Log::message(text, __VA_ARGS__);}
 #define RUSH_LOG_WARNING(text, ...) {Rush::Log::warning(text, __VA_ARGS__); if(Rush::Log::breakOnWarning) RUSH_BREAK;}
 #define RUSH_LOG_ERROR(text, ...)   {Rush::Log::error(text, __VA_ARGS__); if(Rush::Log::breakOnError) RUSH_BREAK;}
 #define RUSH_LOG_FATAL(text, ...)   {Rush::Log::fatal(text, __VA_ARGS__); if(Rush::Log::breakOnError) RUSH_BREAK;}
+#endif
 
 }
