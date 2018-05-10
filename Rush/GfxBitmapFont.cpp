@@ -287,7 +287,7 @@ BitmapFontRenderer::BitmapFontRenderer(const char* fontFilename, const char* tex
 	}
 	else
 	{
-		RUSH_LOG_ERROR("Failed to load bitmap font '%s' (texture path '%')", fontFilename, texturePath);
+		RUSH_LOG_ERROR("Failed to load bitmap font '%s' (texture path '%s')", fontFilename, texturePath);
 	}
 }
 
