@@ -55,7 +55,7 @@ typedef struct VkPhysicalDeviceWaveLimitPropertiesAMD
 #define V(x)                                                                                                           \
 	{                                                                                                                  \
 		auto s = x;                                                                                                    \
-		RUSH_ASSERT(s == VK_SUCCESS);                                                                                  \
+		RUSH_ASSERT_MSG(s == VK_SUCCESS, #x " call failed");                                                           \
 	}
 
 inline void* offsetPtr(void* p, size_t offset) { return static_cast<char*>(p) + offset; }
@@ -345,6 +345,8 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_RGBA32_Float: return VK_FORMAT_R32G32B32A32_SFLOAT;
 	case GfxFormat_BGRA8_Unorm: return VK_FORMAT_B8G8R8A8_UNORM;
 	case GfxFormat_RGBA8_Unorm: return VK_FORMAT_R8G8B8A8_UNORM;
+	case GfxFormat_BGRA8_sRGB: return VK_FORMAT_B8G8R8A8_SRGB;
+	case GfxFormat_RGBA8_sRGB: return VK_FORMAT_R8G8B8A8_SRGB;
 	case GfxFormat_D32_Float_S8_Uint: return VK_FORMAT_D32_SFLOAT_S8_UINT;
 	case GfxFormat_D24_Unorm_S8_Uint:
 		// return VK_FORMAT_D24_UNORM_S8_UINT;
@@ -448,8 +450,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 #if defined(RUSH_PLATFORM_WINDOWS)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, true);
+#elif defined(RUSH_PLATFORM_LINUX)
+	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_XCB_SURFACE_EXTENSION_NAME, true);
 #else
-	// TODO
+	RUSH_LOG_FATAL("Vulkan surface extension is not implemented for this platform");
 #endif
 
 	if (cfg.debug)
@@ -1407,16 +1411,22 @@ void GfxDevice::createSwapChain()
 		VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
 		surfaceCreateInfo.hinstance                   = (HINSTANCE)GetModuleHandle(nullptr);
 		surfaceCreateInfo.hwnd                        = *(HWND*)m_window->nativeHandle();
-
 		V(vkCreateWin32SurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, nullptr, &m_swapChainSurface));
+#elif defined(RUSH_PLATFORM_LINUX)
+		VkXcbSurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR};
+		surfaceCreateInfo.connection                = (xcb_connection_t*)m_window->nativeConnection();
+		surfaceCreateInfo.window                    = (xcb_window_t)(uintptr_t(m_window->nativeHandle()) & 0xFFFFFFFF);
+		V(vkCreateXcbSurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, nullptr, &m_swapChainSurface));
 #else
-		// TODO
+		RUSH_LOG_FATAL("GfxDevice::createSwapChain() is not implemented");
 #endif
 	}
 
 	VkBool32 graphicsQueueSupportsPresent = false;
+
 	vkGetPhysicalDeviceSurfaceSupportKHR(
 	    m_physicalDevice, m_graphicsQueueIndex, m_swapChainSurface, &graphicsQueueSupportsPresent);
+
 	RUSH_ASSERT(graphicsQueueSupportsPresent); // TODO: support configurations when this is not the case
 
 	VkSurfaceCapabilitiesKHR surfCaps;
@@ -1436,10 +1446,21 @@ void GfxDevice::createSwapChain()
 
 	u32 desiredSwapChainImageCount = max<u32>(m_desiredSwapChainImageCount, surfCaps.minImageCount);
 
-	auto           enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
-	const VkFormat swapChainColorFormat     = enumeratedSurfaceFormats[0].format;
+	auto enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
 
-	const VkColorSpaceKHR swapChainColorSpace = enumeratedSurfaceFormats[0].colorSpace;
+	size_t preferredFormatIndex = 0;
+	for (size_t i=0; i<enumeratedSurfaceFormats.size(); ++i)
+	{
+		if (enumeratedSurfaceFormats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
+			enumeratedSurfaceFormats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
+		{
+			preferredFormatIndex = i;
+			break;
+		}
+	}
+
+	const VkFormat swapChainColorFormat       = enumeratedSurfaceFormats[preferredFormatIndex].format;
+	const VkColorSpaceKHR swapChainColorSpace = enumeratedSurfaceFormats[preferredFormatIndex].colorSpace;
 
 	VkSwapchainCreateInfoKHR swapChainCreateInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
 	swapChainCreateInfo.surface                  = m_swapChainSurface;
@@ -1447,16 +1468,16 @@ void GfxDevice::createSwapChain()
 	swapChainCreateInfo.imageFormat              = swapChainColorFormat;
 	swapChainCreateInfo.imageColorSpace          = swapChainColorSpace;
 	swapChainCreateInfo.imageExtent              = m_swapChainExtent;
-	swapChainCreateInfo.imageUsage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	swapChainCreateInfo.preTransform          = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	swapChainCreateInfo.imageArrayLayers      = 1;
-	swapChainCreateInfo.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
-	swapChainCreateInfo.queueFamilyIndexCount = 0;
-	swapChainCreateInfo.pQueueFamilyIndices   = nullptr;
-	swapChainCreateInfo.presentMode           = m_pendingSwapChainPresentMode;
-	swapChainCreateInfo.oldSwapchain          = m_swapChain;
-	swapChainCreateInfo.clipped               = true;
-	swapChainCreateInfo.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapChainCreateInfo.imageUsage               = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	swapChainCreateInfo.preTransform             = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	swapChainCreateInfo.imageArrayLayers         = 1;
+	swapChainCreateInfo.imageSharingMode         = VK_SHARING_MODE_EXCLUSIVE;
+	swapChainCreateInfo.queueFamilyIndexCount    = 0;
+	swapChainCreateInfo.pQueueFamilyIndices      = nullptr;
+	swapChainCreateInfo.presentMode              = m_pendingSwapChainPresentMode;
+	swapChainCreateInfo.oldSwapchain             = m_swapChain;
+	swapChainCreateInfo.clipped                  = true;
+	swapChainCreateInfo.compositeAlpha           = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	GfxTextureDesc depthBufferDesc = GfxTextureDesc::make2D(
 	    m_swapChainExtent.width, m_swapChainExtent.height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil);
@@ -1497,7 +1518,6 @@ void GfxDevice::createSwapChain()
 		default: RUSH_ERROR;
 
 		case VK_FORMAT_B8G8R8A8_UNORM: swapChainFormat = GfxFormat_BGRA8_Unorm; break;
-
 		case VK_FORMAT_R8G8B8A8_UNORM: swapChainFormat = GfxFormat_RGBA8_Unorm; break;
 		}
 

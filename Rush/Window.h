@@ -180,6 +180,7 @@ class Window
 public:
 	Window(const WindowDesc& desc);
 
+	virtual void* nativeConnection() { return nullptr; }
 	virtual void* nativeHandle()               = 0;
 	virtual void  setCaption(const char* str)  = 0;
 	virtual void  setSize(const Tuple2i& size) = 0;

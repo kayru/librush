@@ -13,6 +13,10 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
+#ifdef RUSH_PLATFORM_LINUX
+#define VK_USE_PLATFORM_XCB_KHR
+#endif
+
 #include <vulkan/vulkan.h>
 
 namespace Rush

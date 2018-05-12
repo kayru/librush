@@ -32,6 +32,7 @@ set(RUSH_SRC
 	Rush/Platform.cpp
 	Rush/Platform.h
 	Rush/PlatformWin32.cpp
+	Rush/PlatformLinux.cpp
 	Rush/Rush.h
 	Rush/UtilCamera.cpp
 	Rush/UtilCamera.h
@@ -54,6 +55,8 @@ set(RUSH_SRC
 	Rush/Window.h
 	Rush/WindowWin32.cpp
 	Rush/WindowWin32.h
+	Rush/WindowXCB.cpp
+	Rush/WindowXCB.h
 )
 
 add_library(Rush STATIC ${RUSH_SRC})
@@ -68,6 +71,15 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		NOMINMAX
 		WIN32_LEAN_AND_MEAN
 	)
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+	target_compile_definitions(Rush PUBLIC
+		RUSH_PLATFORM_LINUX
+	)
+	# Should try to detect XCB support, but assume it exists in standard locations for now...
+	# find_package(XCB REQUIRED)
+	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
+	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
+	target_link_libraries(Rush INTERFACE xcb)
 endif()
 
 if (${RUSH_RENDER_API} MATCHES "NULL")

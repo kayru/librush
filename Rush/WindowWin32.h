@@ -33,7 +33,6 @@ private:
 
 	void finishResizing();
 
-private:
 	HWND m_hwnd;
 
 	std::string m_caption;
