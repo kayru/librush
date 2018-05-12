@@ -79,7 +79,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	# find_package(XCB REQUIRED)
 	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
 	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
-	target_link_libraries(Rush INTERFACE xcb)
+	target_link_libraries(Rush INTERFACE xcb xcb-keysyms)
 endif()
 
 if (${RUSH_RENDER_API} MATCHES "NULL")

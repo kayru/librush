@@ -22,6 +22,7 @@ public:
 	virtual void  setCaption(const char* str) override;
 	virtual void  setSize(const Tuple2i& size) override;
 	virtual bool  setFullscreen(bool state) override;
+	virtual void  pollEvents() override;
 
 private:
 	xcb_window_t m_nativeHandle = 0;

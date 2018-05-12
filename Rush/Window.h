@@ -187,6 +187,8 @@ public:
 	virtual void  setPosition(const Tuple2i& position){};
 	virtual void  setMouseLock(bool state){};
 	virtual bool  setFullscreen(bool state) { return false; }
+	virtual void  pollEvents() { }
+
 
 	void close() { m_closed = true; }
 	bool isClosed() const { return m_closed; }
