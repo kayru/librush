@@ -231,7 +231,7 @@ BitmapFontDesc::BitmapFontDesc() : m_pageCount(0), m_size(0)
 	std::memset(&m_chars, 0, sizeof(m_chars));
 }
 
-#if RUSH_RENDER_API != RUSH_RENDER_API_NONE
+#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 BitmapFontRenderer::BitmapFontRenderer(const BitmapFontData& data) : m_scale(1.0f)
 {
 	m_fontDesc = data.font;
@@ -480,7 +480,7 @@ BitmapFontData BitmapFontRenderer::createEmbeddedFont(bool shadow, u32 pad_x, u3
 }
 
 void BitmapFontRenderer::setScale(float scale) { m_scale = scale; }
-#endif // RUSH_RENDER_API != RUSH_RENDER_API_NONE
+#endif // RUSH_RENDER_API != RUSH_RENDER_API_NULL
 
 // clang-format off
 static const u32 g_embeddedFontBitmap6x8[] =

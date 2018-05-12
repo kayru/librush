@@ -53,7 +53,7 @@ struct BitmapFontData
 	u32              height;
 };
 
-#if RUSH_RENDER_API != RUSH_RENDER_API_NONE
+#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 class BitmapFontRenderer
 {
 public:

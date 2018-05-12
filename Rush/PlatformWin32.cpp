@@ -111,7 +111,7 @@ int Platform_Main(const AppConfig& cfg)
 
 	while (window->isClosed() == false)
 	{
-#if RUSH_RENDER_API != RUSH_RENDER_API_NONE
+#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 		Gfx_BeginFrame();
 
 		if (cfg.onUpdate)
@@ -121,7 +121,7 @@ int Platform_Main(const AppConfig& cfg)
 
 		Gfx_EndFrame();
 		Gfx_Present();
-#endif // RUSH_RENDER_API!=RUSH_RENDER_API_NONE
+#endif // RUSH_RENDER_API!=RUSH_RENDER_API_NULL
 
 		MSG msg;
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
