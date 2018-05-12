@@ -57,7 +57,7 @@ u64 Timer::ticks() const
 #else
 	timeval curtime;
 	gettimeofday(&curtime, nullptr);
-	u64 elapsed = u64(curtime.tv_sec) * 1000000ULL + u64(curtime.tv_usec);
+	u64 elapsed = (u64(curtime.tv_sec) * 1000000ULL + u64(curtime.tv_usec)) - m_start;
 	return elapsed;
 #endif
 }
