@@ -70,7 +70,7 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 		XCB_EVENT_MASK_ENTER_WINDOW |
 		XCB_EVENT_MASK_LEAVE_WINDOW |
 		XCB_EVENT_MASK_POINTER_MOTION |
-		XCB_EVENT_MASK_POINTER_MOTION_HINT |
+		//XCB_EVENT_MASK_POINTER_MOTION_HINT |
 		XCB_EVENT_MASK_BUTTON_1_MOTION |
 		XCB_EVENT_MASK_BUTTON_2_MOTION |
 		XCB_EVENT_MASK_BUTTON_3_MOTION |
@@ -249,13 +249,58 @@ void WindowXCB::pollEvents()
 		xcb_generic_event_t* xcbEvent = xcb_poll_for_event(g_xcbConnection);
 		if (!xcbEvent) break;
 
+		u32 mouseButtonRemap[4] = {0, 0, 2, 1};
+
 		const u8 eventCode = xcbEvent->response_type & 0x7f;
-		switch (eventCode) 
+		switch (eventCode)
 		{
+			case XCB_CONFIGURE_NOTIFY:
+			{
+				const xcb_configure_notify_event_t* event = (const xcb_configure_notify_event_t *)xcbEvent;
+				break;
+			}
+			case XCB_MOTION_NOTIFY:
+			{
+				const xcb_motion_notify_event_t* event = (const xcb_motion_notify_event_t *)xcbEvent;
+				m_mouse.pos.x = event->event_x;
+				m_mouse.pos.y = event->event_y;
+				broadcast(WindowEvent::MouseMove(Vec2(m_mouse.pos)));
+				break;
+			}
+			case XCB_BUTTON_PRESS:
+			{
+				const xcb_button_press_event_t* event = (const xcb_button_press_event_t *)xcbEvent;
+				if (event->detail > 0 && event->detail < 4)
+				{
+					u32 idx = mouseButtonRemap[event->detail];
+					m_mouse.buttons[idx] = true;
+					m_mouse.pos.x = event->event_x;
+					m_mouse.pos.y = event->event_y;
+					broadcast(WindowEvent::MouseDown(m_mouse.pos, idx, false));
+				}
+				else if(event->detail == 4) broadcast(WindowEvent::Scroll(0.0, 1.0));
+				else if(event->detail == 5) broadcast(WindowEvent::Scroll(0.0, -1.0));
+				else if(event->detail == 6) broadcast(WindowEvent::Scroll(1.0, 0.0));
+				else if(event->detail == 7) broadcast(WindowEvent::Scroll(-1.0, 0.0));
+
+				break;
+			}
+			case XCB_BUTTON_RELEASE:
+			{
+				const xcb_button_release_event_t* event = (const xcb_button_release_event_t *)xcbEvent;
+				if (event->detail > 0 && event->detail <= 3)
+				{
+					u32 idx = mouseButtonRemap[event->detail];
+					m_mouse.buttons[idx] = false;
+					m_mouse.pos.x = event->event_x;
+					m_mouse.pos.y = event->event_y;
+					broadcast(WindowEvent::MouseUp(m_mouse.pos, idx));
+				}
+				break;
+			}
 			case XCB_KEY_PRESS:
 			{
 				const xcb_key_press_event_t* event = (const xcb_key_press_event_t *)xcbEvent;
-				RUSH_LOG("press state: %d %d", event->state, event->time);
 				Key key = translateKeyXCB(event->detail);
 				m_keyboard.keys[key] = true;
 				broadcast(WindowEvent::KeyDown(key));
@@ -263,7 +308,6 @@ void WindowXCB::pollEvents()
 			case XCB_KEY_RELEASE:
 			{
 				const xcb_key_release_event_t* event = (const xcb_key_release_event_t *)xcbEvent;
-				RUSH_LOG("release state: %d %d", event->state, event->time);
 				Key key = translateKeyXCB(event->detail);
 				m_keyboard.keys[key] = false;
 				broadcast(WindowEvent::KeyUp(key));
