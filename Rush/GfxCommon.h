@@ -32,9 +32,9 @@
 #	ifdef RUSH_PLATFORM_RPI
 #		define RUSH_RENDER_API RUSH_RENDER_API_GLES2
 #	endif // RUSH_PLATFORM_RPI
-#	ifdef RUSH_PLATFORM_MACOS
-#		define RUSH_RENDER_API RUSH_RENDER_API_GL
-#	endif // RUSH_PLATFORM_MACOS
+#	ifdef RUSH_PLATFORM_MAC
+#		define RUSH_RENDER_API RUSH_RENDER_API_MTL
+#	endif // RUSH_PLATFORM_MAC
 #	ifdef RUSH_PLATFORM_LINUX
 #		define RUSH_RENDER_API RUSH_RENDER_API_VK
 #	endif // RUSH_PLATFORM_LINUX
@@ -130,12 +130,12 @@ enum class TextureType : u8
 enum GfxShaderSourceType : u8
 {
 	GfxShaderSourceType_Unknown,
-	GfxShaderSourceType_SPV,
-	GfxShaderSourceType_GLSL,
-	GfxShaderSourceType_HLSL,
-	GfxShaderSourceType_DXBC,
-	GfxShaderSourceType_DXIL,
-	GfxShaderSourceType_Metal,
+	GfxShaderSourceType_SPV,  // binary
+	GfxShaderSourceType_GLSL, // text
+	GfxShaderSourceType_HLSL, // text
+	GfxShaderSourceType_DXBC, // binary
+	GfxShaderSourceType_DXIL, // binary
+	GfxShaderSourceType_MSL,  // text
 };
 
 enum GfxFormatType : u8

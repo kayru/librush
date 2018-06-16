@@ -9,11 +9,14 @@ set(RUSH_RENDER_API "NULL" CACHE STRING "Select renderer type")
 set_property(CACHE RUSH_RENDER_API PROPERTY STRINGS
 	NULL
 	VK
+	MTL
 )
+
+add_library(Rush STATIC)
 
 # Add source files
 
-set(RUSH_SRC
+target_sources(Rush PRIVATE
 	Rush/GfxBitmapFont.cpp
 	Rush/GfxBitmapFont.h
 	Rush/GfxCommon.cpp
@@ -59,11 +62,11 @@ set(RUSH_SRC
 	Rush/WindowXCB.h
 )
 
-add_library(Rush STATIC ${RUSH_SRC})
 target_include_directories(Rush INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(Rush PUBLIC cxx_std_14)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+
 	target_compile_definitions(Rush PUBLIC
 		RUSH_PLATFORM_WINDOWS
 	)
@@ -71,7 +74,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		NOMINMAX
 		WIN32_LEAN_AND_MEAN
 	)
+
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+
 	target_compile_definitions(Rush PUBLIC
 		RUSH_PLATFORM_LINUX
 	)
@@ -80,6 +85,18 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
 	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
 	target_link_libraries(Rush INTERFACE xcb xcb-keysyms)
+
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+	target_compile_definitions(Rush PUBLIC
+		RUSH_PLATFORM_MAC
+	)
+	target_sources(Rush PRIVATE
+		Rush/PlatformMac.mm
+		Rush/WindowMac.h
+		Rush/WindowMac.mm
+	)
+
 endif()
 
 if (${RUSH_RENDER_API} MATCHES "NULL")
@@ -101,4 +118,29 @@ if (${RUSH_RENDER_API} MATCHES "VK")
 	)
 endif()
 
+if (${RUSH_RENDER_API} MATCHES "MTL")
+	find_library(Metal_LIBRARIES Metal)
+	find_library(AppKit_LIBRARIES AppKit)
+	find_library(QuartzCore_LIBRARIES QuartzCore)
+	target_link_libraries(Rush INTERFACE 
+		${Metal_LIBRARIES}
+		${AppKit_LIBRARIES}
+		${QuartzCore_LIBRARIES}
+	)
+	target_compile_definitions(Rush PUBLIC
+		RUSH_RENDER_API=RUSH_RENDER_API_MTL
+	)
+	target_sources(Rush PRIVATE
+		Rush/GfxDeviceMtl.h
+		Rush/GfxDeviceMtl.mm
+		Rush/GfxEmbeddedShadersMSL.cpp
+	)
+endif()
+
 source_group("" FILES ${RUSH_SRC})
+
+if (MSVC)
+	target_compile_options(Rush PRIVATE "-W4")
+else()
+	target_compile_options(Rush PRIVATE "-Wall")
+endif()

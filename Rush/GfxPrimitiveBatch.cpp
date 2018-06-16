@@ -55,9 +55,22 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 		m_pixelShaderTextured = Gfx_CreatePixelShader(
 		    GfxShaderSource(GfxShaderSourceType_DXBC, (const char*)DXBC_psMainTextured_data, DXBC_psMainTextured_size));
 	}
+	else if (caps.shaderTypeSupported(GfxShaderSourceType_MSL))
+	{
+		extern const char* MSL_EmbeddedShaders;
+
+		m_vertexShader2D = Gfx_CreateVertexShader(
+		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain2D"));
+		m_vertexShader3D = Gfx_CreateVertexShader(
+		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain3D"));
+		m_pixelShaderPlain = Gfx_CreatePixelShader(
+		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMain"));
+		m_pixelShaderTextured = Gfx_CreatePixelShader(
+		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMainTextured"));
+	}
 	else
 	{
-		RUSH_LOG_ERROR("Rendering back-end does not support SPIR-V or DXBC shaders.");
+		RUSH_LOG_FATAL("Rendering back-end does not support SPIR-V, DXBC or MSL shaders.");
 	}
 
 	BatchVertexFormat fmt_desc;
@@ -170,10 +183,11 @@ void PrimitiveBatch::flush()
 		return;
 
 	GfxTechnique next_technique = getNextTechnique();
+	
+	Gfx_SetTechnique(m_context, next_technique);
 
 	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), (u32)m_vertices.sizeInBytes());
 	Gfx_SetTexture(m_context, GfxStage::Pixel, 0, m_currTexture, m_currSampler);
-	Gfx_SetTechnique(m_context, next_technique);
 	Gfx_SetVertexStream(m_context, 0, m_vertexBuffer);
 	Gfx_SetPrimitive(m_context, m_currPrim);
 

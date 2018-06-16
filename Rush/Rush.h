@@ -8,7 +8,7 @@
 
 #if    !defined(RUSH_PLATFORM_WINDOWS) \
 	&& !defined(RUSH_PLATFORM_LINUX) \
-	&& !defined(RUSH_PLATFORM_MACOS) \
+	&& !defined(RUSH_PLATFORM_MAC) \
 	&& !defined(RUSH_PLATFORM_IOS) \
 	&& !defined(RUSH_PLATFORM_RPI) \
 	&& !defined(RUSH_PLATFORM_EMSCRIPTEN) \
@@ -21,7 +21,7 @@
 #   endif
 #   if defined(__APPLE__)
 #       if defined(__MACH__)
-#           define RUSH_PLATFORM_MACOS
+#           define RUSH_PLATFORM_MAC
 #       else
 #           define RUSH_PLATFORM_IOS
 #       endif

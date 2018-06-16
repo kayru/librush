@@ -298,7 +298,7 @@ GfxShaderSource::GfxShaderSource(GfxShaderSourceType _type, const char* _code, s
 : type(_type), entry(_entry)
 {
 	if ((_type == GfxShaderSourceType_GLSL || _type == GfxShaderSourceType_HLSL ||
-	        _type == GfxShaderSourceType_Metal) &&
+	        _type == GfxShaderSourceType_MSL) &&
 	    _size == 0)
 	{
 		_size = (size_t)strlen(_code) + 1;
