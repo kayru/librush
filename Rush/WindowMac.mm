@@ -279,30 +279,42 @@ bool WindowMac::processEvent(NSEvent* event)
 	NSEventType eventType = [event type];
 	switch (eventType)
 	{
-		case NSEventTypeMouseMoved:
-			//Log::message("NSMouseMoved");
-			return false;
 		case NSEventTypeLeftMouseDragged:
-			//Log::message("NSLeftMouseDragged");
-			return false;
 		case NSEventTypeRightMouseDragged:
-			//Log::message("NSRightMouseDragged");
-			return false;
 		case NSEventTypeOtherMouseDragged:
-			//Log::message("NSOtherMouseDragged");
-			return false;
+		case NSEventTypeMouseMoved:
+		{
+			NSPoint mouseLocation = [event locationInWindow];
+			float xPos = mouseLocation.x;
+			float yPos = getSize().y - mouseLocation.y;
+			m_mouse.pos = Vec2(xPos, yPos);
+			broadcast(WindowEvent::MouseMove(m_mouse.pos));
+			return true;
+		}
 		case NSEventTypeLeftMouseDown:
-			//Log::message("NSLeftMouseDown");
-			return false;
+		{
+			m_mouse.buttons[0] = true;
+			broadcast(WindowEvent::MouseDown(m_mouse.pos, 0, false));
+			return true;
+		}
 		case NSEventTypeLeftMouseUp:
-			//Log::message("NSLeftMouseUp");
+		{
+			m_mouse.buttons[0] = false;
+			broadcast(WindowEvent::MouseUp(m_mouse.pos, 0));
 			return false;
+		}
 		case NSEventTypeRightMouseDown:
-			//Log::message("NSRightMouseDown");
-			return false;
+		{
+			m_mouse.buttons[1] = true;
+			broadcast(WindowEvent::MouseDown(m_mouse.pos, 1, false));
+			return true;
+		}
 		case NSEventTypeRightMouseUp:
-			//Log::message("NSRightMouseUp");
-			return false;
+		{
+			m_mouse.buttons[1] = false;
+			broadcast(WindowEvent::MouseUp(m_mouse.pos, 1));
+			return true;
+		}
 		case NSEventTypeOtherMouseDown:
 			//Log::message("NSOtherMouseDown");
 			return false;
@@ -310,14 +322,25 @@ bool WindowMac::processEvent(NSEvent* event)
 			//Log::message("NSOtherMouseUp");
 			return false;
 		case NSEventTypeScrollWheel:
-			//Log::message("NSScrollWheel");
-			return false;
+		{
+			float deltaY = [event deltaY] * 0.25f;
+			m_mouse.wheelV += deltaY;
+			broadcast(WindowEvent::Scroll(0.0f, deltaY));
+			return true;
+		}
 		case NSEventTypeKeyDown:
 		{
 			Key key = translateKeyMac(event);
 			m_keyboard.keys[key] = true;
 			auto e = WindowEvent::KeyDown(key);
 			broadcast(e);
+
+			NSString* chars = [event charactersIgnoringModifiers];
+			if ([chars length] != 0)
+			{
+				broadcast(WindowEvent::Char([chars characterAtIndex:0]));
+			}
+
 			return true;
 		}
 		case NSEventTypeKeyUp:
