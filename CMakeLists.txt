@@ -26,6 +26,7 @@ target_sources(Rush PRIVATE
 	Rush/GfxDeviceVK.h
 	Rush/GfxEmbeddedShaders.cpp
 	Rush/GfxEmbeddedShaders.h
+	Rush/GfxEmbeddedShadersMSL.cpp
 	Rush/GfxPrimitiveBatch.cpp
 	Rush/GfxPrimitiveBatch.h
 	Rush/GfxRef.h
@@ -84,7 +85,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	# find_package(XCB REQUIRED)
 	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
 	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
-	target_link_libraries(Rush INTERFACE xcb xcb-keysyms)
+	target_link_libraries(Rush INTERFACE xcb xcb-keysyms pthread)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
@@ -133,7 +134,6 @@ if (${RUSH_RENDER_API} MATCHES "MTL")
 	target_sources(Rush PRIVATE
 		Rush/GfxDeviceMtl.h
 		Rush/GfxDeviceMtl.mm
-		Rush/GfxEmbeddedShadersMSL.cpp
 	)
 endif()
 

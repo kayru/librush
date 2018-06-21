@@ -6,6 +6,9 @@
 
 namespace Rush
 {
+
+extern const char* MSL_EmbeddedShaders;
+
 class BatchVertexFormat : public GfxVertexFormatDesc
 {
 public:
@@ -57,8 +60,6 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	}
 	else if (caps.shaderTypeSupported(GfxShaderSourceType_MSL))
 	{
-		extern const char* MSL_EmbeddedShaders;
-
 		m_vertexShader2D = Gfx_CreateVertexShader(
 		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain2D"));
 		m_vertexShader3D = Gfx_CreateVertexShader(
