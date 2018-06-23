@@ -128,7 +128,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.debugOutput = false;
 	m_caps.debugMarkers = true;
 	m_caps.interopOpenCL = false;
-	m_caps.separateSamplers = false; // TODO: this just needs to be implemented
+	m_caps.separateSamplers = true;
 	m_caps.combinedSamplers = false; // TODO: could technically support this
 
 	m_caps.apiName = "Metal";
