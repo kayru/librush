@@ -6,6 +6,9 @@
 #if defined(RUSH_PLATFORM_MAC)
 
 #import <Cocoa/Cocoa.h>
+#include <mach-o/dyld.h>
+#include <limits.h>
+#include <string_view>
 
 using namespace Rush;
 
@@ -71,7 +74,19 @@ Window*     Platform_GetWindow() { return g_mainWindow; }
 
 const char* Platform_GetExecutableDirectory()
 {
-	return "."; // TODO
+	constexpr u32 maxLength = PATH_MAX + 1;
+	static char result[maxLength];
+	if (result[0] == 0)
+	{
+		u32 resultLength = maxLength;
+		_NSGetExecutablePath(result, &resultLength);
+		size_t lastSlash = std::string_view(result, resultLength).find_last_of("/");
+		if (lastSlash != std::string::npos)
+		{
+			result[lastSlash] = 0;
+		}
+	}
+	return result;
 }
 
 MessageBoxResult Platform_MessageBox(const char* text, const char* caption, MessageBoxType type)
