@@ -14,6 +14,7 @@ struct Constants
 {
 	float4x4 matViewProj;
 	float4 transform2D;
+	float4 color;
 };
 
 struct VSInput
@@ -42,7 +43,7 @@ vertex VSOutput vsMain3D(
 {
 	VSOutput res;
     res.pos = float4(v.pos, 1) * cb.matViewProj;
-	res.col = v.col;
+	res.col = v.col * cb.color;
 	res.tex = v.tex;
 	return res;
 }
@@ -54,7 +55,7 @@ vertex VSOutput vsMain2D(
 	VSOutput res;
     res.pos.xy = v.pos.xy * cb.transform2D.xy + cb.transform2D.zw;
 	res.pos.zw = float2(v.pos.z, 1);
-	res.col = v.col;
+	res.col = v.col * cb.color;
 	res.tex = v.tex;
 	return res;
 }
