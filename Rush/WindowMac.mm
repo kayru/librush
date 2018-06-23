@@ -254,6 +254,7 @@ static Key translateKeyMac(const NSEvent* event)
 		case '[':				return Key_LeftBracket;
 		case '\\':				return Key_Backslash;
 		case ']':				return Key_RightBracket;
+		case '\r':				return Key_Enter;
 		case NSRightArrowFunctionKey: 			return Key_Right;
 		case NSLeftArrowFunctionKey: 			return Key_Left;
 		case NSDownArrowFunctionKey: 			return Key_Down;
