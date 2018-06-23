@@ -313,6 +313,11 @@ ShaderMTL ShaderMTL::create(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_MSL);
 	const char* entryName = code.entry;
+	if (!strcmp(entryName, "main"))
+	{
+		entryName = "main0";
+	}
+
 	const char* sourceText = code.data();
 	RUSH_ASSERT(sourceText);
 
@@ -337,7 +342,7 @@ ShaderMTL ShaderMTL::create(const GfxShaderSource& code)
 
 	if(!result.function)
 	{
-		Log::error("Can't create shader entry point '%s'", code.entry);
+		Log::error("Can't create shader entry point '%s'", entryName);
 	}
 
 	return result;
@@ -456,7 +461,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 					
 				case GfxBindingType_ConstantBuffer: ++constantBufferCount; break;
 				case GfxBindingType_CombinedSampler:
-					RUSH_LOG_ERROR("Combined textures/samplers are not supported by Metal back-end");
+					RUSH_LOG_WARNING("Combined textures/samplers are not supported by Metal back-end");
 					break;
 				case GfxBindingType_Sampler: ++samplerCount; break;
 				case GfxBindingType_Texture: ++sampledImageCount; break;
@@ -1076,6 +1081,13 @@ void GfxContext::applyState()
 			u32 slot = technique.storageImageOffset + i;
 			[m_computeCommandEncoder setTexture:texture atIndex:slot];
 		}
+
+		for (u32 i=0; i<GfxContext::MaxStorageBuffers; ++i)
+		{
+			id<MTLBuffer> buffer = g_device->m_buffers[m_storageBuffers[i].get()].native;
+			u32 slot = technique.storageBufferOffset + i;
+			[m_computeCommandEncoder setBuffer:buffer offset:0 atIndex:slot];
+		}
 	}
 
 	m_dirtyState = 0;
@@ -1241,9 +1253,12 @@ void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTexture h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageImage;
 }
 
-void Gfx_SetStorageBuffer(GfxContext* rc, GfxStage stage, u32 idx, GfxBuffer h)
+void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
 {
-	Log::error("Not implemented");
+	RUSH_ASSERT(idx < GfxContext::MaxStorageBuffers);
+
+	rc->m_storageBuffers[idx].retain(h);
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 }
 
 void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
@@ -1377,6 +1392,16 @@ void Gfx_PopMarker(GfxContext* rc)
 	{
 		[rc->m_commandEncoder popDebugGroup];
 	}
+}
+
+void Gfx_BeginTimer(GfxContext* rc, u32 timestampId)
+{
+	// TODO
+}
+
+void Gfx_EndTimer(GfxContext* rc, u32 timestampId)
+{
+	// TODO
 }
 
 void Gfx_Retain(GfxDevice* dev)

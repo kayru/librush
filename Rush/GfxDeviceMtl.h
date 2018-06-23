@@ -186,6 +186,7 @@ public:
 	GfxDepthStencilStateRef m_pendingDepthStencilState;
 	GfxBufferRef m_constantBuffers[MaxConstantBuffers];
 	GfxTextureRef m_storageImages[MaxStorageImages];
+	GfxBufferRef m_storageBuffers[MaxStorageBuffers];
 	GfxPassDesc m_passDesc;
 
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;
