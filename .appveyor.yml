@@ -10,10 +10,12 @@ configuration:
   - Debug
   - RelWithDebInfo
 
-install:
+init:
   - if not exist %VULKAN_SDK% mkdir %VULKAN_SDK%
   - appveyor DownloadFile https://kayru.org/stuff/MiniVulkanSDK-1.1.73.0.7z -FileName %VULKAN_SDK%\MiniVulkanSDK.7z
   - 7z x -o%VULKAN_SDK% %VULKAN_SDK%\MiniVulkanSDK.7z
+
+install:
   - cmake -G "Visual Studio 15 2017 Win64" -DRUSH_RENDER_API=VK -B.\Build\vs2017-vk -H.
 
 build:
