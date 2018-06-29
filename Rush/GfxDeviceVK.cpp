@@ -55,6 +55,7 @@ typedef struct VkPhysicalDeviceWaveLimitPropertiesAMD
 #define V(x)                                                                                                           \
 	{                                                                                                                  \
 		auto s = x;                                                                                                    \
+		RUSH_UNUSED(s);                                                                                                \
 		RUSH_ASSERT_MSG(s == VK_SUCCESS, #x " call failed");                                                           \
 	}
 
@@ -847,7 +848,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_currentFrame                         = &m_frameData.back();
 	m_currentFrame->presentSemaphoreWaited = true;
 
-	BlendStateVK& defaultBlendState = m_blendStates[InvalidResourceHandle()];
+	BlendStateVK& defaultBlendState = m_blendStates[InvalidResourceHandle{}];
 	defaultBlendState.id            = generateId();
 	defaultBlendState.desc.src      = GfxBlendParam::One;
 	defaultBlendState.desc.alphaSrc = GfxBlendParam::One;
@@ -2566,7 +2567,7 @@ void GfxDevice::flushUploadContext(GfxContext* dependentContext, bool waitForCom
 
 static void writeTimestamp(GfxContext* context, u32 slotIndex, VkPipelineStageFlagBits stageFlags)
 {
-	g_device->m_currentFrame->timestampSlotMap[slotIndex] = g_device->m_currentFrame->timestampIssuedCount;
+	g_device->m_currentFrame->timestampSlotMap[slotIndex] = u16(g_device->m_currentFrame->timestampIssuedCount);
 	vkCmdWriteTimestamp(context->m_commandBuffer,
 		stageFlags,
 		g_device->m_currentFrame->timestampPool,
@@ -3740,7 +3741,6 @@ void Gfx_DestroyRasterizerState(GfxRasterizerState h) { releaseResource(g_device
 static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 {
 	VkBufferCreateInfo bufferCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-	GfxBufferFlags bufferType = desc.flags & GfxBufferFlags::TypeMask;
 
 	if (!!(desc.flags & GfxBufferFlags::Vertex))
 	{
@@ -4420,8 +4420,6 @@ void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBuffer h, size_t offset
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
 	RUSH_ASSERT(index < RUSH_COUNTOF(GfxContext::m_pending.constantBuffers));
-
-	const auto& buffer = g_device->m_buffers[h];
 
 	if (rc->m_pending.constantBuffers[index] != h || rc->m_pending.constantBufferOffsets[index] != offset)
 	{

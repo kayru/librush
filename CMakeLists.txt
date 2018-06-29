@@ -140,7 +140,15 @@ endif()
 source_group("" FILES ${RUSH_SRC})
 
 if (MSVC)
-	target_compile_options(Rush PRIVATE "-W4")
+	target_compile_options(Rush PRIVATE
+		-W4
+		-WX
+		-wd4201 # nonstandard extension used: nameless struct/union
+		-wd4100 # unreferenced formal parameter
+		-wd4505 # unreferenced local function has been removed
+	)
+	# target_compile_options(Rush PRIVATE )
+	#-WX -w4201 -w4100 -wd4514
 else()
-	target_compile_options(Rush PRIVATE "-Wall")
+	target_compile_options(Rush PRIVATE -Wall)
 endif()
