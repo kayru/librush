@@ -128,8 +128,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.debugOutput = false;
 	m_caps.debugMarkers = true;
 	m_caps.interopOpenCL = false;
-	m_caps.separateSamplers = true;
-	m_caps.combinedSamplers = false; // TODO: could technically support this
 
 	m_caps.apiName = "Metal";
 }
@@ -428,7 +426,6 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		u32 orderIndex                                           = 1;
 		bindingOrderRequirements[GfxBindingType_PushConstants]   = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_ConstantBuffer]  = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_CombinedSampler] = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_Sampler]         = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_Texture]         = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_RWImage]         = orderIndex++;
@@ -1264,7 +1261,6 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
 void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
 {
 	// TODO: defer setting resources until draw/dispatch
-	// TODO: deal with combined textures/samplers
 	
 	RUSH_ASSERT(rc->m_pendingTechnique.valid());
 	const TechniqueMTL& technique = g_device->m_techniques[rc->m_pendingTechnique.get()];
@@ -1283,7 +1279,6 @@ void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
 void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSampler h)
 {
 	// TODO: defer setting resources until draw/dispatch
-	// TODO: deal with combined textures/samplers
 	
 	RUSH_ASSERT(rc->m_pendingTechnique.valid());
 	const TechniqueMTL& technique = g_device->m_techniques[rc->m_pendingTechnique.get()];

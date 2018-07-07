@@ -100,7 +100,7 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	m_techniques[TechniqueID_Plain3D] =
 	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader3D, m_vertexFormat3D, &bindings));
 
-	bindings.addSeparateSampler("sampler0", 0);
+	bindings.addSampler("sampler0", 0);
 	bindings.addTexture("texture0", 0);
 
 	m_techniques[TechniqueID_Textured2D] =

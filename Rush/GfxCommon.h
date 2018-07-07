@@ -664,7 +664,6 @@ enum GfxBindingType
 	// Bindings must be specified in the exact order:
 	GfxBindingType_PushConstants,
 	GfxBindingType_ConstantBuffer,
-	GfxBindingType_CombinedSampler, // sampler & texture in the same slot (Vulkan & OpenGL only)
 	GfxBindingType_Sampler,
 	GfxBindingType_Texture,
 	GfxBindingType_RWImage,
@@ -709,8 +708,7 @@ struct GfxShaderBindings
 	bool addConstant(const char* name, const Vec4* data, u32 count = 1);
 	bool addConstant(const char* name, const Mat4* data, u32 count = 1);
 	bool addConstantBuffer(const char* name, u32 idx);
-	bool addCombinedSampler(const char* name, u32 idx);
-	bool addSeparateSampler(const char* name, u32 idx);
+	bool addSampler(const char* name, u32 idx);
 	bool addTexture(const char* name, u32 idx);
 	bool addStorageImage(const char* name, u32 idx);
 	bool addStorageBuffer(const char* name, u32 idx) { return addRWBuffer(name, idx); }

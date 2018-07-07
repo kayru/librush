@@ -400,18 +400,7 @@ bool GfxShaderBindings::addTexture(const char* name, u32 idx)
 	return items.pushBack(it);
 }
 
-bool GfxShaderBindings::addCombinedSampler(const char* name, u32 idx)
-{
-	Item it;
-	it.name = name;
-	it.data = nullptr;
-	it.count = 1;
-	it.idx = idx;
-	it.type = GfxBindingType_CombinedSampler;
-	return items.pushBack(it);
-}
-
-bool GfxShaderBindings::addSeparateSampler(const char* name, u32 idx)
+bool GfxShaderBindings::addSampler(const char* name, u32 idx)
 {
 	Item it;
 	it.name  = name;

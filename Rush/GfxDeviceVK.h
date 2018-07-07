@@ -70,7 +70,6 @@ struct TechniqueVK : GfxRefCount
 	VkShaderStageFlags pushConstantStageFlags = VK_SHADER_STAGE_VERTEX_BIT; // TODO: support other stages
 	u32                pushConstantsSize      = 0;
 
-	u32 combinedSamplerCount   = 0;
 	u32 samplerCount           = 0;
 	u32 sampledImageCount      = 0;
 	u32 constantBufferCount    = 0;

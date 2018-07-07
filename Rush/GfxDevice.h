@@ -82,8 +82,6 @@ struct GfxCapability
 	bool        debugMarkers         = false;
 	bool        interopOpenCL        = false;
 	bool        compute              = false;
-	bool        combinedSamplers     = false;
-	bool        separateSamplers     = false;
 	bool        instancing           = false;
 	bool        drawIndirect         = false;
 	bool        dispatchIndirect     = false;

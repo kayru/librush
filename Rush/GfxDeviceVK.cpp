@@ -817,7 +817,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 		VkDescriptorPoolSize poolSizes[] = {
 		    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 65536},
-		    {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 65536},
 		    {VK_DESCRIPTOR_TYPE_SAMPLER, 65536},
 		    {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 65536},
 		    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 65536},
@@ -878,8 +877,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_caps.textureTopLeft = Vec2(0.0f, 0.0f);
 	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_SPV;
-	m_caps.combinedSamplers = true;
-	m_caps.separateSamplers = true;
 	m_caps.compute          = true;
 	m_caps.instancing       = true;
 	m_caps.drawIndirect     = true;
@@ -2292,44 +2289,6 @@ void GfxContext::applyState()
 	VkDescriptorImageInfo imageInfos[maxImageInfoCount];
 	u32                   imageInfoCount = 0;
 
-	// Combined image samplers
-
-	for (u32 i = 0; i < technique.combinedSamplerCount; ++i)
-	{
-		RUSH_ASSERT(m_pending.textures[i].valid() && m_pending.samplers[i].valid());
-		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
-		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
-
-		TextureVK& texture = g_device->m_textures[m_pending.textures[i].get()];
-		SamplerVK& sampler = g_device->m_samplers[m_pending.samplers[i].get()];
-
-		imageInfos[imageInfoCount] = defaultImageInfo;
-
-		imageInfos[imageInfoCount].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfos[imageInfoCount].imageView   = texture.imageView;
-		imageInfos[imageInfoCount].sampler     = sampler.native;
-
-		// TODO: track subresource states
-		VkImageSubresourceRange subresourceRange = {
-		    aspectFlagsFromFormat(texture.desc.format), 0, texture.desc.mips, 0, 1};
-
-		addImageBarrier(
-		    texture.image, imageInfos[imageInfoCount].imageLayout, texture.currentLayout, &subresourceRange);
-		texture.currentLayout = imageInfos[imageInfoCount].imageLayout;
-
-		descriptors[descriptorCount] = defaultDescriptor;
-
-		descriptors[descriptorCount].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptors[descriptorCount].dstSet          = descriptorSet;
-		descriptors[descriptorCount].descriptorCount = 1;
-		descriptors[descriptorCount].dstBinding      = bindingCount++;
-		descriptors[descriptorCount].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		descriptors[descriptorCount].pImageInfo      = &imageInfos[imageInfoCount];
-
-		++descriptorCount;
-		++imageInfoCount;
-	}
-
 	// Samplers
 
 	for (u32 i = 0; i < technique.samplerCount; ++i)
@@ -3098,7 +3057,6 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		u32 orderIndex                                           = 1;
 		bindingOrderRequirements[GfxBindingType_PushConstants]   = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_ConstantBuffer]  = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_CombinedSampler] = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_Sampler]         = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_Texture]         = orderIndex++;
 		bindingOrderRequirements[GfxBindingType_RWImage]         = orderIndex++;
@@ -3130,8 +3088,6 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 				break;
 
 			case GfxBindingType_ConstantBuffer: ++res.constantBufferCount; break;
-
-			case GfxBindingType_CombinedSampler: ++res.combinedSamplerCount; break;
 
 			case GfxBindingType_Sampler: ++res.samplerCount; break;
 
@@ -3174,16 +3130,6 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			uniformBinding.descriptorCount              = 1;
 			uniformBinding.stageFlags                   = resourceStageFlags;
 			layoutBindings.push_back(uniformBinding);
-		}
-
-		for (u32 i = 0; i < res.combinedSamplerCount; ++i)
-		{
-			VkDescriptorSetLayoutBinding samplerBinding = {};
-			samplerBinding.binding                      = bindingSlot++;
-			samplerBinding.descriptorType               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			samplerBinding.descriptorCount              = 1;
-			samplerBinding.stageFlags                   = resourceStageFlags;
-			layoutBindings.push_back(samplerBinding);
 		}
 
 		for (u32 i = 0; i < res.samplerCount; ++i)
