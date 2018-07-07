@@ -31,7 +31,7 @@ struct Log
 	static const char* prefixFatal;
 };
 
-#if (!defined(NDEBUG)) || defined(_DEBUG) || defined(FORCE_ASSERTS) || defined(RUSH_FORCE_ASSERTS)
+#if (defined(RUSH_DEBUG) || defined(FORCE_ASSERTS) || defined(RUSH_FORCE_ASSERTS))
 #define RUSH_STRINGIFY_FOR_ASSERTS(x) #x
 #define RUSH_TOSTRING_FOR_ASSERTS(x) RUSH_STRINGIFY_FOR_ASSERTS(x)
 #define RUSH_ASSERT(v)                                                                                                 \

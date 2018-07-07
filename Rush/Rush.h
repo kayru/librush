@@ -30,6 +30,10 @@
 
 // Common macros
 
+#if !defined(NDEBUG) && !defined(RUSH_DEBUG)
+#	define RUSH_DEBUG
+#endif
+
 #define RUSH_RESTRICT __restrict
 #define RUSH_COUNTOF(x) (sizeof(x)/sizeof(x[0]))
 #define RUSH_UNUSED( v ) { (void)sizeof(v); }
