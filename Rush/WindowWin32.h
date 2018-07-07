@@ -26,7 +26,7 @@ private:
 	bool processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
 	void processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam);
-	void processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam);
+	bool processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam);
 	void processSizeEvent(WPARAM wparam, LPARAM lparam);
 
 	static LRESULT APIENTRY windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);

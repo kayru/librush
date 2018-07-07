@@ -115,6 +115,7 @@ const char* toString(Key key)
 	case Key_LeftBracket: return "Key_LeftBracket";
 	case Key_Backslash: return "Key_Backslash";
 	case Key_RightBracket: return "Key_RightBracket";
+	case Key_Backquote: return "Key_Backquote";
 	case Key_Escape: return "Key_Escape";
 	case Key_Enter: return "Key_Enter";
 	case Key_Tab: return "Key_Tab";

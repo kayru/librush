@@ -63,6 +63,7 @@ enum Key
 	Key_LeftBracket  = '[',
 	Key_Backslash    = '\\',
 	Key_RightBracket = ']',
+	Key_Backquote    = '`',
 	Key_Escape,
 	Key_Enter,
 	Key_Tab,

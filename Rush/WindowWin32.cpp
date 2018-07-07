@@ -73,6 +73,7 @@ static Key translateKeyWin32(int key)
 	case 0xDB: return Key_LeftBracket;
 	case 0xDC: return Key_Backslash;
 	case 0xDD: return Key_RightBracket;
+	case 0xC0: return Key_Backquote;
 	case VK_ESCAPE: return Key_Escape;
 	case VK_RETURN: return Key_Enter;
 	case VK_TAB: return Key_Tab;
@@ -254,7 +255,7 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_KEYDOWN:
 	case WM_KEYUP:
 	case WM_CHAR:
-	case WM_SYSCHAR: processKeyEvent(msg, wparam, lparam); return true;
+	case WM_SYSCHAR: return processKeyEvent(msg, wparam, lparam);
 
 	case WM_SIZE: processSizeEvent(wparam, lparam); return true;
 
@@ -348,7 +349,7 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	}
 }
 
-void WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
+bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
 	RUSH_UNUSED(wparam);
 	RUSH_UNUSED(lparam);
@@ -359,19 +360,23 @@ void WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	{
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
+		if (key == Key_F4 && (GetKeyState(VK_MENU)&0x8000))
+			return false;
 		m_keyboard.keys[key] = true;
 		broadcast(WindowEvent::KeyDown(key));
-		break;
+		return true;
 
 	case WM_SYSKEYUP:
 	case WM_KEYUP:
 		m_keyboard.keys[key] = false;
 		broadcast(WindowEvent::KeyUp(key));
-		break;
+		return true;
 
 	case WM_SYSCHAR:
-	case WM_CHAR: broadcast(WindowEvent::Char((u32)wparam)); break;
+	case WM_CHAR: broadcast(WindowEvent::Char((u32)wparam)); return true;
 	}
+
+	return false;
 }
 
 void WindowWin32::finishResizing()
