@@ -202,12 +202,20 @@ LRESULT APIENTRY WindowWin32::windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
 {
 	WindowWin32* window = reinterpret_cast<WindowWin32*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
+	bool handled = false;
 	if (window)
 	{
-		window->processMessage(hwnd, msg, wparam, lparam);
+		handled = window->processMessage(hwnd, msg, wparam, lparam);
 	}
 
-	return (LRESULT)DefWindowProc(hwnd, msg, wparam, lparam);
+	if (handled)
+	{
+		return 0;
+	}
+	else
+	{
+		return (LRESULT)DefWindowProc(hwnd, msg, wparam, lparam);
+	}
 }
 
 void* WindowWin32::nativeHandle() { return (void*)&m_hwnd; }
@@ -241,6 +249,8 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_MOUSEWHEEL:
 	case WM_MOUSEHWHEEL: processMouseEvent(msg, wparam, lparam); return true;
 
+	case WM_SYSKEYDOWN:
+	case WM_SYSKEYUP:
 	case WM_KEYDOWN:
 	case WM_KEYUP:
 	case WM_CHAR:
@@ -348,10 +358,12 @@ void WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	switch (message)
 	{
 	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
 		m_keyboard.keys[key] = true;
 		broadcast(WindowEvent::KeyDown(key));
 		break;
 
+	case WM_SYSKEYUP:
 	case WM_KEYUP:
 		m_keyboard.keys[key] = false;
 		broadcast(WindowEvent::KeyUp(key));

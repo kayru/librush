@@ -134,6 +134,9 @@ enum Key
 	Key_COUNT,
 };
 
+const char* toString(Key key);
+const char* toStringShort(Key key);
+
 class MouseState
 {
 public:
