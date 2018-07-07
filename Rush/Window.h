@@ -175,6 +175,8 @@ struct WindowDesc
 	int         height     = 0;
 	bool        resizable  = false;
 	bool        fullScreen = false;
+	bool        handleShortcutQuit = true;
+	bool        handleShortcutFullScreen = true;
 };
 
 class Window
@@ -197,6 +199,8 @@ public:
 	void close() { m_closed = true; }
 	bool isClosed() const { return m_closed; }
 	bool isFocused() const { return m_focused; }
+	bool isFullscreen() const { return m_fullScreen; }
+	void toggleFullscreen() { setFullscreen(!isFullscreen()); }
 
 	void setFocused(bool focused) { m_focused = focused; }
 
@@ -211,6 +215,8 @@ public:
 	Vec2 getResolutionScale() const { return m_resolutionScale; }
 
 	float getAspect() const { return float(m_size.x) / float(m_size.y); }
+
+	const WindowDesc& getDesc() const { return m_desc; }
 
 	const Vec2     getSizeFloat() const { return Vec2((float)m_size.x, (float)m_size.y); }
 	const Tuple2i& getSize() const { return m_size; }
@@ -234,6 +240,8 @@ public:
 protected:
 	virtual ~Window();
 
+	WindowDesc m_desc;
+
 	u32 m_refs;
 
 	Tuple2i m_size;
@@ -242,6 +250,7 @@ protected:
 
 	bool m_closed;
 	bool m_focused;
+	bool m_fullScreen;
 
 	MouseState    m_mouse;
 	KeyboardState m_keyboard;

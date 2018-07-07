@@ -3,12 +3,14 @@
 namespace Rush
 {
 Window::Window(const WindowDesc& desc)
-: m_refs(1)
+: m_desc(desc)
+, m_refs(1)
 , m_size({desc.width, desc.height})
 , m_pos({0, 0})
 , m_resolutionScale(1, 1)
 , m_closed(false)
 , m_focused(true)
+, m_fullScreen(desc.fullScreen)
 , m_interceptor(nullptr)
 {
 }

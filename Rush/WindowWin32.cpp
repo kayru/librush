@@ -266,6 +266,10 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		finishResizing();
 		break;
 
+	case WM_SETFOCUS: m_focused = true; break;
+
+	case WM_KILLFOCUS: m_focused = false; break;
+
 	case WM_CLOSE: close(); return true;
 	}
 
@@ -360,8 +364,15 @@ bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	{
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
-		if (key == Key_F4 && (GetKeyState(VK_MENU)&0x8000))
+		if (key == Key_F4 && (GetKeyState(VK_MENU) & 0x8000) && getDesc().handleShortcutQuit)
+		{
 			return false;
+		}
+		else if (key == Key_Enter && (GetKeyState(VK_MENU) & 0x8000) && getDesc().handleShortcutFullScreen)
+		{
+			toggleFullscreen();
+			return true;
+		}
 		m_keyboard.keys[key] = true;
 		broadcast(WindowEvent::KeyDown(key));
 		return true;
@@ -424,14 +435,14 @@ void WindowWin32::setSize(const Tuple2i& size)
 	SetWindowPos(m_hwnd, HWND_TOP, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
 	    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
 
-	if (!m_fullscreen)
+	if (!m_fullScreen)
 	{
 		m_windowedSize = size;
 	}
 }
 bool WindowWin32::setFullscreen(bool wantFullScreen)
 {
-	if (wantFullScreen == m_fullscreen)
+	if (wantFullScreen == m_fullScreen)
 	{
 		return true;
 	}
@@ -461,7 +472,7 @@ bool WindowWin32::setFullscreen(bool wantFullScreen)
 			SWP_FRAMECHANGED);
 	}
 
-	m_fullscreen = wantFullScreen;
+	m_fullScreen = wantFullScreen;
 
 	return true;
 }
