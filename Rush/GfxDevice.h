@@ -14,6 +14,7 @@ struct GfxStats
 {
 	u32    drawCalls        = 0;
 	u32    vertices         = 0;
+	u32    triangles        = 0;
 	double lastFrameGpuTime = 0.0; // in seconds
 
 	enum

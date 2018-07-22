@@ -355,6 +355,8 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_D32_Float: return VK_FORMAT_D32_SFLOAT;
 	case GfxFormat_R32_Float: return VK_FORMAT_R32_SFLOAT;
 	case GfxFormat_R32_Uint: return VK_FORMAT_R32_UINT;
+	case GfxFormat_BC1_Unorm: return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
+	case GfxFormat_BC1_Unorm_sRGB: return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
 	case GfxFormat_BC3_Unorm: return VK_FORMAT_BC3_UNORM_BLOCK;
 	case GfxFormat_BC3_Unorm_sRGB: return VK_FORMAT_BC3_SRGB_BLOCK;
 	case GfxFormat_BC4_Unorm: return VK_FORMAT_BC4_UNORM_BLOCK;
@@ -4026,6 +4028,10 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 
 	buffer.lastUpdateFrame = g_device->m_frameCount;
 
+	const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.desc.flags);
+
+	size = alignCeiling(size, u32(alignment));
+
 	// Rename device local buffer
 	{
 		if (buffer.bufferView)
@@ -4043,7 +4049,6 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 			g_device->enqueueDestroyBuffer(buffer.info.buffer);
 		}
 
-		const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.desc.flags);
 		MemoryBlockVK      block     = g_device->m_currentFrame->localOnlyAllocator.alloc(size, alignment);
 
 		buffer.memory     = block.memory;
@@ -4070,7 +4075,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 	stagingBufferCreateInfo.size               = size;
 
 	VkMemoryRequirements memoryReq = {};
-	memoryReq.alignment            = 8;
+	memoryReq.alignment            = alignment;
 	memoryReq.size                 = size;
 
 	MemoryBlockVK block = g_device->m_currentFrame->hostOnlyAllocator.alloc(memoryReq.size, memoryReq.alignment);
@@ -4086,7 +4091,25 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 	cmd.srcBuffer = block.buffer;
 	cmd.dstBuffer = buffer.info.buffer;
 	cmd.region    = region;
-	rc->m_pendingBufferUploads.push_back(cmd);
+
+	bool isNewCommand = true;
+
+	if (!rc->m_pendingBufferUploads.empty())
+	{
+		auto& lastCmd = rc->m_pendingBufferUploads.back();
+		if (cmd.srcBuffer == lastCmd.srcBuffer && cmd.dstBuffer == lastCmd.dstBuffer &&
+		    cmd.region.srcOffset == (lastCmd.region.srcOffset + lastCmd.region.size) &&
+		    cmd.region.dstOffset == (lastCmd.region.dstOffset + lastCmd.region.size))
+		{
+			lastCmd.region.size += region.size;
+			isNewCommand = false;
+		}
+	}
+
+	if (isNewCommand)
+	{
+		rc->m_pendingBufferUploads.push_back(cmd);
+	}
 
 	return block.mappedBuffer;
 }
@@ -4461,6 +4484,16 @@ void Gfx_DispatchIndirect(
 	vkCmdDispatchIndirect(rc->m_commandBuffer, buffer.info.buffer, buffer.info.offset + argsBufferOffset);
 }
 
+inline u32 computeTriangleCount(GfxPrimitive primitiveType, u32 vertexCount)
+{
+	switch (primitiveType)
+	{
+	case GfxPrimitive::TriangleList: return vertexCount / 3;
+	case GfxPrimitive::TriangleStrip: return vertexCount - 2;
+	default: return 0;;
+	}
+}
+
 void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
 {
 	RUSH_ASSERT(rc->m_isRenderPassActive);
@@ -4472,6 +4505,8 @@ void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
 
 	g_device->m_stats.drawCalls++;
 	g_device->m_stats.vertices += vertexCount;
+
+	g_device->m_stats.triangles += computeTriangleCount(rc->m_pending.primitiveType, vertexCount);
 }
 
 static void drawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
@@ -4495,6 +4530,8 @@ static void drawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 base
 
 	g_device->m_stats.drawCalls++;
 	g_device->m_stats.vertices += indexCount * instanceCount;
+
+	g_device->m_stats.triangles += computeTriangleCount(rc->m_pending.primitiveType, indexCount);
 }
 
 void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
