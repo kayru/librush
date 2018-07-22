@@ -457,8 +457,8 @@ struct Mat3
 	{
 		return {
 		    v.x * rows[0][0] + v.y * rows[1][0] + v.z * rows[2][0],
-		    v.x * rows[0][1] + v.y * rows[1][1] + v.z * rows[2][0],
-		    v.x * rows[0][1] + v.y * rows[1][1] + v.z * rows[2][0],
+		    v.x * rows[0][1] + v.y * rows[1][1] + v.z * rows[2][1],
+		    v.x * rows[0][2] + v.y * rows[1][2] + v.z * rows[2][2],
 		};
 	}
 };
