@@ -368,6 +368,38 @@ static VkFormat convertFormat(GfxFormat format)
 	}
 }
 
+static VkShaderStageFlags convertStageFlags(GfxStageFlags flags)
+{
+	VkShaderStageFlags res = VkShaderStageFlags(0);
+
+	if (!!(flags & GfxStageFlags::Vertex))
+	{
+		res |= VK_SHADER_STAGE_VERTEX_BIT;
+	}
+	if (!!(flags & GfxStageFlags::Geometry))
+	{
+		res |= VK_SHADER_STAGE_GEOMETRY_BIT;
+	}
+	if (!!(flags & GfxStageFlags::Pixel))
+	{
+		res |= VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+	if (!!(flags & GfxStageFlags::Hull))
+	{
+		res |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+	}
+	if (!!(flags & GfxStageFlags::Domain))
+	{
+		res |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+	}
+	if (!!(flags & GfxStageFlags::Compute))
+	{
+		res |= VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+
+	return res;
+}
+
 static bool isLayerSupported(const std::vector<VkLayerProperties>& layers, const char* name)
 {
 	for (const auto& it : layers)
@@ -447,7 +479,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	std::vector<const char*> enabledInstanceLayers;
 	std::vector<const char*> enabledInstanceExtensions;
-
 
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_SURFACE_EXTENSION_NAME, true);
 
@@ -609,11 +640,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
 
-	m_supportedExtensions.NV_geometry_shader_passthrough =
-		enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NV_geometry_shader_passthrough", false);
+	m_supportedExtensions.NV_geometry_shader_passthrough = enableExtension(
+	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NV_geometry_shader_passthrough", false);
 
-	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = 
-		enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
+	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableExtension(
+	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
 
 	m_supportedExtensions.AMD_wave_limits =
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
@@ -889,7 +920,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.shaderWaveIntrinsics =
 	    m_supportedExtensions.EXT_shader_subgroup_ballot && m_supportedExtensions.EXT_shader_subgroup_vote;
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
-	m_caps.explicitVertexParameterAMD = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
+	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
 	switch (m_physicalDeviceProps.vendorID)
 	{
@@ -1449,18 +1480,18 @@ void GfxDevice::createSwapChain()
 	auto enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
 
 	size_t preferredFormatIndex = 0;
-	for (size_t i=0; i<enumeratedSurfaceFormats.size(); ++i)
+	for (size_t i = 0; i < enumeratedSurfaceFormats.size(); ++i)
 	{
 		if (enumeratedSurfaceFormats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
-			enumeratedSurfaceFormats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
+		    enumeratedSurfaceFormats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
 		{
 			preferredFormatIndex = i;
 			break;
 		}
 	}
 
-	const VkFormat swapChainColorFormat       = enumeratedSurfaceFormats[preferredFormatIndex].format;
-	const VkColorSpaceKHR swapChainColorSpace = enumeratedSurfaceFormats[preferredFormatIndex].colorSpace;
+	const VkFormat        swapChainColorFormat = enumeratedSurfaceFormats[preferredFormatIndex].format;
+	const VkColorSpaceKHR swapChainColorSpace  = enumeratedSurfaceFormats[preferredFormatIndex].colorSpace;
 
 	VkSwapchainCreateInfoKHR swapChainCreateInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
 	swapChainCreateInfo.surface                  = m_swapChainSurface;
@@ -1468,16 +1499,16 @@ void GfxDevice::createSwapChain()
 	swapChainCreateInfo.imageFormat              = swapChainColorFormat;
 	swapChainCreateInfo.imageColorSpace          = swapChainColorSpace;
 	swapChainCreateInfo.imageExtent              = m_swapChainExtent;
-	swapChainCreateInfo.imageUsage               = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	swapChainCreateInfo.preTransform             = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	swapChainCreateInfo.imageArrayLayers         = 1;
-	swapChainCreateInfo.imageSharingMode         = VK_SHARING_MODE_EXCLUSIVE;
-	swapChainCreateInfo.queueFamilyIndexCount    = 0;
-	swapChainCreateInfo.pQueueFamilyIndices      = nullptr;
-	swapChainCreateInfo.presentMode              = m_pendingSwapChainPresentMode;
-	swapChainCreateInfo.oldSwapchain             = m_swapChain;
-	swapChainCreateInfo.clipped                  = true;
-	swapChainCreateInfo.compositeAlpha           = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapChainCreateInfo.imageUsage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	swapChainCreateInfo.preTransform          = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	swapChainCreateInfo.imageArrayLayers      = 1;
+	swapChainCreateInfo.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
+	swapChainCreateInfo.queueFamilyIndexCount = 0;
+	swapChainCreateInfo.pQueueFamilyIndices   = nullptr;
+	swapChainCreateInfo.presentMode           = m_pendingSwapChainPresentMode;
+	swapChainCreateInfo.oldSwapchain          = m_swapChain;
+	swapChainCreateInfo.clipped               = true;
+	swapChainCreateInfo.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	GfxTextureDesc depthBufferDesc = GfxTextureDesc::make2D(
 	    m_swapChainExtent.width, m_swapChainExtent.height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil);
@@ -1973,9 +2004,7 @@ void GfxContext::addImageBarrier(VkImage image, VkImageLayout nextLayout, VkImag
 		barrierDesc.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		break;
-	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-		barrierDesc.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
-		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: barrierDesc.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT; break;
 	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 		barrierDesc.dstAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
 		dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -2387,7 +2416,7 @@ void GfxContext::applyState()
 
 	// RWBuffers (storage buffers)
 
-	for (u32 i = 0; i < technique.storageBufferCount; ++i)
+	for (u32 i = 0; i < technique.storageBufferCount + technique.typedStorageBufferCount; ++i)
 	{
 		RUSH_ASSERT(m_pending.storageBuffers[i].valid());
 		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
@@ -2395,7 +2424,7 @@ void GfxContext::applyState()
 		BufferVK& buffer = g_device->m_buffers[m_pending.storageBuffers[i].get()];
 		validateBufferUse(buffer);
 
-		const bool isTyped = !!(technique.typedStorageBufferMask & (1 << i));
+		const bool isTyped = i < technique.storageBufferCount;
 
 		descriptors[descriptorCount] = defaultDescriptor;
 
@@ -2530,9 +2559,9 @@ static void writeTimestamp(GfxContext* context, u32 slotIndex, VkPipelineStageFl
 {
 	g_device->m_currentFrame->timestampSlotMap[slotIndex] = u16(g_device->m_currentFrame->timestampIssuedCount);
 	vkCmdWriteTimestamp(context->m_commandBuffer,
-		stageFlags,
-		g_device->m_currentFrame->timestampPool,
-		g_device->m_currentFrame->timestampIssuedCount++);
+	    stageFlags,
+	    g_device->m_currentFrame->timestampPool,
+	    g_device->m_currentFrame->timestampIssuedCount++);
 }
 
 void Gfx_BeginFrame()
@@ -2569,7 +2598,7 @@ void Gfx_BeginFrame()
 	{
 		getQueryPoolResults(g_vulkanDevice,
 		    g_device->m_currentFrame->timestampPool,
-			g_device->m_currentFrame->timestampIssuedCount,
+		    g_device->m_currentFrame->timestampIssuedCount,
 		    g_device->m_currentFrame->timestampPoolData);
 
 		double nanoSecondsPerTick = g_device->m_physicalDeviceProps.limits.timestampPeriod;
@@ -2578,14 +2607,14 @@ void Gfx_BeginFrame()
 		for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
 		{
 			u16 slotBegin = g_device->m_currentFrame->timestampSlotMap[2 * i];
-			u16 slotEnd = g_device->m_currentFrame->timestampSlotMap[2 * i + 1];
+			u16 slotEnd   = g_device->m_currentFrame->timestampSlotMap[2 * i + 1];
 
 			u64 timestampDelta = 0;
 
 			if (slotBegin != InvalidTimestampSlotIndex && slotEnd != InvalidTimestampSlotIndex)
 			{
 				timestampDelta = g_device->m_currentFrame->timestampPoolData[slotEnd] -
-					g_device->m_currentFrame->timestampPoolData[slotBegin];
+				                 g_device->m_currentFrame->timestampPoolData[slotBegin];
 				g_device->m_stats.customTimer[i] = timestampDelta * secondsPerTick;
 			}
 			else
@@ -2595,9 +2624,9 @@ void Gfx_BeginFrame()
 		}
 
 		u32 frameBeginSlot = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers];
-		u32 frameEndSlot = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers + 1];
+		u32 frameEndSlot   = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers + 1];
 		u64 timestampDelta = g_device->m_currentFrame->timestampPoolData[frameEndSlot] -
-			g_device->m_currentFrame->timestampPoolData[frameBeginSlot];
+		                     g_device->m_currentFrame->timestampPoolData[frameBeginSlot];
 		g_device->m_stats.lastFrameGpuTime = timestampDelta * secondsPerTick;
 
 		g_device->m_currentFrame->timestampIssuedCount = 0;
@@ -2899,7 +2928,7 @@ GfxGeometryShader Gfx_CreateGeometryShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id = g_device->generateId();
+	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -2946,8 +2975,11 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		for (u32 i = 0; i < u32(GfxStage::count); ++i)
 		{
 			res.waveLimits[i].sType      = VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD;
-			res.waveLimits[i].wavesPerCu = desc.waveLimits[i];
+			res.waveLimits[i].wavesPerCu = 1.0;
 		}
+		res.waveLimits[u32(GfxStage::Pixel)].wavesPerCu   = desc.psWaveLimit;
+		res.waveLimits[u32(GfxStage::Vertex)].wavesPerCu  = desc.vsWaveLimit;
+		res.waveLimits[u32(GfxStage::Compute)].wavesPerCu = desc.csWaveLimit;
 	}
 
 	if (desc.specializationData)
@@ -2977,7 +3009,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		stageInfo.pName                           = g_device->m_computeShaders[desc.cs].entry;
 		stageInfo.pSpecializationInfo             = res.specializationInfo;
 
-		if (g_device->m_supportedExtensions.AMD_wave_limits && desc.waveLimits[u32(GfxStage::Compute)] != 1.0f)
+		if (g_device->m_supportedExtensions.AMD_wave_limits && desc.csWaveLimit != 1.0f)
 		{
 			res.waveLimits[u32(GfxStage::Compute)].pNext = stageInfo.pNext;
 			stageInfo.pNext                              = &res.waveLimits[u32(GfxStage::Compute)];
@@ -3008,7 +3040,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			stageInfo.pName                           = g_device->m_vertexShaders[desc.vs].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
-			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.waveLimits[u32(GfxStage::Vertex)] != 1.0f)
+			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.vsWaveLimit != 1.0f)
 			{
 				res.waveLimits[u32(GfxStage::Vertex)].pNext = stageInfo.pNext;
 				stageInfo.pNext                             = &res.waveLimits[u32(GfxStage::Vertex)];
@@ -3020,11 +3052,11 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 		if (desc.gs.valid())
 		{
-			VkPipelineShaderStageCreateInfo stageInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-			stageInfo.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
-			stageInfo.module = g_device->m_geometryShaders[desc.gs].module;
-			stageInfo.pName = g_device->m_geometryShaders[desc.gs].entry;
-			stageInfo.pSpecializationInfo = res.specializationInfo;
+			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+			stageInfo.stage                           = VK_SHADER_STAGE_GEOMETRY_BIT;
+			stageInfo.module                          = g_device->m_geometryShaders[desc.gs].module;
+			stageInfo.pName                           = g_device->m_geometryShaders[desc.gs].entry;
+			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			res.shaderStages.push_back(stageInfo);
 			res.gs.retain(desc.gs);
@@ -3038,7 +3070,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			stageInfo.pName                           = g_device->m_pixelShaders[desc.ps].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
-			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.waveLimits[u32(GfxStage::Pixel)] != 1.0f)
+			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.psWaveLimit != 1.0f)
 			{
 				res.waveLimits[u32(GfxStage::Pixel)].pNext = stageInfo.pNext;
 				stageInfo.pNext                            = &res.waveLimits[u32(GfxStage::Pixel)];
@@ -3054,135 +3086,90 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
 	    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
 
-	u32 bindingOrderRequirements[256] = {};
-	{
-		u32 orderIndex                                           = 1;
-		bindingOrderRequirements[GfxBindingType_PushConstants]   = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_ConstantBuffer]  = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_Sampler]         = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_Texture]         = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_RWImage]         = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_RWBuffer]        = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_RWTypedBuffer] =
-		    bindingOrderRequirements[GfxBindingType_RWBuffer];
-	}
+	res.bindings = desc.bindings;
 
-	GfxBindingType currentBindingType = GfxBindingType_Unknown;
+	res.pushConstantStageFlags  = convertStageFlags(desc.bindings.pushConstantStageFlags);
+	res.pushConstantsSize       = desc.bindings.pushConstants;
+	res.samplerCount            = desc.bindings.samplers;
+	res.sampledImageCount       = desc.bindings.textures;
+	res.constantBufferCount     = desc.bindings.constantBuffers;
+	res.storageImageCount       = desc.bindings.rwImages;
+	res.storageBufferCount      = desc.bindings.rwBuffers;
+	res.typedStorageBufferCount = desc.bindings.rwTypedBuffers;
+
+	RUSH_ASSERT(res.storageBufferCount <= GfxContext::MaxStorageBuffers);
+	RUSH_ASSERT(res.constantBufferCount <= GfxContext::MaxConstantBuffers);
+
+	u32 resourceStageFlags = 0;
+	if (desc.cs.valid())
+		resourceStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+	if (desc.vs.valid())
+		resourceStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
+	if (desc.gs.valid())
+		resourceStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+	if (desc.ps.valid())
+		resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	u32 bindingSlot = 0;
-	if (desc.bindings)
+
+	for (u32 i = 0; i < res.constantBufferCount; ++i)
 	{
-		res.bindings = *desc.bindings;
+		VkDescriptorSetLayoutBinding uniformBinding = {};
+		uniformBinding.binding                      = bindingSlot++;
+		uniformBinding.descriptorType               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformBinding.descriptorCount              = 1;
+		uniformBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(uniformBinding);
+	}
 
-		for (const auto& item : desc.bindings->items)
+	for (u32 i = 0; i < res.samplerCount; ++i)
+	{
+		VkDescriptorSetLayoutBinding samplerBinding = {};
+		samplerBinding.binding                      = bindingSlot++;
+		samplerBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLER;
+		samplerBinding.descriptorCount              = 1;
+		samplerBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(samplerBinding);
+	}
+
+	for (u32 i = 0; i < res.sampledImageCount; ++i)
+	{
+		VkDescriptorSetLayoutBinding imageBinding = {};
+		imageBinding.binding                      = bindingSlot++;
+		imageBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		imageBinding.descriptorCount              = 1;
+		imageBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(imageBinding);
+	}
+
+	for (u32 i = 0; i < res.storageImageCount; ++i)
+	{
+		VkDescriptorSetLayoutBinding imageBinding = {};
+		imageBinding.binding                      = bindingSlot++;
+		imageBinding.descriptorType               = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		imageBinding.descriptorCount              = 1;
+		imageBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(imageBinding);
+	}
+
+	for (u32 i = 0; i < res.storageBufferCount + res.typedStorageBufferCount; ++i)
+	{
+		const bool isTyped = i < res.storageBufferCount;
+
+		VkDescriptorSetLayoutBinding bufferBinding = {};
+		bufferBinding.binding                      = bindingSlot++;
+		if (isTyped)
 		{
-			RUSH_ASSERT_MSG(bindingOrderRequirements[currentBindingType] <= bindingOrderRequirements[item.type],
-			    "Resource bindings must be specified following the order specified in GfxShaderBindings");
-			currentBindingType = item.type;
-
-			switch (item.type)
-			{
-			case GfxBindingType_PushConstants:
-				RUSH_ASSERT(res.pushConstantsSize <= 128);
-				RUSH_ASSERT_MSG(res.pushConstantsSize == 0, "Only one push constant block is allowed.");
-				res.pushConstantsSize      = item.pushConstants.size;
-				res.pushConstantStageFlags = desc.cs.valid() ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_VERTEX_BIT;
-				break;
-
-			case GfxBindingType_ConstantBuffer: ++res.constantBufferCount; break;
-
-			case GfxBindingType_Sampler: ++res.samplerCount; break;
-
-			case GfxBindingType_Texture: ++res.sampledImageCount; break;
-
-			case GfxBindingType_RWImage: ++res.storageImageCount; break;
-
-			case GfxBindingType_RWTypedBuffer:
-				res.typedStorageBufferMask |= 1 << res.storageBufferCount;
-				// fall-through to BindingType_RWBuffer
-			case GfxBindingType_RWBuffer: ++res.storageBufferCount; break;
-
-			case GfxBindingType_Int:
-			case GfxBindingType_Scalar:
-			case GfxBindingType_Vec2:
-			case GfxBindingType_Vec3:
-			case GfxBindingType_Vec4:
-			case GfxBindingType_Matrix:
-				RUSH_LOG_ERROR("Loose constant bindings are not supported in Vulkan");
-				break;
-
-			default: RUSH_LOG_ERROR("Unexpected binding type"); break;
-			}
+			bufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+		}
+		else
+		{
+			bufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		}
 
-		RUSH_ASSERT(res.storageBufferCount <= GfxContext::MaxStorageBuffers);
-		RUSH_ASSERT(res.constantBufferCount <= GfxContext::MaxConstantBuffers);
-
-		u32 resourceStageFlags = 0;
-		if (desc.cs.valid()) resourceStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
-		if (desc.vs.valid()) resourceStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
-		if (desc.gs.valid()) resourceStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
-		if (desc.ps.valid()) resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
-
-		for (u32 i = 0; i < res.constantBufferCount; ++i)
-		{
-			VkDescriptorSetLayoutBinding uniformBinding = {};
-			uniformBinding.binding                      = bindingSlot++;
-			uniformBinding.descriptorType               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			uniformBinding.descriptorCount              = 1;
-			uniformBinding.stageFlags                   = resourceStageFlags;
-			layoutBindings.push_back(uniformBinding);
-		}
-
-		for (u32 i = 0; i < res.samplerCount; ++i)
-		{
-			VkDescriptorSetLayoutBinding samplerBinding = {};
-			samplerBinding.binding                      = bindingSlot++;
-			samplerBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLER;
-			samplerBinding.descriptorCount              = 1;
-			samplerBinding.stageFlags                   = resourceStageFlags;
-			layoutBindings.push_back(samplerBinding);
-		}
-
-		for (u32 i = 0; i < res.sampledImageCount; ++i)
-		{
-			VkDescriptorSetLayoutBinding imageBinding = {};
-			imageBinding.binding                      = bindingSlot++;
-			imageBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-			imageBinding.descriptorCount              = 1;
-			imageBinding.stageFlags                   = resourceStageFlags;
-			layoutBindings.push_back(imageBinding);
-		}
-
-		for (u32 i = 0; i < res.storageImageCount; ++i)
-		{
-			VkDescriptorSetLayoutBinding imageBinding = {};
-			imageBinding.binding                      = bindingSlot++;
-			imageBinding.descriptorType               = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-			imageBinding.descriptorCount              = 1;
-			imageBinding.stageFlags                   = resourceStageFlags;
-			layoutBindings.push_back(imageBinding);
-		}
-
-		for (u32 i = 0; i < res.storageBufferCount; ++i)
-		{
-			const bool isTyped = !!(res.typedStorageBufferMask & (1 << i));
-
-			VkDescriptorSetLayoutBinding bufferBinding = {};
-			bufferBinding.binding                      = bindingSlot++;
-			if (isTyped)
-			{
-				bufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-			}
-			else
-			{
-				bufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			}
-
-			bufferBinding.descriptorCount = 1;
-			bufferBinding.stageFlags      = resourceStageFlags;
-			layoutBindings.push_back(bufferBinding);
-		}
+		bufferBinding.descriptorCount = 1;
+		bufferBinding.stageFlags      = resourceStageFlags;
+		layoutBindings.push_back(bufferBinding);
 	}
 
 	descriptorSetLayoutCreateInfo.bindingCount = (u32)layoutBindings.size();
@@ -3711,7 +3698,7 @@ static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 		if (desc.format != GfxFormat_Unknown)
 		{
 			bufferCreateInfo.usage |=
-				VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+			    VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 		}
 	}
 
@@ -3835,8 +3822,7 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		}
 	}
 
-	if (desc.format != GfxFormat_Unknown && !!(desc.flags & GfxBufferFlags::Storage) &&
-	    (data || isStatic))
+	if (desc.format != GfxFormat_Unknown && !!(desc.flags & GfxBufferFlags::Storage) && (data || isStatic))
 	{
 		VkBufferViewCreateInfo bufferViewCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
 		bufferViewCreateInfo.buffer                 = res.info.buffer;
@@ -4023,8 +4009,8 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 	BufferVK& buffer = g_device->m_buffers[h];
 	markDirtyIfBound(rc, buffer);
 
-	RUSH_ASSERT_MSG(
-	    !!(buffer.desc.flags & GfxBufferFlags::Transient), "Only temporary buffers can be dynamically updated/renamed.");
+	RUSH_ASSERT_MSG(!!(buffer.desc.flags & GfxBufferFlags::Transient),
+	    "Only temporary buffers can be dynamically updated/renamed.");
 
 	buffer.lastUpdateFrame = g_device->m_frameCount;
 
@@ -4049,7 +4035,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 			g_device->enqueueDestroyBuffer(buffer.info.buffer);
 		}
 
-		MemoryBlockVK      block     = g_device->m_currentFrame->localOnlyAllocator.alloc(size, alignment);
+		MemoryBlockVK block = g_device->m_currentFrame->localOnlyAllocator.alloc(size, alignment);
 
 		buffer.memory     = block.memory;
 		buffer.ownsMemory = false;
@@ -4490,7 +4476,7 @@ inline u32 computeTriangleCount(GfxPrimitive primitiveType, u32 vertexCount)
 	{
 	case GfxPrimitive::TriangleList: return vertexCount / 3;
 	case GfxPrimitive::TriangleStrip: return vertexCount - 2;
-	default: return 0;;
+	default: return 0; ;
 	}
 }
 
@@ -4716,5 +4702,5 @@ void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 #undef V
 
 #else  // RUSH_RENDER_API==RUSH_RENDER_API_VK
-char _VKRenderDevice_cpp; // suppress linker warning
+	char _VKRenderDevice_cpp; // suppress linker warning
 #endif // RUSH_RENDER_API==RUSH_RENDER_API_VK

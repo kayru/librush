@@ -60,14 +60,14 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	}
 	else if (caps.shaderTypeSupported(GfxShaderSourceType_MSL))
 	{
-		m_vertexShader2D = Gfx_CreateVertexShader(
-		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain2D"));
-		m_vertexShader3D = Gfx_CreateVertexShader(
-		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain3D"));
-		m_pixelShaderPlain = Gfx_CreatePixelShader(
-		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMain"));
-		m_pixelShaderTextured = Gfx_CreatePixelShader(
-		    GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMainTextured"));
+		m_vertexShader2D =
+		    Gfx_CreateVertexShader(GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain2D"));
+		m_vertexShader3D =
+		    Gfx_CreateVertexShader(GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "vsMain3D"));
+		m_pixelShaderPlain =
+		    Gfx_CreatePixelShader(GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMain"));
+		m_pixelShaderTextured =
+		    Gfx_CreatePixelShader(GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMainTextured"));
 	}
 	else
 	{
@@ -79,37 +79,31 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	m_vertexFormat2D = Gfx_CreateVertexFormat(fmt_desc);
 	m_vertexFormat3D = Gfx_CreateVertexFormat(fmt_desc);
 
-	GfxShaderBindings bindings;
+	GfxBufferDesc desc(GfxBufferFlags::TransientConstant, GfxFormat_Unknown, 1, sizeof(Constants));
+	m_constantBuffer = Gfx_CreateBuffer(desc, nullptr);
 
-	if (caps.looseConstants)
 	{
-		bindings.addConstant("g_matViewProj", &m_constants.viewProjMatrix);
-		bindings.addConstant("g_transform2D", &m_constants.transform2D);
-		bindings.addConstant("g_color", &m_constants.color);
-	}
-	else
-	{
-		bindings.addConstantBuffer("Global", 0);
-
-		GfxBufferDesc desc(GfxBufferFlags::TransientConstant, GfxFormat_Unknown, 1, sizeof(Constants));
-		m_constantBuffer = Gfx_CreateBuffer(desc, nullptr);
+		GfxShaderBindingDesc bindings;
+		bindings.constantBuffers = 1;
+		m_techniques[TechniqueID_Plain2D] =
+		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader2D, m_vertexFormat2D, bindings));
+		m_techniques[TechniqueID_Plain3D] =
+		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader3D, m_vertexFormat3D, bindings));
 	}
 
-	m_techniques[TechniqueID_Plain2D] =
-	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader2D, m_vertexFormat2D, &bindings));
-	m_techniques[TechniqueID_Plain3D] =
-	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader3D, m_vertexFormat3D, &bindings));
+	{
+		GfxShaderBindingDesc bindings;
+		bindings.constantBuffers = 1;
+		bindings.samplers        = 1;
+		bindings.textures        = 1;
 
-	bindings.addSampler("sampler0", 0);
-	bindings.addTexture("texture0", 0);
+		m_techniques[TechniqueID_Textured2D] =
+		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader2D, m_vertexFormat2D, bindings));
+		m_techniques[TechniqueID_Textured3D] =
+		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader3D, m_vertexFormat3D, bindings));
+	}
 
-	m_techniques[TechniqueID_Textured2D] =
-	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader2D, m_vertexFormat2D, &bindings));
-	m_techniques[TechniqueID_Textured3D] =
-	    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader3D, m_vertexFormat3D, &bindings));
-
-	GfxBufferDesc vbDesc(
-	    GfxBufferFlags::TransientVertex, GfxFormat_Unknown, m_maxBatchVertices, sizeof(BatchVertex));
+	GfxBufferDesc vbDesc(GfxBufferFlags::TransientVertex, GfxFormat_Unknown, m_maxBatchVertices, sizeof(BatchVertex));
 
 	m_vertexBuffer = Gfx_CreateBuffer(vbDesc);
 
@@ -184,7 +178,7 @@ void PrimitiveBatch::flush()
 		return;
 
 	GfxTechnique next_technique = getNextTechnique();
-	
+
 	Gfx_SetTechnique(m_context, next_technique);
 
 	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), (u32)m_vertices.sizeInBytes());

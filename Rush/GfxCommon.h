@@ -266,6 +266,8 @@ enum class GfxStage : u8
 
 enum class GfxStageFlags : u8
 {
+	None = 0,
+
 	Vertex   = 1 << (u32)GfxStage::Vertex,
 	Geometry = 1 << (u32)GfxStage::Geometry,
 	Pixel    = 1 << (u32)GfxStage::Pixel,
@@ -659,67 +661,17 @@ struct GfxShaderSource : public std::vector<char>
 	const char*         entry = "main";
 };
 
-enum GfxBindingType
+struct GfxShaderBindingDesc
 {
-	GfxBindingType_Unknown,
-
-	// Bindings must be specified in the exact order:
-	GfxBindingType_PushConstants,
-	GfxBindingType_ConstantBuffer,
-	GfxBindingType_Sampler,
-	GfxBindingType_Texture,
-	GfxBindingType_RWImage,
-	GfxBindingType_RWBuffer,
-	GfxBindingType_RWTypedBuffer,
-
-	// Loose constant bindings (OpenGL only)
-	GfxBindingType_Int,
-	GfxBindingType_Scalar,
-	GfxBindingType_Vec2,
-	GfxBindingType_Vec3,
-	GfxBindingType_Vec4,
-	GfxBindingType_Matrix,
-};
-
-struct GfxShaderBindings
-{
-	struct Item
-	{
-		const char* name;
-		const void* data;
-		union {
-			struct
-			{
-				u32           size;
-				GfxStageFlags stageFlags;
-			} pushConstants;
-			struct
-			{
-				u32 count;
-				u32 idx;
-			};
-		};
-
-		GfxBindingType type;
-	};
-
-	bool addConstant(const char* name, const int* data, u32 count = 1);
-	bool addConstant(const char* name, const float* data, u32 count = 1);
-	bool addConstant(const char* name, const Vec2* data, u32 count = 1);
-	bool addConstant(const char* name, const Vec3* data, u32 count = 1);
-	bool addConstant(const char* name, const Vec4* data, u32 count = 1);
-	bool addConstant(const char* name, const Mat4* data, u32 count = 1);
-	bool addConstantBuffer(const char* name, u32 idx);
-	bool addSampler(const char* name, u32 idx);
-	bool addTexture(const char* name, u32 idx);
-	bool addStorageImage(const char* name, u32 idx);
-	bool addStorageBuffer(const char* name, u32 idx) { return addRWBuffer(name, idx); }
-	bool addPushConstants(const char* name, GfxStageFlags stageFlags, u32 size);
-
-	bool addRWBuffer(const char* name, u32 idx);
-	bool addTypedRWBuffer(const char* name, u32 idx);
-
-	StaticArray<Item, 128> items;
+	// Shader resources must be specified in the same order as members of this struct
+	GfxStageFlags pushConstantStageFlags;
+	u8            pushConstants = 0;
+	u8            constantBuffers = 0;
+	u8            samplers = 0;
+	u8            textures = 0;
+	u8            rwImages = 0;
+	u8            rwBuffers = 0;
+	u8            rwTypedBuffers = 0;
 };
 
 struct GfxSpecializationConstant
@@ -731,31 +683,36 @@ struct GfxSpecializationConstant
 
 struct GfxTechniqueDesc
 {
+	GfxTechniqueDesc()
+	{
+	}
+
 	GfxTechniqueDesc(
-	    GfxPixelShader _ps, GfxVertexShader _vs, GfxVertexFormat _vf, const GfxShaderBindings* _bindings = nullptr)
+	    GfxPixelShader _ps, GfxVertexShader _vs, GfxVertexFormat _vf, const GfxShaderBindingDesc& _bindings)
 	: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
 	{
-		for (float& v : waveLimits) v = 1.0f;
+		
 	}
 
-	GfxTechniqueDesc(GfxComputeShader _cs, const GfxShaderBindings* _bindings = nullptr) : cs(_cs), bindings(_bindings)
+	GfxTechniqueDesc(GfxComputeShader _cs, const GfxShaderBindingDesc& _bindings) : cs(_cs), bindings(_bindings)
 	{
-		for (float& v : waveLimits) v = 1.0f;
 	}
 
-	GfxComputeShader         cs;
-	GfxPixelShader           ps;
-	GfxGeometryShader        gs;
-	GfxVertexShader          vs;
-	GfxVertexFormat          vf;
-	const GfxShaderBindings* bindings = nullptr;
+	GfxComputeShader     cs;
+	GfxPixelShader       ps;
+	GfxGeometryShader    gs;
+	GfxVertexShader      vs;
+	GfxVertexFormat      vf;
+	GfxShaderBindingDesc bindings = {};
 
 	u32                              specializationConstantCount = 0;
 	const GfxSpecializationConstant* specializationConstants     = nullptr;
 	const void*                      specializationData          = nullptr;
 	u32                              specializationDataSize      = 0;
 
-	float waveLimits[u32(GfxStage::count)];
+	float psWaveLimit = 1.0f;
+	float vsWaveLimit = 1.0f;
+	float csWaveLimit = 1.0f;
 };
 
 struct GfxTextureDesc

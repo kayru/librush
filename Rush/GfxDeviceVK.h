@@ -58,7 +58,7 @@ struct TechniqueVK : GfxRefCount
 {
 	u32                                          id = 0;
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-	GfxShaderBindings                            bindings;
+	GfxShaderBindingDesc                         bindings;
 	GfxRef<GfxVertexFormat>                      vf;
 	GfxRef<GfxVertexShader>                      vs;
 	GfxRef<GfxGeometryShader>                    gs;
@@ -67,15 +67,15 @@ struct TechniqueVK : GfxRefCount
 	VkDescriptorSetLayout                        descriptorSetLayout = VK_NULL_HANDLE;
 	VkPipelineLayout                             pipelineLayout      = VK_NULL_HANDLE;
 
-	VkShaderStageFlags pushConstantStageFlags = VK_SHADER_STAGE_VERTEX_BIT; // TODO: support other stages
+	VkShaderStageFlags pushConstantStageFlags = VkShaderStageFlags(0);
 	u32                pushConstantsSize      = 0;
 
-	u32 samplerCount           = 0;
-	u32 sampledImageCount      = 0;
-	u32 constantBufferCount    = 0;
-	u32 storageImageCount      = 0;
-	u32 storageBufferCount     = 0;
-	u32 typedStorageBufferMask = 0;
+	u32 samplerCount            = 0;
+	u32 sampledImageCount       = 0;
+	u32 constantBufferCount     = 0;
+	u32 storageImageCount       = 0;
+	u32 storageBufferCount      = 0;
+	u32 typedStorageBufferCount = 0; // last N storage buffers are typed
 
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
