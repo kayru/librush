@@ -2424,7 +2424,7 @@ void GfxContext::applyState()
 		BufferVK& buffer = g_device->m_buffers[m_pending.storageBuffers[i].get()];
 		validateBufferUse(buffer);
 
-		const bool isTyped = i < technique.storageBufferCount;
+		const bool isTyped = i > technique.storageBufferCount;
 
 		descriptors[descriptorCount] = defaultDescriptor;
 
@@ -3154,7 +3154,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	for (u32 i = 0; i < res.storageBufferCount + res.typedStorageBufferCount; ++i)
 	{
-		const bool isTyped = i < res.storageBufferCount;
+		const bool isTyped = i > res.storageBufferCount;
 
 		VkDescriptorSetLayoutBinding bufferBinding = {};
 		bufferBinding.binding                      = bindingSlot++;

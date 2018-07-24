@@ -664,7 +664,7 @@ struct GfxShaderSource : public std::vector<char>
 struct GfxShaderBindingDesc
 {
 	// Shader resources must be specified in the same order as members of this struct
-	GfxStageFlags pushConstantStageFlags;
+	GfxStageFlags pushConstantStageFlags = GfxStageFlags::None;
 	u8            pushConstants = 0;
 	u8            constantBuffers = 0;
 	u8            samplers = 0;
