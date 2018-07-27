@@ -197,7 +197,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
 	{
 		severity = Severity_Warning;
 		if ((flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) &&
-		    strstr(pMessage, "but no vertex buffers are attached to this Pipeline State Object"))
+		    (strstr(pMessage, "but no vertex buffers are attached to this Pipeline State Object") ||
+		        strstr(pMessage, "not consumed by vertex shader")))
 		{
 			severity = Severity_Ignore;
 		}
@@ -693,14 +694,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		}
 	}
 
-	VkPhysicalDeviceFeatures enabledDeviceFeatures = {};
-	enabledDeviceFeatures.geometryShader           = m_physicalDeviceFeatures.geometryShader;
-	enabledDeviceFeatures.shaderClipDistance       = m_physicalDeviceFeatures.shaderClipDistance;
-	enabledDeviceFeatures.shaderInt64              = m_physicalDeviceFeatures.shaderInt64;
-	enabledDeviceFeatures.samplerAnisotropy        = m_physicalDeviceFeatures.samplerAnisotropy;
-	enabledDeviceFeatures.shaderStorageImageExtendedFormats =
-	    m_physicalDeviceFeatures.shaderStorageImageExtendedFormats;
-	// enabledDeviceFeatures.robustBufferAccess = m_physicalDeviceFeatures.robustBufferAccess;
+	VkPhysicalDeviceFeatures enabledDeviceFeatures = m_physicalDeviceFeatures;
+	enabledDeviceFeatures.robustBufferAccess       = false;
 
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
@@ -3335,6 +3330,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	case TextureType::TexCubeArray:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_2D;
 		imageCreateInfo.arrayLayers = desc.depth * 6;
+		imageCreateInfo.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		break;
 	case TextureType::Tex3D:
 		imageCreateInfo.imageType   = VK_IMAGE_TYPE_3D;
