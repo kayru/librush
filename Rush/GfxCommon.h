@@ -504,6 +504,9 @@ struct GfxSamplerDesc
 	GfxTextureWrap wrapV = GfxTextureWrap::Wrap;
 	GfxTextureWrap wrapW = GfxTextureWrap::Wrap;
 
+	GfxCompareFunc compareFunc = GfxCompareFunc::Never;
+	bool           compareEnable = false;
+
 	float anisotropy = 1.0;
 
 	// Helper functions

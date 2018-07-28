@@ -3630,7 +3630,8 @@ GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 	samplerCreateInfo.mipLodBias          = 0.0f;
 	samplerCreateInfo.anisotropyEnable    = desc.anisotropy > 1.0f;
 	samplerCreateInfo.maxAnisotropy = min(desc.anisotropy, g_device->m_physicalDeviceProps.limits.maxSamplerAnisotropy);
-	samplerCreateInfo.compareOp     = VK_COMPARE_OP_NEVER;
+	samplerCreateInfo.compareOp     = convertCompareFunc(desc.compareFunc);
+	samplerCreateInfo.compareEnable = desc.compareEnable;
 	samplerCreateInfo.minLod        = 0.0f;
 	samplerCreateInfo.maxLod        = FLT_MAX;
 	samplerCreateInfo.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
