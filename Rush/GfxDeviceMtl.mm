@@ -421,85 +421,22 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		result.ps.retain(desc.ps);
 	}
 
-	u32 bindingOrderRequirements[256] = {};
-	{
-		u32 orderIndex                                           = 1;
-		bindingOrderRequirements[GfxBindingType_PushConstants]   = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_ConstantBuffer]  = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_Sampler]         = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_Texture]         = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_RWImage]         = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_RWBuffer]        = orderIndex++;
-		bindingOrderRequirements[GfxBindingType_RWTypedBuffer] =
-		bindingOrderRequirements[GfxBindingType_RWBuffer];
-	}
-	
-	u32 constantBufferCount = 0;
-	u32 samplerCount = 0;
-	u32 sampledImageCount = 0;
-	u32 storageImageCount = 0;
-	u32 typedStorageBufferMask = 0;
-	u32 storageBufferCount = 0;
-	
-	GfxBindingType currentBindingType = GfxBindingType_Unknown;
-	if (desc.bindings)
-	{
-		for (const auto& item : desc.bindings->items)
-		{
-			RUSH_ASSERT_MSG(bindingOrderRequirements[currentBindingType] <= bindingOrderRequirements[item.type],
-							"Resource bindings must be specified following the order specified in GfxShaderBindings");
-			currentBindingType = item.type;
-			
-			switch (item.type)
-			{
-				case GfxBindingType_PushConstants:
-					RUSH_LOG_ERROR("Push constants are not supported by Metal back-end");
-					break;
-					
-				case GfxBindingType_ConstantBuffer: ++constantBufferCount; break;
-				case GfxBindingType_CombinedSampler:
-					RUSH_LOG_WARNING("Combined textures/samplers are not supported by Metal back-end");
-					break;
-				case GfxBindingType_Sampler: ++samplerCount; break;
-				case GfxBindingType_Texture: ++sampledImageCount; break;
-				case GfxBindingType_RWImage: ++storageImageCount; break;
-				case GfxBindingType_RWTypedBuffer:
-					typedStorageBufferMask |= 1 << storageBufferCount;
-					// fall-through to BindingType_RWBuffer
-				case GfxBindingType_RWBuffer: ++storageBufferCount; break;
-					
-				case GfxBindingType_Int:
-				case GfxBindingType_Scalar:
-				case GfxBindingType_Vec2:
-				case GfxBindingType_Vec3:
-				case GfxBindingType_Vec4:
-				case GfxBindingType_Matrix:
-					RUSH_LOG_ERROR("Loose constant bindings are not supported by Metal back-end");
-					break;
-
-				default: RUSH_LOG_ERROR("Unexpected binding type"); break;
-			}
-		}
-		RUSH_ASSERT(storageBufferCount <= GfxContext::MaxStorageBuffers);
-		RUSH_ASSERT(constantBufferCount <= GfxContext::MaxConstantBuffers);
-	}
-	
 	u32 offset = 0;
-	
+
 	result.constantBufferOffset = 0;
-	offset += constantBufferCount;
-	
+	offset += desc.bindings.constantBuffers;
+
 	result.samplerOffset = offset;
-	offset += samplerCount;
-	
+	offset += desc.bindings.samplers;
+
 	result.sampledImageOffset = offset;
-	offset += sampledImageCount;
-	
+	offset += desc.bindings.textures;
+
 	result.storageImageOffset = offset;
-	offset += storageImageCount;
-	
+	offset += desc.bindings.rwImages;
+
 	result.storageBufferOffset = offset;
-	offset += storageBufferCount;
+	offset += desc.bindings.rwBuffers;
 
 	return retainResource(g_device->m_techniques, result);
 }
