@@ -435,6 +435,8 @@ u32 getBitsPerPixel(GfxFormatStorage fmt);
 
 const char* toString(GfxFormatStorage storage);
 const char* toString(GfxFormatType type);
+const char* toString(GfxFormat fmt);
+const char* toStringShort(GfxFormat fmt);
 
 struct GfxViewport
 {

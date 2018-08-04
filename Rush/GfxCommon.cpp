@@ -36,6 +36,49 @@ u32 getBitsPerPixel(GfxFormatStorage fmt)
 	}
 }
 
+const char* toString(GfxFormat fmt)
+{
+	switch (fmt)
+	{
+	case GfxFormat_Unknown: return "GfxFormat_Unknown";
+	case GfxFormat_D24_Unorm_S8_Uint: return "GfxFormat_D24_Unorm_S8_Uint";
+	case GfxFormat_D24_Unorm_X8: return "GfxFormat_D24_Unorm_X8";
+	case GfxFormat_D32_Float: return "GfxFormat_D32_Float";
+	case GfxFormat_D32_Float_S8_Uint: return "GfxFormat_D32_Float_S8_Uint";
+	case GfxFormat_R8_Unorm: return "GfxFormat_R8_Unorm";
+	case GfxFormat_R16_Float: return "GfxFormat_R16_Float";
+	case GfxFormat_R16_Uint: return "GfxFormat_R16_Uint";
+	case GfxFormat_R32_Float: return "GfxFormat_R32_Float";
+	case GfxFormat_R32_Uint: return "GfxFormat_R32_Uint";
+	case GfxFormat_RG8_Unorm: return "GfxFormat_RG8_Unorm";
+	case GfxFormat_RG16_Float: return "GfxFormat_RG16_Float";
+	case GfxFormat_RG32_Float: return "GfxFormat_RG32_Float";
+	case GfxFormat_RGB8_Unorm: return "GfxFormat_RGB8_Unorm";
+	case GfxFormat_RGBA16_Float: return "GfxFormat_RGBA16_Float";
+	case GfxFormat_RGBA16_Unorm: return "GfxFormat_RGBA16_Unorm";
+	case GfxFormat_RGBA32_Float: return "GfxFormat_RGBA32_Float";
+	case GfxFormat_RGBA8_Unorm: return "GfxFormat_RGBA8_Unorm";
+	case GfxFormat_RGBA8_sRGB: return "GfxFormat_RGBA8_sRGB";
+	case GfxFormat_BGRA8_Unorm: return "GfxFormat_BGRA8_Unorm";
+	case GfxFormat_BGRA8_sRGB: return "GfxFormat_BGRA8_sRGB";
+	case GfxFormat_BC1_Unorm: return "GfxFormat_BC1_Unorm";
+	case GfxFormat_BC1_Unorm_sRGB: return "GfxFormat_BC1_Unorm_sRGB";
+	case GfxFormat_BC3_Unorm: return "GfxFormat_BC3_Unorm";
+	case GfxFormat_BC3_Unorm_sRGB: return "GfxFormat_BC3_Unorm_sRGB";
+	case GfxFormat_BC4_Unorm: return "GfxFormat_BC4_Unorm";
+	case GfxFormat_BC6H_UFloat: return "GfxFormat_BC6H_UFloat";
+	case GfxFormat_BC6H_SFloat: return "GfxFormat_BC6H_SFloat";
+	case GfxFormat_BC7_Unorm: return "GfxFormat_BC7_Unorm";
+	case GfxFormat_BC7_Unorm_sRGB: return "GfxFormat_BC7_Unorm_sRGB";
+	default: RUSH_ERROR; return "GfxFormat_Unknown";
+	}
+}
+
+const char* toStringShort(GfxFormat fmt)
+{
+	return toString(fmt) + 10;
+}
+
 const char* toString(GfxFormatStorage storage)
 {
 	switch (storage)
