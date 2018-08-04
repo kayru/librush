@@ -375,7 +375,7 @@ struct GfxTimerScope
 
 template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, const T& data)
 {
-	Gfx_UpdateBuffer(rc, h, &data, 0, sizeof(data), true);
+	Gfx_UpdateBuffer(rc, h, &data, sizeof(data));
 	return (u32)sizeof(data);
 }
 
