@@ -54,11 +54,9 @@ struct Log
 		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                     \
 		default: break;                                                                                                \
 		}
-#define RUSH_ERROR RUSH_BREAK
 #else
 #define RUSH_ASSERT(v) RUSH_UNUSED((v))
 #define RUSH_ASSERT_MSG(v, msg)
-#define RUSH_ERROR
 #endif
 
 #ifdef __GNUC__

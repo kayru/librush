@@ -32,7 +32,7 @@ u32 getBitsPerPixel(GfxFormatStorage fmt)
 	case GfxFormatStorage_RGBA8: return 32;
 	case GfxFormatStorage_BGRA8: return 32;
 
-	default: RUSH_ERROR; return 0;
+	default: RUSH_BREAK; return 0;
 	}
 }
 
@@ -70,7 +70,7 @@ const char* toString(GfxFormat fmt)
 	case GfxFormat_BC6H_SFloat: return "GfxFormat_BC6H_SFloat";
 	case GfxFormat_BC7_Unorm: return "GfxFormat_BC7_Unorm";
 	case GfxFormat_BC7_Unorm_sRGB: return "GfxFormat_BC7_Unorm_sRGB";
-	default: RUSH_ERROR; return "GfxFormat_Unknown";
+	default: RUSH_BREAK; return "GfxFormat_Unknown";
 	}
 }
 
@@ -106,7 +106,7 @@ const char* toString(GfxFormatStorage storage)
 	case GfxFormatStorage_RGBA8: return "RGBA8";
 	case GfxFormatStorage_BGRA8: return "BGRA8";
 
-	default: RUSH_ERROR; return "Unknown";
+	default: RUSH_BREAK; return "Unknown";
 	}
 }
 
@@ -126,7 +126,7 @@ const char* toString(GfxFormatType type)
 	case GfxFormatType_Unorm_Typeless: return "Unorm_Typeless";
 	case GfxFormatType_Unorm_Uint: return "Unorm_Uint";
 
-	default: RUSH_ERROR; return "Unknown";
+	default: RUSH_BREAK; return "Unknown";
 	}
 }
 
@@ -144,7 +144,7 @@ const char* toString(GfxVertexFormatDesc::Semantic type)
 	case GfxVertexFormatDesc::Semantic::BoneIndex: return "BoneIndex";
 	case GfxVertexFormatDesc::Semantic::BoneWeight: return "BoneWeight";
 
-	default: RUSH_ERROR; return "Unknown";
+	default: RUSH_BREAK; return "Unknown";
 	}
 }
 

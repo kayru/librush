@@ -1541,7 +1541,7 @@ void GfxDevice::createSwapChain()
 		GfxFormat swapChainFormat;
 		switch (swapChainColorFormat)
 		{
-		default: RUSH_ERROR;
+		default: RUSH_BREAK;
 
 		case VK_FORMAT_B8G8R8A8_UNORM: swapChainFormat = GfxFormat_BGRA8_Unorm; break;
 		case VK_FORMAT_R8G8B8A8_UNORM: swapChainFormat = GfxFormat_RGBA8_Unorm; break;
