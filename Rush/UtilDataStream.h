@@ -34,8 +34,8 @@ public:
 class MemDataStream : public DataStream
 {
 public:
-	MemDataStream(const void* data, u32 size) : m_dataRW((u8*)data), m_dataRO((u8*)data), m_pos(0), m_size(size){};
-	MemDataStream(void* data, u32 size) : m_dataRW(nullptr), m_dataRO((const u8*)data), m_pos(0), m_size(size){};
+	MemDataStream(void* data, u32 size) : m_dataRW((u8*)data), m_dataRO((const u8*)data), m_pos(0), m_size(size){};
+	MemDataStream(const void* data, u32 size) : m_dataRW(nullptr), m_dataRO((const u8*)data), m_pos(0), m_size(size){};
 
 	virtual u32 write(const void* buf, u32 size)
 	{
@@ -50,7 +50,6 @@ public:
 	}
 	virtual u32 read(void* buf, u32 size)
 	{
-
 		u32 pos2 = m_pos + size;
 		pos2     = min(pos2, m_size);
 		size     = pos2 - m_pos;
