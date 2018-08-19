@@ -196,7 +196,6 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc);
 void         Gfx_DestroyTechnique(GfxTechnique h);
 
 // texture
-GfxTexture            Gfx_CreateTextureFromFile(const char* filename, TextureType type = TextureType::Tex2D);
 GfxTexture            Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data = nullptr, u32 count = 0);
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h);
 void                  Gfx_DestroyTexture(GfxTexture th);

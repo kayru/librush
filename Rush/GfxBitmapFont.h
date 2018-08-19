@@ -60,7 +60,6 @@ public:
 	BitmapFontRenderer(const BitmapFontData& data);
 	BitmapFontRenderer(const void* headerData, size_t headerSize, const void* pixelsData, size_t pixelsSize, u32 width,
 	    u32 height, GfxFormat format);
-	BitmapFontRenderer(const char* fontFilename, const char* texturePath);
 	~BitmapFontRenderer();
 
 	// returns position after the last drawn character

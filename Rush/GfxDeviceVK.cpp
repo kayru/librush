@@ -3210,11 +3210,6 @@ void TechniqueVK::destroy()
 void Gfx_DestroyTechnique(GfxTechnique h) { releaseResource(g_device->m_techniques, h); }
 
 // texture
-GfxTexture Gfx_CreateTextureFromFile(const char* filename, TextureType type)
-{
-	RUSH_LOG_ERROR("Not implemented");
-	return GfxTexture();
-}
 
 static u32 aspectFlagsFromFormat(GfxFormat format)
 {

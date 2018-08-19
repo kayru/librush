@@ -263,34 +263,6 @@ BitmapFontRenderer::BitmapFontRenderer(const void* headerData, size_t headerSize
 	createSprites();
 }
 
-BitmapFontRenderer::BitmapFontRenderer(const char* fontFilename, const char* texturePath) : m_scale(1.0f)
-{
-	FileIn fi(fontFilename);
-	if (fi.valid())
-	{
-		m_fontDesc.read(fi);
-		for (u32 i = 0; i < m_fontDesc.m_pageCount; ++i)
-		{
-			const char* pageFilename = m_fontDesc.m_pages[i].filename;
-			std::string pagePath     = texturePath;
-			pagePath += "/";
-			pagePath += pageFilename;
-
-			GfxTexture th = Gfx_CreateTextureFromFile(pagePath.c_str());
-			m_textures.push_back(th);
-
-			GfxTextureDesc td = Gfx_GetTextureDesc(th);
-			m_textureDesc.push_back(td);
-		}
-
-		createSprites();
-	}
-	else
-	{
-		RUSH_LOG_ERROR("Failed to load bitmap font '%s' (texture path '%s')", fontFilename, texturePath);
-	}
-}
-
 BitmapFontRenderer::~BitmapFontRenderer()
 {
 	for (size_t i = 0; i < m_textures.size(); ++i)

@@ -734,10 +734,6 @@ struct GfxTextureDesc
 	bool operator==(const GfxTextureDesc& rhs);
 	bool operator!=(const GfxTextureDesc& rhs);
 
-	u32 getPixelCount() const { return width * height * depth; }
-
-	u32 getSizeBytes() const { return getPixelCount() * getBitsPerPixel(format) / 8; }
-
 	bool isArray() const
 	{
 		return type == TextureType::Tex2DArray || type == TextureType::Tex1DArray || type == TextureType::TexCubeArray;
@@ -752,6 +748,30 @@ struct GfxTextureDesc
 	GfxUsageFlags usage     = GfxUsageFlags::ShaderResource;
 	const char*   debugName = nullptr;
 };
+
+inline u32 computeSubresourceCount(TextureType type, u32 mipCount, u32 layerCount)
+{
+	switch (type)
+	{
+	default: return mipCount * layerCount;
+	case TextureType::TexCube:
+	case TextureType::TexCubeArray: return mipCount * layerCount * 6;
+	}
+}
+
+inline u32 computeSubresourceCount(const GfxTextureDesc& desc)
+{
+	return computeSubresourceCount(desc.type, desc.mips, desc.type == TextureType::Tex3D ? 1 : desc.depth);
+}
+
+inline u32 computeSubresourceIndex(u32 mip, u32 layer, u32 mipCount) { return mip + layer * mipCount; }
+
+inline u32 computeSubresourceMip(u32 subresourceIndex, u32 mipCount) { return subresourceIndex % mipCount; }
+
+inline u32 computeSubresourceSlice(u32 subresourceIndex, u32 mipCount, u32 sliceCount)
+{
+	return (subresourceIndex / mipCount) % sliceCount;
+}
 
 struct GfxDrawIndexedArg
 {
