@@ -647,8 +647,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableExtension(
 	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
 
-	m_supportedExtensions.AMD_wave_limits =
-	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
+	if (!cfg.debug)
+	{
+		m_supportedExtensions.AMD_wave_limits =
+		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
+	}
 
 	m_supportedExtensions.EXT_shader_subgroup_vote =
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_EXT_shader_subgroup_vote", false);
