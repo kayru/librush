@@ -109,16 +109,15 @@ struct GfxCapability
 
 struct GfxTextureData
 {
-	GfxTextureData() = default;
-	GfxTextureData(const void* pixels, u32 mip = 0, u32 slice = 0) : pixels(pixels), mip(mip), slice(slice) {}
-
-	const void* pixels = nullptr;
-	u32         mip    = 0;
-	u32         slice  = 0;
-	u32         pitch  = 0;
-	u32         width  = 0;
-	u32         height = 0;
-	u32         depth  = 0;
+	union {
+		u64         offset = 0;
+		const void* pixels;
+	};
+	u32 mip    = 0;
+	u32 slice  = 0;
+	u32 width  = 0;
+	u32 height = 0;
+	u32 depth  = 0;
 };
 
 enum class GfxPassFlags : u32
@@ -196,7 +195,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc);
 void         Gfx_DestroyTechnique(GfxTechnique h);
 
 // texture
-GfxTexture            Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data = nullptr, u32 count = 0);
+GfxTexture            Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data = nullptr, u32 count = 0, const void* texels = nullptr);
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h);
 void                  Gfx_DestroyTexture(GfxTexture th);
 
@@ -338,8 +337,8 @@ template <typename T> inline void Gfx_SetScissorRect(GfxContext* rc, const Tuple
 
 inline GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const void* pixels)
 {
-	GfxTextureData data(pixels);
-	return Gfx_CreateTexture(desc, &data, 1);
+	GfxTextureData data;
+	return Gfx_CreateTexture(desc, &data, 1, pixels);
 }
 
 inline GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData& data)

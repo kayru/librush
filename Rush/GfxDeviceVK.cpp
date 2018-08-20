@@ -1509,7 +1509,7 @@ void GfxDevice::createSwapChain()
 	    m_swapChainExtent.width, m_swapChainExtent.height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil);
 
 	Gfx_Release(m_depthBufferTexture);
-	m_depthBufferTexture = retainResource(m_textures, TextureVK::create(depthBufferDesc, nullptr, 0));
+	m_depthBufferTexture = retainResource(m_textures, TextureVK::create(depthBufferDesc, nullptr, 0, nullptr));
 
 	auto oldSwapChain = m_swapChain;
 
@@ -3288,7 +3288,7 @@ inline u32 getTextureArrayLayerCount(const GfxTextureDesc& desc)
 	}
 }
 
-TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count)
+TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
 	const bool isDepthBuffer  = !!(desc.usage & GfxUsageFlags::DepthStencil);
 	const bool isRenderTarget = !!(desc.usage & GfxUsageFlags::RenderTarget);
@@ -3473,8 +3473,6 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 		for (u32 i = 0; i < count; ++i)
 		{
-			RUSH_ASSERT(data[i].pixels);
-
 			const u32 mipLevel  = data[i].mip;
 			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (desc.width >> mipLevel));
 			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (desc.height >> mipLevel));
@@ -3484,7 +3482,9 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			const size_t alignedLevelSize =
 			    alignCeiling((u64(mipWidth * mipHeight * mipDepth) * bitsPerPixel), bitsPerElement) / 8;
 
-			const u8* srcPixels = reinterpret_cast<const u8*>(data[i].pixels);
+			const u8* srcPixels = reinterpret_cast<const u8*>(pixels) + data[i].offset;
+			RUSH_ASSERT(srcPixels);
+
 			memcpy(stagingImagePixels, srcPixels, levelSize);
 
 			VkBufferImageCopy bufferImageCopy;
@@ -3548,9 +3548,9 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLa
 	return res;
 }
 
-GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count)
+GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
-	return retainResource(g_device->m_textures, TextureVK::create(desc, data, count));
+	return retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels));
 }
 
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
@@ -4694,5 +4694,5 @@ void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 #undef V
 
 #else  // RUSH_RENDER_API==RUSH_RENDER_API_VK
-	char _VKRenderDevice_cpp; // suppress linker warning
+char _VKRenderDevice_cpp; // suppress linker warning
 #endif // RUSH_RENDER_API==RUSH_RENDER_API_VK

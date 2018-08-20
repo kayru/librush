@@ -127,6 +127,16 @@ enum class TextureType : u8
 	TexCubeArray,
 };
 
+inline bool isCubeTexture(TextureType type)
+{
+	return type == TextureType::TexCube || type == TextureType::TexCubeArray;
+}
+
+inline bool isArrayTexture(TextureType type)
+{
+	return type == TextureType::Tex1DArray || type == TextureType::Tex2DArray || type == TextureType::TexCubeArray;
+}
+
 enum GfxShaderSourceType : u8
 {
 	GfxShaderSourceType_Unknown,

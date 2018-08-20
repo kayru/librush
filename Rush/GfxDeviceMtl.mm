@@ -491,7 +491,7 @@ static MTLPixelFormat convertPixelFormat(GfxFormat format)
 	};
 }
 
-TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count)
+TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
 	const bool isRenderTarget = !!(desc.usage & GfxUsageFlags::RenderTarget);
 	const bool isDepthStencil = !!(desc.usage & GfxUsageFlags::DepthStencil);
@@ -540,10 +540,13 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 
 		u32 srcPitch = data[i].pitch ? data[i].pitch : (getBitsPerPixel(desc.format) * mipWidth) / 8;
 
+		const u8* srcPixels = reinterpret_cast<const u8*>(pixels) + data[i].offset;
+		RUSH_ASSERT(srcPixels);
+
 		[result.native replaceRegion:region
 			mipmapLevel:mipLevel
 			slice:regionData.slice
-			withBytes:regionData.pixels
+			withBytes:srcPixels
 			bytesPerRow:srcPitch
 			bytesPerImage:regionData.pitch * mipHeight];
 	}
@@ -563,9 +566,9 @@ GfxTexture Gfx_CreateTextureFromFile(const char* filename, TextureType type)
 	return GfxTexture();
 }
 
-GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count)
+GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
-	return retainResource(g_device->m_textures, TextureMTL::create(desc, data, count));
+	return retainResource(g_device->m_textures, TextureMTL::create(desc, data, count, pixels));
 }
 
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)

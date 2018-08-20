@@ -156,7 +156,7 @@ struct TextureVK : GfxRefCount
 	VkImageView   depthStencilImageView = VK_NULL_HANDLE;
 	VkImageLayout currentLayout         = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	static TextureVK create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count);
+	static TextureVK create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels);
 	static TextureVK create(const GfxTextureDesc& desc, VkImage image, VkImageLayout initialLayout);
 
 	void destroy();
