@@ -51,6 +51,8 @@
 #   define RUSH_FUNCTION __FUNCTION__
 #   define RUSH_DEPRECATED __declspec(deprecated)
 #   define RUSH_DEPRECATED_MSG(text) __declspec(deprecated(text))
+#   define RUSH_DISABLE_OPTIMIZATION __pragma(optimize("", off))
+#   define RUSH_ENABLE_OPTIMIZATION __pragma(optimize("", on))
 #elif defined(__GNUC__)
 #   define RUSH_FORCEINLINE __attribute__((always_inline))
 #   define RUSH_NOINLINE __attribute__((noinline))
@@ -58,6 +60,8 @@
 #   define RUSH_FUNCTION
 #   define RUSH_DEPRECATED
 #   define RUSH_DEPRECATED_MSG(text)
+#   define RUSH_DISABLE_OPTIMIZATION
+#   define RUSH_ENABLE_OPTIMIZATION
 #endif
 
 // Common types
