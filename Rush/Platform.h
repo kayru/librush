@@ -81,22 +81,4 @@ GfxContext* Platform_GetGfxContext();
 Window*     Platform_GetWindow();
 Window*     Platform_CreateWindow(const WindowDesc& desc);
 
-enum MessageBoxType
-{
-	MessageBoxType_RetryAbortIgnore,
-	MessageBoxType_OkCancel,
-	MessageBoxType_Ok,
-};
-
-enum MessageBoxResult
-{
-	MessageBoxResult_Ok,
-	MessageBoxResult_Cancel,
-	MessageBoxResult_Retry,
-	MessageBoxResult_Abort,
-	MessageBoxResult_Ignore
-};
-
-MessageBoxResult Platform_MessageBox(
-    const char* text, const char* caption, MessageBoxType type = MessageBoxType_RetryAbortIgnore);
 }

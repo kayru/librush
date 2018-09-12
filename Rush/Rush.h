@@ -48,7 +48,7 @@
 #   define RUSH_FORCEINLINE __forceinline
 #   define RUSH_NOINLINE __declspec(noinline)
 #   define RUSH_BREAK {__debugbreak();}
-#   define RUSH_FUNCTION __FUNCTION__
+#   define RUSH_FUNCTION __func__
 #   define RUSH_DEPRECATED __declspec(deprecated)
 #   define RUSH_DEPRECATED_MSG(text) __declspec(deprecated(text))
 #   define RUSH_DISABLE_OPTIMIZATION __pragma(optimize("", off))
@@ -57,7 +57,7 @@
 #   define RUSH_FORCEINLINE __attribute__((always_inline))
 #   define RUSH_NOINLINE __attribute__((noinline))
 #   define RUSH_BREAK {__builtin_trap();}
-#   define RUSH_FUNCTION
+#   define RUSH_FUNCTION __func__
 #   define RUSH_DEPRECATED
 #   define RUSH_DEPRECATED_MSG(text)
 #   define RUSH_DISABLE_OPTIMIZATION

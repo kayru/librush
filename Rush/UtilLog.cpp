@@ -187,8 +187,6 @@ void Log::fatal(const char* msg, ...)
 		SetConsoleTextAttribute(h, csbi.wAttributes);
 #endif
 	}
-
-	exit(EXIT_FAILURE);
 }
 }
 

@@ -89,19 +89,6 @@ const char* Platform_GetExecutableDirectory()
 	return result;
 }
 
-MessageBoxResult Platform_MessageBox(const char* text, const char* caption, MessageBoxType type)
-{
-	RUSH_LOG("MessageBox: %s\n%s", caption, text);
-	if (type == MessageBoxType_RetryAbortIgnore)
-	{
-		return MessageBoxResult_Retry;
-	}
-	else
-	{
-		return MessageBoxResult_Ok;
-	}
-}
-
 int Platform_Main(const AppConfig& cfg)
 {
 	WindowDesc windowDesc;

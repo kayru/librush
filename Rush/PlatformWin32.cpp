@@ -50,33 +50,6 @@ const char* Platform_GetExecutableDirectory()
 	return path;
 }
 
-MessageBoxResult Platform_MessageBox(const char* text, const char* caption, MessageBoxType type)
-{
-	int  res   = 0;
-	auto flags = MB_OK;
-
-	if (type == MessageBoxType_RetryAbortIgnore)
-	{
-		flags = MB_ABORTRETRYIGNORE;
-	}
-	else if (type == MessageBoxType_OkCancel)
-	{
-		flags = MB_OKCANCEL;
-	}
-
-	res = MessageBoxA(0, text, caption, flags);
-
-	switch (res)
-	{
-	case IDRETRY: return MessageBoxResult_Retry;
-	case IDABORT: return MessageBoxResult_Abort;
-	case IDIGNORE: return MessageBoxResult_Ignore;
-	case IDCANCEL: return MessageBoxResult_Cancel;
-	default:
-	case IDOK: return MessageBoxResult_Ok;
-	}
-}
-
 int Platform_Main(const AppConfig& cfg)
 {
 	WindowDesc windowDesc;

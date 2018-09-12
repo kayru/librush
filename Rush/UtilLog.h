@@ -31,34 +31,6 @@ struct Log
 	static const char* prefixFatal;
 };
 
-#if (defined(RUSH_DEBUG) || defined(FORCE_ASSERTS) || defined(RUSH_FORCE_ASSERTS))
-#define RUSH_STRINGIFY_FOR_ASSERTS(x) #x
-#define RUSH_TOSTRING_FOR_ASSERTS(x) RUSH_STRINGIFY_FOR_ASSERTS(x)
-#define RUSH_ASSERT(v)                                                                                                 \
-	if (!(v))                                                                                                          \
-		switch (Platform_MessageBox(__FILE__ "(" RUSH_TOSTRING_FOR_ASSERTS(__LINE__) ")\nFunction: " RUSH_FUNCTION     \
-		                                                                             "\nExpression: " #v,              \
-		    "Assert"))                                                                                                 \
-		{                                                                                                              \
-		case MessageBoxResult_Retry: RUSH_BREAK; break;                                                                \
-		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                     \
-		default: break;                                                                                                \
-		}
-#define RUSH_ASSERT_MSG(v, msg)                                                                                        \
-	if (!(v))                                                                                                          \
-		switch (Platform_MessageBox(__FILE__ "(" RUSH_TOSTRING_FOR_ASSERTS(                                            \
-		                                __LINE__) ")\nFunction: " RUSH_FUNCTION "\nExpression: " #v "\nMessage: " msg, \
-		    "Assert"))                                                                                                 \
-		{                                                                                                              \
-		case MessageBoxResult_Retry: RUSH_BREAK; break;                                                                \
-		case MessageBoxResult_Abort: Platform_TerminateProcess(1);                                                     \
-		default: break;                                                                                                \
-		}
-#else
-#define RUSH_ASSERT(v) RUSH_UNUSED((v))
-#define RUSH_ASSERT_MSG(v, msg)
-#endif
-
 #ifdef __GNUC__
 #define RUSH_LOG(text, ...)         {Rush::Log::message(text, ##__VA_ARGS__);}
 #define RUSH_LOG_WARNING(text, ...) {Rush::Log::warning(text, ##__VA_ARGS__); if(Rush::Log::breakOnWarning) RUSH_BREAK;}
@@ -69,6 +41,18 @@ struct Log
 #define RUSH_LOG_WARNING(text, ...) {Rush::Log::warning(text, __VA_ARGS__); if(Rush::Log::breakOnWarning) RUSH_BREAK;}
 #define RUSH_LOG_ERROR(text, ...)   {Rush::Log::error(text, __VA_ARGS__); if(Rush::Log::breakOnError) RUSH_BREAK;}
 #define RUSH_LOG_FATAL(text, ...)   {Rush::Log::fatal(text, __VA_ARGS__); RUSH_BREAK;}
+#endif
+
+#if (defined(RUSH_DEBUG) || defined(FORCE_ASSERTS) || defined(RUSH_FORCE_ASSERTS))
+#define RUSH_ASSERT(v)               { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'.", RUSH_FUNCTION);} }
+#ifdef __GNUC__
+#define RUSH_ASSERT_MSG(v, msg, ...) { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " ## msg, RUSH_FUNCTION, ##__VA_ARGS__);} }
+#else
+#define RUSH_ASSERT_MSG(v, msg, ...) { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " ## msg, RUSH_FUNCTION, __VA_ARGS__);} }
+#endif
+#else
+#define RUSH_ASSERT(v) RUSH_UNUSED(v)
+#define RUSH_ASSERT_MSG(v, msg, ...) RUSH_UNUSED(v)
 #endif
 
 }

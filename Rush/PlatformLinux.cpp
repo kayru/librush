@@ -42,13 +42,6 @@ const char* Platform_GetExecutableDirectory()
 	return path;
 }
 
-MessageBoxResult Platform_MessageBox(const char* text, const char* caption, MessageBoxType type)
-{
-	RUSH_LOG("MessageBox: %s\n%s", caption, text);
-	RUSH_LOG_FATAL("%s is not implemented", __PRETTY_FUNCTION__); // TODO
-	return MessageBoxResult_Ok;
-}
-
 int Platform_Main(const AppConfig& cfg)
 {
 	WindowDesc windowDesc;
