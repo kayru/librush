@@ -538,7 +538,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 		const GfxTextureData& regionData = data[i];
 		MTLRegion region = { { 0, 0, 0 }, { mipWidth, mipHeight, mipDepth } };
 
-		u32 srcPitch = data[i].pitch ? data[i].pitch : (getBitsPerPixel(desc.format) * mipWidth) / 8;
+		u32 srcPitch = (getBitsPerPixel(desc.format) * mipWidth) / 8;
 
 		const u8* srcPixels = reinterpret_cast<const u8*>(pixels) + data[i].offset;
 		RUSH_ASSERT(srcPixels);

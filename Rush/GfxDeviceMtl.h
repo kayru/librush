@@ -81,7 +81,7 @@ struct TextureMTL : GfxRefCount
 	u32 uniqueId = 0;
 	id<MTLTexture> native = nil;
 	GfxTextureDesc desc;
-	static TextureMTL create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count);
+	static TextureMTL create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels);
 	void destroy();
 };
 
