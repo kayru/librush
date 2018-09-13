@@ -548,7 +548,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 			slice:regionData.slice
 			withBytes:srcPixels
 			bytesPerRow:srcPitch
-			bytesPerImage:regionData.pitch * mipHeight];
+			bytesPerImage:srcPitch * mipHeight];
 	}
 
 	[textureDescriptor release];

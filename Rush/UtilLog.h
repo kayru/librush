@@ -46,7 +46,7 @@ struct Log
 #if (defined(RUSH_DEBUG) || defined(FORCE_ASSERTS) || defined(RUSH_FORCE_ASSERTS))
 #define RUSH_ASSERT(v)               { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'.", RUSH_FUNCTION);} }
 #ifdef __GNUC__
-#define RUSH_ASSERT_MSG(v, msg, ...) { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " ## msg, RUSH_FUNCTION, ##__VA_ARGS__);} }
+#define RUSH_ASSERT_MSG(v, msg, ...) { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'.", RUSH_FUNCTION);} }
 #else
 #define RUSH_ASSERT_MSG(v, msg, ...) { if (!(v)){RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " ## msg, RUSH_FUNCTION, __VA_ARGS__);} }
 #endif
