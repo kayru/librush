@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <tchar.h>
+#include <windowsx.h>
 
 #ifndef WM_NCMOUSEHOVER
 #define WM_NCMOUSEHOVER 0x02A0
@@ -278,18 +279,17 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 
 void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
-	if (message != WM_NCMOUSELEAVE)
-	{
-		int xPos    = LOWORD(lparam);
-		int yPos    = HIWORD(lparam);
-		m_mouse.pos = Vec2((float)xPos, (float)yPos);
-		;
-	}
-	else
+	if (message == WM_NCMOUSELEAVE)
 	{
 		m_mouse.buttons[0] = false;
 		m_mouse.buttons[1] = false;
 		m_mouse.buttons[2] = false;
+	}
+	else if (message != WM_MOUSEWHEEL && message != WM_MOUSEHWHEEL)
+	{
+		int xPos    = GET_X_LPARAM(lparam);
+		int yPos    = GET_Y_LPARAM(lparam);
+		m_mouse.pos = Vec2((float)xPos, (float)yPos);
 	}
 
 	switch (message)
