@@ -45,11 +45,11 @@ public:
 	{
 		Vec3       pos;
 		Vec2       tex;
-		ColorRGBA8 col0;
+		ColorRGBA8 col;
 	};
 
 public:
-	PrimitiveBatch(u32 max_batch_vertices = 12000);
+	PrimitiveBatch(u32 maxBatchVertices = 12000);
 	~PrimitiveBatch();
 
 	Vec4        getTransform2D() const { return m_constants.transform2D; }
@@ -79,9 +79,9 @@ public:
 	void drawLine(const Vec2& a, const Vec2& b, const ColorRGBA8& color = ColorRGBA8::White());
 	void drawLine(const Vec3& a, const Vec3& b, const ColorRGBA8& color = ColorRGBA8::White());
 	void drawLine(const Line2& line, const ColorRGBA8& color = ColorRGBA8::White());
-	void drawLine(const Line2& line, const ColorRGBA8& color_start, const ColorRGBA8& color_end);
+	void drawLine(const Line2& line, const ColorRGBA8& colorStart, const ColorRGBA8& colorEnd);
 	void drawLine(const Line3& line, const ColorRGBA8& color = ColorRGBA8::White());
-	void drawLine(const Line3& line, const ColorRGBA8& color_start, const ColorRGBA8& color_end);
+	void drawLine(const Line3& line, const ColorRGBA8& colorStart, const ColorRGBA8& colorEnd);
 	void drawRect(const Box2& rect, const ColorRGBA8& color = ColorRGBA8::White());
 
 	void drawTriangle(const Vec2& a, const Vec2& b, const Vec2& c, const ColorRGBA8& color);
