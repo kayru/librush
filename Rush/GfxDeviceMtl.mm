@@ -1001,17 +1001,77 @@ void GfxContext::applyState()
 		[pipelineDescriptor release];
 	}
 
-	if (m_computeCommandEncoder)
+	if (m_commandEncoder)
 	{
 		if (m_dirtyState & DirtyStateFlag_ConstantBuffer)
 		{
 			for (u32 i=0; i<GfxContext::MaxConstantBuffers; ++i)
 			{
-				id<MTLBuffer> buffer = g_device->m_buffers[m_constantBuffers[i].get()].native;
-				[m_computeCommandEncoder setBuffer:buffer offset:0 atIndex:i];
+				u32 slot = technique.constantBufferOffset + i;
+				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
+				size_t offset = m_constantBufferOffsets[i];
+				[m_commandEncoder setVertexBuffer:resource offset:offset atIndex:slot];
+				[m_commandEncoder setFragmentBuffer:resource offset:offset atIndex:slot];
+
 			}
 		}
 
+		if (m_dirtyState & DirtyStateFlag_Texture)
+		{
+			for (u32 i=0; i<GfxContext::MaxSampledImages; ++i)
+			{
+				u32 slot = technique.sampledImageOffset + i;
+				id resource = g_device->m_textures[m_sampledImages[u32(GfxStage::Pixel)][i].get()].native;
+				[m_commandEncoder setFragmentTexture:resource atIndex:slot];
+			}
+		}
+
+		if (m_dirtyState & DirtyStateFlag_Sampler)
+		{
+			for (u32 i=0; i<GfxContext::MaxSamplers; ++i)
+			{
+				u32 slot = technique.samplerOffset + i;
+				id resource = g_device->m_samplers[m_samplers[u32(GfxStage::Pixel)][i].get()].native;
+				[m_commandEncoder setFragmentSamplerState:resource atIndex:slot];
+			}
+		}
+	}
+
+	if (m_computeCommandEncoder)
+	{
+		const u32 stagIdx = u32(GfxStage::Compute);
+
+		if (m_dirtyState & DirtyStateFlag_ConstantBuffer)
+		{
+			for (u32 i=0; i<GfxContext::MaxConstantBuffers; ++i)
+			{
+				u32 slot = technique.constantBufferOffset + i;
+				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
+				[m_computeCommandEncoder setBuffer:resource offset:m_constantBufferOffsets[i] atIndex:slot];
+			}
+		}
+
+		if (m_dirtyState & DirtyStateFlag_Texture)
+		{
+			for (u32 i=0; i<GfxContext::MaxSampledImages; ++i)
+			{
+				u32 slot = technique.sampledImageOffset + i;
+				id resource = g_device->m_textures[m_sampledImages[stagIdx][i].get()].native;
+				[m_computeCommandEncoder setTexture:resource atIndex:slot];
+			}
+		}
+
+		if (m_dirtyState & DirtyStateFlag_Sampler)
+		{
+			for (u32 i=0; i<GfxContext::MaxSamplers; ++i)
+			{
+				u32 slot = technique.samplerOffset + i;
+				id resource = g_device->m_samplers[m_samplers[stagIdx][i].get()].native;
+				[m_computeCommandEncoder setSamplerState:resource atIndex:slot];
+			}
+		}
+
+		// TODO: use dirty flags
 		for (u32 i=0; i<GfxContext::MaxStorageImages; ++i)
 		{
 			id<MTLTexture> texture = g_device->m_textures[m_storageImages[i].get()].native;
@@ -1019,6 +1079,7 @@ void GfxContext::applyState()
 			[m_computeCommandEncoder setTexture:texture atIndex:slot];
 		}
 
+		// TODO: use dirty flags
 		for (u32 i=0; i<GfxContext::MaxStorageBuffers; ++i)
 		{
 			id<MTLBuffer> buffer = g_device->m_buffers[m_storageBuffers[i].get()].native;
@@ -1200,38 +1261,20 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
 
 void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
 {
-	// TODO: defer setting resources until draw/dispatch
-	
-	RUSH_ASSERT(rc->m_pendingTechnique.valid());
-	const TechniqueMTL& technique = g_device->m_techniques[rc->m_pendingTechnique.get()];
-	u32 slot = technique.sampledImageOffset + idx;
-	
-	switch(stage)
-	{
-	case GfxStage::Pixel:
-		[rc->m_commandEncoder setFragmentTexture:g_device->m_textures[h].native atIndex:slot];
-		break;
-	default:
-		Log::error("Not implemented");
-	}
+	RUSH_ASSERT(idx < GfxContext::MaxSampledImages);
+	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute); // other stages not implemented
+
+	rc->m_sampledImages[u32(stage)][idx].retain(h);
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
 }
 
 void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSampler h)
 {
-	// TODO: defer setting resources until draw/dispatch
-	
-	RUSH_ASSERT(rc->m_pendingTechnique.valid());
-	const TechniqueMTL& technique = g_device->m_techniques[rc->m_pendingTechnique.get()];
-	u32 slot = technique.samplerOffset + idx;
-	
-	switch(stage)
-	{
-	case GfxStage::Pixel:
-		[rc->m_commandEncoder setFragmentSamplerState:g_device->m_samplers[h].native atIndex:slot];
-		break;
-	default:
-		Log::error("Not implemented");
-	}
+	RUSH_ASSERT(idx < GfxContext::MaxSamplers);
+	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute); // other stages not implemented
+
+	rc->m_samplers[u32(stage)][idx].retain(h);
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
 }
 
 void Gfx_SetBlendState(GfxContext* rc, GfxBlendState h)
@@ -1256,11 +1299,8 @@ void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBuffer h, size_t offset
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
 
-	auto cb = g_device->m_buffers[h].native;
-	[rc->m_commandEncoder setVertexBuffer:cb offset:offset atIndex:index];
-	[rc->m_commandEncoder setFragmentBuffer:cb offset:offset atIndex:index];
-
 	rc->m_constantBuffers[index].retain(h);
+	rc->m_constantBufferOffsets[index] = offset;
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
 }
 

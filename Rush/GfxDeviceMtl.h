@@ -143,11 +143,12 @@ public:
 
 	enum
 	{
-		MaxTextures = 16,
+		MaxSampledImages = 16,
 		MaxStorageImages = 8,
 		MaxVertexStreams = 8,
 		MaxConstantBuffers = 4,
 		MaxStorageBuffers = 4,
+		MaxSamplers = 4,
 	};
 
 	GfxContext();
@@ -171,6 +172,7 @@ public:
 		DirtyStateFlag_StorageBuffer = 1 << 11,
 
 		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler | DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer,
+
 		DirtyStateFlag_Pipeline = DirtyStateFlag_Technique | DirtyStateFlag_PrimitiveType | DirtyStateFlag_BlendState | DirtyStateFlag_DepthStencilState | DirtyStateFlag_RasterizerState,
 	};
 
@@ -185,6 +187,9 @@ public:
 	GfxRasterizerStateRef m_pendingRasterizerState;
 	GfxDepthStencilStateRef m_pendingDepthStencilState;
 	GfxBufferRef m_constantBuffers[MaxConstantBuffers];
+	size_t m_constantBufferOffsets[MaxConstantBuffers] = {};
+	GfxSamplerRef m_samplers[u32(GfxStage::count)][MaxSamplers];
+	GfxTextureRef m_sampledImages[u32(GfxStage::count)][MaxSampledImages];
 	GfxTextureRef m_storageImages[MaxStorageImages];
 	GfxBufferRef m_storageBuffers[MaxStorageBuffers];
 	GfxPassDesc m_passDesc;
