@@ -653,19 +653,19 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
 	}
 
-	m_supportedExtensions.EXT_shader_subgroup_vote =
-	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_EXT_shader_subgroup_vote", false);
-
-	m_supportedExtensions.EXT_shader_subgroup_ballot =
-	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_EXT_shader_subgroup_ballot", false);
-
 	m_supportedExtensions.KHR_maintenance1 =
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
 	std::memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
 
-	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {
-	    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD};
+	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
+	subgroupProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+	subgroupProperties.pNext = nullptr;
+
+	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {};
+	waveLimitProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
+	waveLimitProps.pNext = &subgroupProperties;
+
 	if (vkGetPhysicalDeviceProperties2KHR)
 	{
 		m_physicalDeviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
@@ -915,8 +915,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.shaderInt16      = !!enabledDeviceFeatures.shaderInt16;
 	m_caps.shaderInt64      = !!enabledDeviceFeatures.shaderInt64;
 	m_caps.asyncCompute     = m_computeQueueIndex != invalidIndex;
+
+	const u32 requiredSubgroupOperations = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_VOTE_BIT |
+	                                       VK_SUBGROUP_FEATURE_ARITHMETIC_BIT | VK_SUBGROUP_FEATURE_BALLOT_BIT |
+	                                       VK_SUBGROUP_FEATURE_SHUFFLE_BIT | VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT;
+
 	m_caps.shaderWaveIntrinsics =
-	    m_supportedExtensions.EXT_shader_subgroup_ballot && m_supportedExtensions.EXT_shader_subgroup_vote;
+	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations 
+		&& !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
+
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 

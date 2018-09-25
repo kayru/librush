@@ -472,8 +472,6 @@ public:
 		bool AMD_negative_viewport_height = false;
 		bool KHR_maintenance1             = false;
 		bool AMD_wave_limits              = false;
-		bool EXT_shader_subgroup_vote     = false;
-		bool EXT_shader_subgroup_ballot   = false;
 		bool NV_geometry_shader_passthrough = false;
 		bool AMD_shader_explicit_vertex_parameter = false;
 	} m_supportedExtensions;
