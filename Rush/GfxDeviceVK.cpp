@@ -468,6 +468,8 @@ inline void validateBufferUse(const BufferVK& buffer)
 
 GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 {
+	volkInitialize();
+
 	g_device = this;
 
 	m_window = window;
@@ -512,12 +514,16 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions.data();
 	V(vkCreateInstance(&instanceCreateInfo, nullptr, &m_vulkanInstance));
 
+	volkLoadInstance(m_vulkanInstance);
+
 	vkGetPhysicalDeviceProperties2KHR = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2KHR>(
 	    vkGetInstanceProcAddr(m_vulkanInstance, "vkGetPhysicalDeviceProperties2KHR"));
 
+	/*
 	PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
 	    reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(
 	        vkGetInstanceProcAddr(m_vulkanInstance, "vkCreateDebugReportCallbackEXT"));
+	*/
 
 	if (vkCreateDebugReportCallbackEXT)
 	{
@@ -659,12 +665,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	std::memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
 
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
-	subgroupProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-	subgroupProperties.pNext = nullptr;
+	subgroupProperties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+	subgroupProperties.pNext                              = nullptr;
 
 	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {};
-	waveLimitProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
-	waveLimitProps.pNext = &subgroupProperties;
+	waveLimitProps.sType                                  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
+	waveLimitProps.pNext                                  = &subgroupProperties;
 
 	if (vkGetPhysicalDeviceProperties2KHR)
 	{
@@ -921,19 +927,28 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	                                       VK_SUBGROUP_FEATURE_SHUFFLE_BIT | VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT;
 
 	m_caps.shaderWaveIntrinsics =
-	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations 
-		&& !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
+	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations &&
+	    !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
 
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
-	switch (m_physicalDeviceProps.vendorID)
+	if (subgroupProperties.subgroupSize)
 	{
-	case VendorID_NVIDIA: m_caps.threadGroupSize = 32; break;
-	case VendorID_AMD: m_caps.threadGroupSize = 64; break;
-	default:
-		m_caps.threadGroupSize = 64; // TODO: what's best for Intel?
-		break;
+		m_caps.threadGroupSize = subgroupProperties.subgroupSize;
+	}
+	else
+	{
+		// Guess some sensible default
+
+		switch (m_physicalDeviceProps.vendorID)
+		{
+		case VendorID_NVIDIA: m_caps.threadGroupSize = 32; break;
+		case VendorID_AMD: m_caps.threadGroupSize = 64; break;
+		default:
+			m_caps.threadGroupSize = 64; // TODO: what's best for Intel?
+			break;
+		}
 	}
 
 	m_caps.apiName = "Vulkan";
@@ -1003,9 +1018,11 @@ GfxDevice::~GfxDevice()
 
 	if (m_debugReportCallbackExt)
 	{
+		/*
 		PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
 		    reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
 		        vkGetInstanceProcAddr(m_vulkanInstance, "vkDestroyDebugReportCallbackEXT"));
+		*/
 
 		if (vkDestroyDebugReportCallbackEXT)
 		{
@@ -4699,7 +4716,7 @@ void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 	}
 	contexts.clear();
 }
-}
+} // namespace Rush
 
 #undef V
 

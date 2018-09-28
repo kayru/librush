@@ -17,6 +17,8 @@ add_library(Rush STATIC)
 # Add source files
 
 target_sources(Rush PRIVATE
+	External/Volk/volk.c
+	External/Volk/volk.h
 	Rush/GfxBitmapFont.cpp
 	Rush/GfxBitmapFont.h
 	Rush/GfxCommon.cpp
@@ -35,8 +37,8 @@ target_sources(Rush PRIVATE
 	Rush/MathTypes.h
 	Rush/Platform.cpp
 	Rush/Platform.h
-	Rush/PlatformWin32.cpp
 	Rush/PlatformLinux.cpp
+	Rush/PlatformWin32.cpp
 	Rush/Rush.h
 	Rush/UtilCamera.cpp
 	Rush/UtilCamera.h
@@ -76,6 +78,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		WIN32_LEAN_AND_MEAN
 	)
 
+	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_WIN32_KHR)
+
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 
 	target_compile_definitions(Rush PUBLIC
@@ -86,6 +90,8 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
 	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
 	target_link_libraries(Rush INTERFACE xcb xcb-keysyms pthread)
+
+	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_XCB_KHR)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
@@ -98,6 +104,8 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		Rush/WindowMac.mm
 	)
 
+	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_MACOS_MVK)
+
 endif()
 
 if (${RUSH_RENDER_API} MATCHES "NULL")
@@ -109,13 +117,11 @@ endif()
 if (${RUSH_RENDER_API} MATCHES "VK")
 	target_compile_definitions(Rush PUBLIC
 		RUSH_RENDER_API=RUSH_RENDER_API_VK
-	)
-	find_package(Vulkan REQUIRED)
-	target_link_libraries(Rush INTERFACE
-		${Vulkan_LIBRARIES}
+		${RUSH_VULKAN_PLATFORM}
 	)
 	target_include_directories(Rush PRIVATE
-		${Vulkan_INCLUDE_DIRS}
+		External/Vulkan-Headers
+		External/Volk
 	)
 endif()
 
