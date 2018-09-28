@@ -17,8 +17,6 @@ add_library(Rush STATIC)
 # Add source files
 
 target_sources(Rush PRIVATE
-	External/Volk/volk.c
-	External/Volk/volk.h
 	Rush/GfxBitmapFont.cpp
 	Rush/GfxBitmapFont.h
 	Rush/GfxCommon.cpp
@@ -122,6 +120,10 @@ if (${RUSH_RENDER_API} MATCHES "VK")
 	target_include_directories(Rush PRIVATE
 		External/Vulkan-Headers
 		External/Volk
+	)
+	target_sources(Rush PRIVATE
+		External/Volk/volk.c
+		External/Volk/volk.h
 	)
 endif()
 

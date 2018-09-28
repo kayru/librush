@@ -663,10 +663,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
 	std::memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
+	std::memset(&m_nvxRaytracingProps, 0, sizeof(m_nvxRaytracingProps));
+
+	m_nvxRaytracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAYTRACING_PROPERTIES_NVX;
+	m_nvxRaytracingProps.pNext = nullptr;
 
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
 	subgroupProperties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-	subgroupProperties.pNext                              = nullptr;
+	subgroupProperties.pNext                              = &m_nvxRaytracingProps;
 
 	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {};
 	waveLimitProps.sType                                  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
@@ -677,6 +681,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		m_physicalDeviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
 		m_physicalDeviceProps2.pNext = &waveLimitProps;
 		vkGetPhysicalDeviceProperties2KHR(m_physicalDevice, &m_physicalDeviceProps2);
+	}
+
+	if (m_nvxRaytracingProps.maxGeometryCount)
+	{
+		m_supportedExtensions.NVX_raytracing = true;
 	}
 
 	if (!m_supportedExtensions.KHR_maintenance1)
