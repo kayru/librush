@@ -117,7 +117,7 @@ if (${RUSH_RENDER_API} MATCHES "VK")
 		RUSH_RENDER_API=RUSH_RENDER_API_VK
 		${RUSH_VULKAN_PLATFORM}
 	)
-	target_include_directories(Rush PRIVATE
+	target_include_directories(Rush PUBLIC
 		External/Vulkan-Headers
 		External/Volk
 	)
