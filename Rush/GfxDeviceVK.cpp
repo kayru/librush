@@ -345,6 +345,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_R16_Uint: return VK_FORMAT_R16_UINT;
 	case GfxFormat_RGBA16_Float: return VK_FORMAT_R16G16B16A16_SFLOAT;
 	case GfxFormat_RGBA32_Float: return VK_FORMAT_R32G32B32A32_SFLOAT;
+	case GfxFormat_RGB32_Float: return VK_FORMAT_R32G32B32_SFLOAT;
 	case GfxFormat_BGRA8_Unorm: return VK_FORMAT_B8G8R8A8_UNORM;
 	case GfxFormat_RGBA8_Unorm: return VK_FORMAT_R8G8B8A8_UNORM;
 	case GfxFormat_BGRA8_sRGB: return VK_FORMAT_B8G8R8A8_SRGB;
@@ -368,6 +369,8 @@ static VkFormat convertFormat(GfxFormat format)
 	default: RUSH_LOG_ERROR("Unsupported format"); return VK_FORMAT_UNDEFINED;
 	}
 }
+
+VkFormat Gfx_vkConvertFormat(GfxFormat format) { return convertFormat(format); }
 
 static VkShaderStageFlags convertStageFlags(GfxStageFlags flags)
 {

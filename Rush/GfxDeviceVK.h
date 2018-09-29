@@ -630,6 +630,9 @@ void Gfx_vkExecutionBarrier(GfxContext* ctx, VkPipelineStageFlagBits srcStage, V
 
 void Gfx_vkFlushMappedBuffer(GfxBuffer h);
 void Gfx_vkFlushBarriers(GfxContext* ctx);
+
+VkFormat Gfx_vkConvertFormat(GfxFormat format);
+
 }
 
 #endif

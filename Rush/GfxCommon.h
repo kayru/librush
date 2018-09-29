@@ -227,6 +227,7 @@ enum GfxFormat : u32
 	GfxFormat_RG8_Unorm    = GfxFormatStorage_RG8 | GfxFormatType_Unorm | GfxFormatComponent_RG,
 	GfxFormat_RG16_Float   = GfxFormatStorage_RG16 | GfxFormatType_Float | GfxFormatComponent_RG,
 	GfxFormat_RG32_Float   = GfxFormatStorage_RG32 | GfxFormatType_Float | GfxFormatComponent_RG,
+	GfxFormat_RGB32_Float  = GfxFormatStorage_RGB32 | GfxFormatType_Float | GfxFormatComponent_RGB,
 	GfxFormat_RGB8_Unorm   = GfxFormatStorage_RGB8 | GfxFormatType_Unorm | GfxFormatComponent_RGB,
 	GfxFormat_RGBA16_Float = GfxFormatStorage_RGBA16 | GfxFormatType_Float | GfxFormatComponent_RGBA,
 	GfxFormat_RGBA16_Unorm = GfxFormatStorage_RGB16 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
