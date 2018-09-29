@@ -656,6 +656,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableExtension(
 	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
 
+	m_supportedExtensions.NVX_raytracing = enableExtension(
+	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NVX_raytracing", false);
+
 	if (!cfg.debug)
 	{
 		m_supportedExtensions.AMD_wave_limits =
@@ -684,11 +687,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		m_physicalDeviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
 		m_physicalDeviceProps2.pNext = &waveLimitProps;
 		vkGetPhysicalDeviceProperties2KHR(m_physicalDevice, &m_physicalDeviceProps2);
-	}
-
-	if (m_nvxRaytracingProps.maxGeometryCount)
-	{
-		m_supportedExtensions.NVX_raytracing = true;
 	}
 
 	if (!m_supportedExtensions.KHR_maintenance1)
@@ -942,6 +940,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations &&
 	    !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
 
+	m_caps.raytracing                  = m_supportedExtensions.NVX_raytracing;
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
@@ -3889,6 +3888,12 @@ void Gfx_vkFullPipelineBarrier(GfxContext* ctx)
 	                        VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT |
 	                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
 	                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+
+	if (g_device->m_supportedExtensions.NVX_raytracing)
+	{
+		barrier.srcAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NVX;
+		barrier.dstAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NVX;
+	}
 
 	vkCmdPipelineBarrier(ctx->m_commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 	    0, 1, &barrier, 0, nullptr, 0, nullptr);

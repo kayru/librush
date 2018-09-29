@@ -91,8 +91,9 @@ struct GfxCapability
 	bool        shaderWaveIntrinsics = false;
 	bool        asyncCompute         = false;
 
-	bool        geometryShaderPassthroughNV = false;
-	bool        explicitVertexParameterAMD = false;
+	bool raytracing                  = false;
+	bool geometryShaderPassthroughNV = false;
+	bool explicitVertexParameterAMD  = false;
 
 	float deviceFarDepth  = 1.0f;
 	float deviceNearDepth = 0.0f;
