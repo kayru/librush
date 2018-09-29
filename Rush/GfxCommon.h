@@ -642,32 +642,6 @@ const char* toString(GfxVertexFormatDesc::Semantic type);
 
 u16 dataTypeSize(GfxVertexFormatDesc::DataType type);
 
-struct ShaderConstantIndex
-{
-	inline ShaderConstantIndex() : index(u32(-1)), count(u32(-1)) {}
-
-	inline ShaderConstantIndex(u32 _index, u32 _count = 1) : index(_index), count(_count) {}
-
-	bool isValid() const { return index != u32(-1); }
-
-	u32 index;
-	u32 count;
-};
-
-struct ShaderConstantDesc
-{
-	std::string name;
-	u32         registerIndex;
-	u32         registerCount;
-
-	ShaderConstantDesc() : name(), registerIndex(0), registerCount(0) {}
-
-	inline bool operator==(const ShaderConstantDesc& rhs) const
-	{
-		return registerIndex == rhs.registerIndex && registerCount == rhs.registerCount && name == rhs.name;
-	}
-};
-
 struct GfxShaderSource : public std::vector<char>
 {
 	GfxShaderSource() : type(GfxShaderSourceType_Unknown) {}
