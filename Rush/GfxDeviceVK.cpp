@@ -870,6 +870,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 65536},
 		    {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 65536},
 		    {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 65536},
+			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NVX, 1024},
 		};
 		descriptorPoolCreateInfo.poolSizeCount = RUSH_COUNTOF(poolSizes);
 		descriptorPoolCreateInfo.pPoolSizes    = poolSizes;
