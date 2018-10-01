@@ -656,8 +656,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableExtension(
 	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
 
-	m_supportedExtensions.NVX_raytracing = enableExtension(
-	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NVX_raytracing", false);
+	if (enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_KHR_get_memory_requirements2", false))
+	{
+		m_supportedExtensions.NVX_raytracing =
+		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NVX_raytracing", false);
+	}
 
 	if (!cfg.debug)
 	{
