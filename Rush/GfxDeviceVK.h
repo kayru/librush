@@ -633,6 +633,8 @@ void Gfx_vkFlushBarriers(GfxContext* ctx);
 
 VkFormat Gfx_vkConvertFormat(GfxFormat format);
 
+const char* toString(VkResult value);
+
 }
 
 #endif
