@@ -1596,6 +1596,7 @@ void GfxDevice::createSwapChain()
 	}
 
 	m_swapChainPresentMode = m_pendingSwapChainPresentMode;
+	m_swapChainValid = true;
 }
 
 inline void recycleContext(GfxContext* context)
@@ -1610,8 +1611,22 @@ inline void recycleContext(GfxContext* context)
 
 void GfxDevice::beginFrame()
 {
-	V(vkAcquireNextImageKHR(
-	    m_vulkanDevice, m_swapChain, UINT64_MAX, m_presentCompleteSemaphore, VK_NULL_HANDLE, &m_swapChainIndex));
+	if (!m_swapChainValid && m_window->isFocused())
+	{
+		createSwapChain();
+	}
+
+	if (m_swapChainValid)
+	{
+		VkResult result = vkAcquireNextImageKHR(
+			m_vulkanDevice, m_swapChain, UINT64_MAX, m_presentCompleteSemaphore, VK_NULL_HANDLE, &m_swapChainIndex);
+
+		if (result != VK_SUCCESS)
+		{
+			// TODO: handle VK_ERROR_OUT_OF_DATE_KHR and VK_SUBOPTIMAL_KHR
+			RUSH_LOG_FATAL("vkAcquireNextImageKHR returned code %d (%s)", result, toString(result));
+		}
+	}
 
 	m_currentFrame             = &m_frameData[m_swapChainIndex];
 	m_currentFrame->frameIndex = g_device->m_frameCount;
@@ -1945,7 +1960,7 @@ void GfxContext::submit(VkQueue queue)
 		m_pendingBufferUploads.clear();
 	}
 
-	if (queue == g_device->m_graphicsQueue && !g_device->m_currentFrame->presentSemaphoreWaited)
+	if (queue == g_device->m_graphicsQueue && !g_device->m_currentFrame->presentSemaphoreWaited && g_device->m_swapChainValid)
 	{
 		addDependency(g_device->m_presentCompleteSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 		g_device->m_currentFrame->presentSemaphoreWaited = true;
@@ -2784,7 +2799,15 @@ void Gfx_Present()
 	presentInfo.pSwapchains      = &g_device->m_swapChain;
 	presentInfo.pImageIndices    = &g_device->m_swapChainIndex;
 
-	V(vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo));
+	VkResult result = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	{
+		g_device->m_swapChainValid = false;
+	}
+	else if (result != VK_SUCCESS)
+	{
+		RUSH_LOG_FATAL("vkQueuePresentKHR returned code %d (%s)", result, toString(result));
+	}
 
 	g_device->m_frameCount++;
 }

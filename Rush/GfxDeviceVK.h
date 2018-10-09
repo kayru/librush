@@ -386,6 +386,7 @@ public:
 	VkPresentModeKHR     m_pendingSwapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	std::vector<VkImage> m_swapChainImages;
 	u32                  m_swapChainIndex = 0;
+	bool                 m_swapChainValid = false;
 
 	GfxTexture              m_depthBufferTexture;
 	std::vector<GfxTexture> m_swapChainTextures;
