@@ -674,21 +674,29 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	std::memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
 	std::memset(&m_nvxRaytracingProps, 0, sizeof(m_nvxRaytracingProps));
 
+	void* physicalDeviceProps2Next = nullptr;
+
 	m_nvxRaytracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAYTRACING_PROPERTIES_NVX;
-	m_nvxRaytracingProps.pNext = nullptr;
+	m_nvxRaytracingProps.pNext = physicalDeviceProps2Next;
+	physicalDeviceProps2Next   = &m_nvxRaytracingProps;
 
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
 	subgroupProperties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-	subgroupProperties.pNext                              = &m_nvxRaytracingProps;
+	subgroupProperties.pNext                              = physicalDeviceProps2Next;
+	physicalDeviceProps2Next                              = &subgroupProperties;
 
 	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {};
-	waveLimitProps.sType                                  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
-	waveLimitProps.pNext                                  = &subgroupProperties;
+	if(m_supportedExtensions.AMD_wave_limits)
+	{
+		waveLimitProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
+		waveLimitProps.pNext = physicalDeviceProps2Next;
+		physicalDeviceProps2Next = &waveLimitProps;
+	}
 
 	if (vkGetPhysicalDeviceProperties2KHR)
 	{
 		m_physicalDeviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
-		m_physicalDeviceProps2.pNext = &waveLimitProps;
+		m_physicalDeviceProps2.pNext = physicalDeviceProps2Next;
 		vkGetPhysicalDeviceProperties2KHR(m_physicalDevice, &m_physicalDeviceProps2);
 	}
 
