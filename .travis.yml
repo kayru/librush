@@ -1,17 +1,32 @@
-language: cpp
-
 matrix:
   include:
-    - compiler: clang
-      os: osx
+    - os: osx
+      compiler: clang
+      language: cpp
+      osx_image: xcode9.4
+      env:
+        - CMAKE_ARGS="-DRUSH_RENDER_API=MTL"
+    - os: linux
+      compiler: gcc
+      language: cpp
+      env:
+        - CMAKE_ARGS="-DRUSH_RENDER_API=VK"
+    - os: windows
+      language: shell
+      env:
+        - CMAKE_ARGS="-A x64 -DRUSH_RENDER_API=VK"
 
 notifications:
   email: false
 
-osx_image: xcode9.4
+install:
+  - if [ $TRAVIS_OS_NAME = linux ]; then sudo apt-get install libxcb-keysyms1-dev -y; fi
+
+before_script:
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then PATH=$PATH:/c/Program\ Files/CMake/bin; fi
 
 script:
   - mkdir build
   - cd build
-  - cmake -DRUSH_RENDER_API=MTL ..
-  - make
+  - cmake ${CMAKE_ARGS} ..
+  - cmake --build .
