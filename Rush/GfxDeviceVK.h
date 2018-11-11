@@ -393,18 +393,18 @@ public:
 
 	// resources
 
-	DynamicResourcePool<ShaderVK, GfxVertexShader>                 m_vertexShaders;
-	DynamicResourcePool<ShaderVK, GfxPixelShader>                  m_pixelShaders;
-	DynamicResourcePool<ShaderVK, GfxGeometryShader>               m_geometryShaders;
-	DynamicResourcePool<ShaderVK, GfxComputeShader>                m_computeShaders;
-	DynamicResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
-	DynamicResourcePool<BufferVK, GfxBuffer>                       m_buffers;
-	DynamicResourcePool<TechniqueVK, GfxTechnique>                 m_techniques;
-	DynamicResourcePool<DepthStencilStateVK, GfxDepthStencilState> m_depthStencilStates;
-	DynamicResourcePool<RasterizerStateVK, GfxRasterizerState>     m_rasterizerStates;
-	DynamicResourcePool<TextureVK, GfxTexture>                     m_textures;
-	DynamicResourcePool<BlendStateVK, GfxBlendState>               m_blendStates;
-	DynamicResourcePool<SamplerVK, GfxSampler>                     m_samplers;
+	ResourcePool<ShaderVK, GfxVertexShader>                 m_vertexShaders;
+	ResourcePool<ShaderVK, GfxPixelShader>                  m_pixelShaders;
+	ResourcePool<ShaderVK, GfxGeometryShader>               m_geometryShaders;
+	ResourcePool<ShaderVK, GfxComputeShader>                m_computeShaders;
+	ResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
+	ResourcePool<BufferVK, GfxBuffer>                       m_buffers;
+	ResourcePool<TechniqueVK, GfxTechnique>                 m_techniques;
+	ResourcePool<DepthStencilStateVK, GfxDepthStencilState> m_depthStencilStates;
+	ResourcePool<RasterizerStateVK, GfxRasterizerState>     m_rasterizerStates;
+	ResourcePool<TextureVK, GfxTexture>                     m_textures;
+	ResourcePool<BlendStateVK, GfxBlendState>               m_blendStates;
+	ResourcePool<SamplerVK, GfxSampler>                     m_samplers;
 
 	struct DestructionQueue
 	{

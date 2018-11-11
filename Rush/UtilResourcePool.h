@@ -42,57 +42,12 @@ private:
 	IndexType m_index;
 };
 
-template <typename T, typename HANDLE_TYPE, size_t CAPACITY> class ResourcePool
+template <typename T, typename HANDLE_TYPE> class ResourcePool
 {
 public:
 	typedef HANDLE_TYPE HandleType;
 
 	ResourcePool()
-	{
-		T default_value;
-		std::memset(&default_value, 0, sizeof(default_value));
-
-		for (size_t i = CAPACITY; i != 0; --i)
-		{
-			empty.pushBack(i - 1);
-		}
-
-		push(default_value);
-	}
-
-	HANDLE_TYPE push(const T& val)
-	{
-		RUSH_ASSERT(empty.size() != 0);
-		size_t idx = empty.back();
-		empty.popBack();
-		data[idx] = val;
-		return HANDLE_TYPE(UntypedResourceHandle(idx));
-	}
-
-	void remove(HANDLE_TYPE h)
-	{
-		if (h.valid())
-		{
-			empty.pushBack(h.index());
-		}
-	}
-
-	const T& operator[](HANDLE_TYPE h) const { return data[h.index()]; }
-
-	T& operator[](HANDLE_TYPE h) { return data[h.index()]; }
-
-	u32 capacity() const { return CAPACITY; }
-
-	T                             data[CAPACITY];
-	StaticArray<size_t, CAPACITY> empty;
-};
-
-template <typename T, typename HANDLE_TYPE> class DynamicResourcePool
-{
-public:
-	typedef HANDLE_TYPE HandleType;
-
-	DynamicResourcePool()
 	{
 		T default_value;
 		std::memset(&default_value, 0, sizeof(default_value));

@@ -66,7 +66,7 @@ static GfxContext* getUploadContext();
 static u32         aspectFlagsFromFormat(GfxFormat format);
 
 template <typename ObjectType, typename HandleType>
-HandleType retainResource(DynamicResourcePool<ObjectType, HandleType>& pool, const ObjectType& object)
+HandleType retainResource(ResourcePool<ObjectType, HandleType>& pool, const ObjectType& object)
 {
 	RUSH_ASSERT(object.id != 0);
 	auto handle = pool.push(object);
@@ -76,7 +76,7 @@ HandleType retainResource(DynamicResourcePool<ObjectType, HandleType>& pool, con
 }
 
 template <typename ObjectType, typename HandleType>
-void releaseResource(DynamicResourcePool<ObjectType, HandleType>& pool, HandleType handle)
+void releaseResource(ResourcePool<ObjectType, HandleType>& pool, HandleType handle)
 {
 	if (!handle.valid())
 		return;
@@ -975,9 +975,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	}
 
 	m_caps.apiName = "Vulkan";
-
-	m_techniques.data.reserve(256);
-	m_techniques.empty.reserve(256);
 }
 
 GfxDevice::~GfxDevice()

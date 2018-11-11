@@ -112,17 +112,17 @@ public:
 	id<MTLCommandQueue> m_commandQueue = nil;
 	CAMetalLayer* m_metalLayer = nil;
 
-	DynamicResourcePool<ShaderMTL, GfxVertexShader> m_vertexShaders;
-	DynamicResourcePool<ShaderMTL, GfxPixelShader> m_pixelShaders;
-	DynamicResourcePool<ShaderMTL, GfxComputeShader> m_computeShaders;
-	DynamicResourcePool<VertexFormatMTL, GfxVertexFormat> m_vertexFormats;
-	DynamicResourcePool<BufferMTL, GfxBuffer> m_buffers;
-	DynamicResourcePool<TechniqueMTL, GfxTechnique> m_techniques;
-	DynamicResourcePool<DepthStencilStateMTL, GfxDepthStencilState> m_depthStencilStates;
-	DynamicResourcePool<RasterizerStateMTL, GfxRasterizerState> m_rasterizerStates;
-	DynamicResourcePool<TextureMTL, GfxTexture> m_textures;
-	DynamicResourcePool<BlendStateMTL, GfxBlendState> m_blendStates;
-	DynamicResourcePool<SamplerMTL, GfxSampler> m_samplers;
+	ResourcePool<ShaderMTL, GfxVertexShader> m_vertexShaders;
+	ResourcePool<ShaderMTL, GfxPixelShader> m_pixelShaders;
+	ResourcePool<ShaderMTL, GfxComputeShader> m_computeShaders;
+	ResourcePool<VertexFormatMTL, GfxVertexFormat> m_vertexFormats;
+	ResourcePool<BufferMTL, GfxBuffer> m_buffers;
+	ResourcePool<TechniqueMTL, GfxTechnique> m_techniques;
+	ResourcePool<DepthStencilStateMTL, GfxDepthStencilState> m_depthStencilStates;
+	ResourcePool<RasterizerStateMTL, GfxRasterizerState> m_rasterizerStates;
+	ResourcePool<TextureMTL, GfxTexture> m_textures;
+	ResourcePool<BlendStateMTL, GfxBlendState> m_blendStates;
+	ResourcePool<SamplerMTL, GfxSampler> m_samplers;
 
 	GfxCapability m_caps;
 	GfxStats m_stats;
