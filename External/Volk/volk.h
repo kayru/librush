@@ -14,7 +14,7 @@
 #endif
 
 /* VOLK_GENERATE_VERSION */
-#define VOLK_HEADER_VERSION 85
+#define VOLK_HEADER_VERSION 92
 /* VOLK_GENERATE_VERSION */
 
 #ifndef VK_NO_PROTOTYPES
@@ -36,7 +36,7 @@ struct VolkDeviceTable;
  *
  * Returns VK_SUCCESS on success and VK_ERROR_INITIALIZATION_FAILED otherwise.
  */
-VkResult volkInitialize();
+VkResult volkInitialize(void);
 
 /**
  * Initialize library by providing a custom handler to load global symbols.
@@ -52,7 +52,7 @@ void volkInitializeCustom(PFN_vkGetInstanceProcAddr handler);
  *
  * Returns 0 if volkInitialize wasn't called or failed.
  */
-uint32_t volkGetInstanceVersion();
+uint32_t volkGetInstanceVersion(void);
 
 /**
  * Load global function pointers using application-created VkInstance; call this function after creating the Vulkan instance.
@@ -232,11 +232,9 @@ struct VolkDeviceTable
 	PFN_vkGetAndroidHardwareBufferPropertiesANDROID vkGetAndroidHardwareBufferPropertiesANDROID;
 	PFN_vkGetMemoryAndroidHardwareBufferANDROID vkGetMemoryAndroidHardwareBufferANDROID;
 #endif /* defined(VK_ANDROID_external_memory_android_hardware_buffer) */
-#if defined(VK_ANDROID_native_buffer)
-	PFN_vkAcquireImageANDROID vkAcquireImageANDROID;
-	PFN_vkGetSwapchainGrallocUsageANDROID vkGetSwapchainGrallocUsageANDROID;
-	PFN_vkQueueSignalReleaseImageANDROID vkQueueSignalReleaseImageANDROID;
-#endif /* defined(VK_ANDROID_native_buffer) */
+#if defined(VK_EXT_calibrated_timestamps)
+	PFN_vkGetCalibratedTimestampsEXT vkGetCalibratedTimestampsEXT;
+#endif /* defined(VK_EXT_calibrated_timestamps) */
 #if defined(VK_EXT_conditional_rendering)
 	PFN_vkCmdBeginConditionalRenderingEXT vkCmdBeginConditionalRenderingEXT;
 	PFN_vkCmdEndConditionalRenderingEXT vkCmdEndConditionalRenderingEXT;
@@ -273,9 +271,20 @@ struct VolkDeviceTable
 #if defined(VK_EXT_hdr_metadata)
 	PFN_vkSetHdrMetadataEXT vkSetHdrMetadataEXT;
 #endif /* defined(VK_EXT_hdr_metadata) */
+#if defined(VK_EXT_image_drm_format_modifier)
+	PFN_vkGetImageDrmFormatModifierPropertiesEXT vkGetImageDrmFormatModifierPropertiesEXT;
+#endif /* defined(VK_EXT_image_drm_format_modifier) */
 #if defined(VK_EXT_sample_locations)
 	PFN_vkCmdSetSampleLocationsEXT vkCmdSetSampleLocationsEXT;
 #endif /* defined(VK_EXT_sample_locations) */
+#if defined(VK_EXT_transform_feedback)
+	PFN_vkCmdBeginQueryIndexedEXT vkCmdBeginQueryIndexedEXT;
+	PFN_vkCmdBeginTransformFeedbackEXT vkCmdBeginTransformFeedbackEXT;
+	PFN_vkCmdBindTransformFeedbackBuffersEXT vkCmdBindTransformFeedbackBuffersEXT;
+	PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT;
+	PFN_vkCmdEndQueryIndexedEXT vkCmdEndQueryIndexedEXT;
+	PFN_vkCmdEndTransformFeedbackEXT vkCmdEndTransformFeedbackEXT;
+#endif /* defined(VK_EXT_transform_feedback) */
 #if defined(VK_EXT_validation_cache)
 	PFN_vkCreateValidationCacheEXT vkCreateValidationCacheEXT;
 	PFN_vkDestroyValidationCacheEXT vkDestroyValidationCacheEXT;
@@ -405,6 +414,20 @@ struct VolkDeviceTable
 	PFN_vkCmdDrawMeshTasksIndirectNV vkCmdDrawMeshTasksIndirectNV;
 	PFN_vkCmdDrawMeshTasksNV vkCmdDrawMeshTasksNV;
 #endif /* defined(VK_NV_mesh_shader) */
+#if defined(VK_NV_ray_tracing)
+	PFN_vkBindAccelerationStructureMemoryNV vkBindAccelerationStructureMemoryNV;
+	PFN_vkCmdBuildAccelerationStructureNV vkCmdBuildAccelerationStructureNV;
+	PFN_vkCmdCopyAccelerationStructureNV vkCmdCopyAccelerationStructureNV;
+	PFN_vkCmdTraceRaysNV vkCmdTraceRaysNV;
+	PFN_vkCmdWriteAccelerationStructuresPropertiesNV vkCmdWriteAccelerationStructuresPropertiesNV;
+	PFN_vkCompileDeferredNV vkCompileDeferredNV;
+	PFN_vkCreateAccelerationStructureNV vkCreateAccelerationStructureNV;
+	PFN_vkCreateRayTracingPipelinesNV vkCreateRayTracingPipelinesNV;
+	PFN_vkDestroyAccelerationStructureNV vkDestroyAccelerationStructureNV;
+	PFN_vkGetAccelerationStructureHandleNV vkGetAccelerationStructureHandleNV;
+	PFN_vkGetAccelerationStructureMemoryRequirementsNV vkGetAccelerationStructureMemoryRequirementsNV;
+	PFN_vkGetRayTracingShaderGroupHandlesNV vkGetRayTracingShaderGroupHandlesNV;
+#endif /* defined(VK_NV_ray_tracing) */
 #if defined(VK_NV_scissor_exclusive)
 	PFN_vkCmdSetExclusiveScissorNV vkCmdSetExclusiveScissorNV;
 #endif /* defined(VK_NV_scissor_exclusive) */
@@ -610,15 +633,14 @@ extern PFN_vkGetShaderInfoAMD vkGetShaderInfoAMD;
 extern PFN_vkGetAndroidHardwareBufferPropertiesANDROID vkGetAndroidHardwareBufferPropertiesANDROID;
 extern PFN_vkGetMemoryAndroidHardwareBufferANDROID vkGetMemoryAndroidHardwareBufferANDROID;
 #endif /* defined(VK_ANDROID_external_memory_android_hardware_buffer) */
-#if defined(VK_ANDROID_native_buffer)
-extern PFN_vkAcquireImageANDROID vkAcquireImageANDROID;
-extern PFN_vkGetSwapchainGrallocUsageANDROID vkGetSwapchainGrallocUsageANDROID;
-extern PFN_vkQueueSignalReleaseImageANDROID vkQueueSignalReleaseImageANDROID;
-#endif /* defined(VK_ANDROID_native_buffer) */
 #if defined(VK_EXT_acquire_xlib_display)
 extern PFN_vkAcquireXlibDisplayEXT vkAcquireXlibDisplayEXT;
 extern PFN_vkGetRandROutputDisplayEXT vkGetRandROutputDisplayEXT;
 #endif /* defined(VK_EXT_acquire_xlib_display) */
+#if defined(VK_EXT_calibrated_timestamps)
+extern PFN_vkGetCalibratedTimestampsEXT vkGetCalibratedTimestampsEXT;
+extern PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT vkGetPhysicalDeviceCalibrateableTimeDomainsEXT;
+#endif /* defined(VK_EXT_calibrated_timestamps) */
 #if defined(VK_EXT_conditional_rendering)
 extern PFN_vkCmdBeginConditionalRenderingEXT vkCmdBeginConditionalRenderingEXT;
 extern PFN_vkCmdEndConditionalRenderingEXT vkCmdEndConditionalRenderingEXT;
@@ -669,16 +691,30 @@ extern PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesE
 #if defined(VK_EXT_hdr_metadata)
 extern PFN_vkSetHdrMetadataEXT vkSetHdrMetadataEXT;
 #endif /* defined(VK_EXT_hdr_metadata) */
+#if defined(VK_EXT_image_drm_format_modifier)
+extern PFN_vkGetImageDrmFormatModifierPropertiesEXT vkGetImageDrmFormatModifierPropertiesEXT;
+#endif /* defined(VK_EXT_image_drm_format_modifier) */
 #if defined(VK_EXT_sample_locations)
 extern PFN_vkCmdSetSampleLocationsEXT vkCmdSetSampleLocationsEXT;
 extern PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT vkGetPhysicalDeviceMultisamplePropertiesEXT;
 #endif /* defined(VK_EXT_sample_locations) */
+#if defined(VK_EXT_transform_feedback)
+extern PFN_vkCmdBeginQueryIndexedEXT vkCmdBeginQueryIndexedEXT;
+extern PFN_vkCmdBeginTransformFeedbackEXT vkCmdBeginTransformFeedbackEXT;
+extern PFN_vkCmdBindTransformFeedbackBuffersEXT vkCmdBindTransformFeedbackBuffersEXT;
+extern PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT;
+extern PFN_vkCmdEndQueryIndexedEXT vkCmdEndQueryIndexedEXT;
+extern PFN_vkCmdEndTransformFeedbackEXT vkCmdEndTransformFeedbackEXT;
+#endif /* defined(VK_EXT_transform_feedback) */
 #if defined(VK_EXT_validation_cache)
 extern PFN_vkCreateValidationCacheEXT vkCreateValidationCacheEXT;
 extern PFN_vkDestroyValidationCacheEXT vkDestroyValidationCacheEXT;
 extern PFN_vkGetValidationCacheDataEXT vkGetValidationCacheDataEXT;
 extern PFN_vkMergeValidationCachesEXT vkMergeValidationCachesEXT;
 #endif /* defined(VK_EXT_validation_cache) */
+#if defined(VK_FUCHSIA_imagepipe_surface)
+extern PFN_vkCreateImagePipeSurfaceFUCHSIA vkCreateImagePipeSurfaceFUCHSIA;
+#endif /* defined(VK_FUCHSIA_imagepipe_surface) */
 #if defined(VK_GOOGLE_display_timing)
 extern PFN_vkGetPastPresentationTimingGOOGLE vkGetPastPresentationTimingGOOGLE;
 extern PFN_vkGetRefreshCycleDurationGOOGLE vkGetRefreshCycleDurationGOOGLE;
@@ -788,10 +824,6 @@ extern PFN_vkTrimCommandPoolKHR vkTrimCommandPoolKHR;
 #if defined(VK_KHR_maintenance3)
 extern PFN_vkGetDescriptorSetLayoutSupportKHR vkGetDescriptorSetLayoutSupportKHR;
 #endif /* defined(VK_KHR_maintenance3) */
-#if defined(VK_KHR_mir_surface)
-extern PFN_vkCreateMirSurfaceKHR vkCreateMirSurfaceKHR;
-extern PFN_vkGetPhysicalDeviceMirPresentationSupportKHR vkGetPhysicalDeviceMirPresentationSupportKHR;
-#endif /* defined(VK_KHR_mir_surface) */
 #if defined(VK_KHR_push_descriptor)
 extern PFN_vkCmdPushDescriptorSetKHR vkCmdPushDescriptorSetKHR;
 #endif /* defined(VK_KHR_push_descriptor) */
@@ -885,6 +917,20 @@ extern PFN_vkCmdDrawMeshTasksIndirectCountNV vkCmdDrawMeshTasksIndirectCountNV;
 extern PFN_vkCmdDrawMeshTasksIndirectNV vkCmdDrawMeshTasksIndirectNV;
 extern PFN_vkCmdDrawMeshTasksNV vkCmdDrawMeshTasksNV;
 #endif /* defined(VK_NV_mesh_shader) */
+#if defined(VK_NV_ray_tracing)
+extern PFN_vkBindAccelerationStructureMemoryNV vkBindAccelerationStructureMemoryNV;
+extern PFN_vkCmdBuildAccelerationStructureNV vkCmdBuildAccelerationStructureNV;
+extern PFN_vkCmdCopyAccelerationStructureNV vkCmdCopyAccelerationStructureNV;
+extern PFN_vkCmdTraceRaysNV vkCmdTraceRaysNV;
+extern PFN_vkCmdWriteAccelerationStructuresPropertiesNV vkCmdWriteAccelerationStructuresPropertiesNV;
+extern PFN_vkCompileDeferredNV vkCompileDeferredNV;
+extern PFN_vkCreateAccelerationStructureNV vkCreateAccelerationStructureNV;
+extern PFN_vkCreateRayTracingPipelinesNV vkCreateRayTracingPipelinesNV;
+extern PFN_vkDestroyAccelerationStructureNV vkDestroyAccelerationStructureNV;
+extern PFN_vkGetAccelerationStructureHandleNV vkGetAccelerationStructureHandleNV;
+extern PFN_vkGetAccelerationStructureMemoryRequirementsNV vkGetAccelerationStructureMemoryRequirementsNV;
+extern PFN_vkGetRayTracingShaderGroupHandlesNV vkGetRayTracingShaderGroupHandlesNV;
+#endif /* defined(VK_NV_ray_tracing) */
 #if defined(VK_NV_scissor_exclusive)
 extern PFN_vkCmdSetExclusiveScissorNV vkCmdSetExclusiveScissorNV;
 #endif /* defined(VK_NV_scissor_exclusive) */

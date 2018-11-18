@@ -343,7 +343,7 @@ public:
 	VkPhysicalDeviceProperties2KHR   m_physicalDeviceProps2;
 	VkPhysicalDeviceFeatures         m_physicalDeviceFeatures;
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps;
-	VkPhysicalDeviceRaytracingPropertiesNVX m_nvxRaytracingProps;
+	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps;
 	std::vector<MemoryTraitsVK>      m_memoryTraits;
 
 	struct MemoryTypes
@@ -468,7 +468,7 @@ public:
 		bool AMD_wave_limits                      = false;
 		bool NV_geometry_shader_passthrough       = false;
 		bool AMD_shader_explicit_vertex_parameter = false;
-		bool NVX_raytracing                       = false;
+		bool NV_ray_tracing                       = false;
 	} m_supportedExtensions;
 
 	bool m_useNegativeViewport = false;

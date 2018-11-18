@@ -91,7 +91,7 @@ struct GfxCapability
 	bool        shaderWaveIntrinsics = false;
 	bool        asyncCompute         = false;
 
-	bool raytracing                  = false;
+	bool rayTracing                  = false;
 	bool geometryShaderPassthroughNV = false;
 	bool explicitVertexParameterAMD  = false;
 

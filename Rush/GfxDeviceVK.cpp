@@ -651,15 +651,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
 
 	m_supportedExtensions.NV_geometry_shader_passthrough = enableExtension(
-	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NV_geometry_shader_passthrough", false);
+	    enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME, false);
 
 	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableExtension(
-	    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_shader_explicit_vertex_parameter", false);
+	    enabledDeviceExtensions, enumeratedDeviceExtensions, VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME, false);
 
-	if (enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_KHR_get_memory_requirements2", false))
+	if (enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, false))
 	{
-		m_supportedExtensions.NVX_raytracing =
-		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_NVX_raytracing", false);
+		m_supportedExtensions.NV_ray_tracing =
+		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_RAY_TRACING_EXTENSION_NAME, false);
 	}
 
 	if (!cfg.debug)
@@ -672,15 +672,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
 	std::memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
-	std::memset(&m_nvxRaytracingProps, 0, sizeof(m_nvxRaytracingProps));
+	std::memset(&m_nvRayTracingProps, 0, sizeof(m_nvRayTracingProps));
 
 	void* physicalDeviceProps2Next = nullptr;
 
-	if (m_supportedExtensions.NVX_raytracing)
+	if (m_supportedExtensions.NV_ray_tracing)
 	{
-		m_nvxRaytracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAYTRACING_PROPERTIES_NVX;
-		m_nvxRaytracingProps.pNext = physicalDeviceProps2Next;
-		physicalDeviceProps2Next = &m_nvxRaytracingProps;
+		m_nvRayTracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV;
+		m_nvRayTracingProps.pNext = physicalDeviceProps2Next;
+		physicalDeviceProps2Next = &m_nvRayTracingProps;
 	}
 
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
@@ -884,7 +884,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 65536},
 		    {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 65536},
 		    {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 65536},
-			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NVX, 1024},
+			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, 1024},
 		};
 		descriptorPoolCreateInfo.poolSizeCount = RUSH_COUNTOF(poolSizes);
 		descriptorPoolCreateInfo.pPoolSizes    = poolSizes;
@@ -955,7 +955,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations &&
 	    !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
 
-	m_caps.raytracing                  = m_supportedExtensions.NVX_raytracing;
+	m_caps.rayTracing                  = m_supportedExtensions.NV_ray_tracing;
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
@@ -3924,10 +3924,10 @@ void Gfx_vkFullPipelineBarrier(GfxContext* ctx)
 	                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
 	                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
 
-	if (g_device->m_supportedExtensions.NVX_raytracing)
+	if (g_device->m_supportedExtensions.NV_ray_tracing)
 	{
-		barrier.srcAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NVX;
-		barrier.dstAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NVX;
+		barrier.srcAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV;
+		barrier.dstAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV;
 	}
 
 	vkCmdPipelineBarrier(ctx->m_commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
