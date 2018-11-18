@@ -676,9 +676,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	void* physicalDeviceProps2Next = nullptr;
 
-	m_nvxRaytracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAYTRACING_PROPERTIES_NVX;
-	m_nvxRaytracingProps.pNext = physicalDeviceProps2Next;
-	physicalDeviceProps2Next   = &m_nvxRaytracingProps;
+	if (m_supportedExtensions.NVX_raytracing)
+	{
+		m_nvxRaytracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAYTRACING_PROPERTIES_NVX;
+		m_nvxRaytracingProps.pNext = physicalDeviceProps2Next;
+		physicalDeviceProps2Next = &m_nvxRaytracingProps;
+	}
 
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
 	subgroupProperties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
