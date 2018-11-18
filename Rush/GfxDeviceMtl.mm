@@ -15,7 +15,7 @@ static id<MTLDevice> g_metalDevice = nil;
 
 template <typename ObjectType, typename HandleType>
 HandleType retainResource(
-	DynamicResourcePool<ObjectType, HandleType>& pool,
+	ResourcePool<ObjectType, HandleType>& pool,
 	const ObjectType& object)
 {
 	RUSH_ASSERT(object.uniqueId != 0);
@@ -27,7 +27,7 @@ HandleType retainResource(
 
 template <typename ObjectType, typename HandleType>
 void releaseResource(
-	DynamicResourcePool<ObjectType, HandleType>& pool,
+	ResourcePool<ObjectType, HandleType>& pool,
 	HandleType handle)
 {
 	if (!handle.valid())
