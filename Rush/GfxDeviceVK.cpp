@@ -1513,12 +1513,34 @@ void GfxDevice::createSwapChain()
 	u32 presentModeCount = 0;
 	V(vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_swapChainSurface, &presentModeCount, nullptr));
 
-	std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+	m_availablePresentModes.resize(presentModeCount);
 	V(vkGetPhysicalDeviceSurfacePresentModesKHR(
-	    m_physicalDevice, m_swapChainSurface, &presentModeCount, presentModes.data()));
+	    m_physicalDevice, m_swapChainSurface, &presentModeCount, m_availablePresentModes.data()));
 
-	RUSH_ASSERT(
-	    std::find(presentModes.begin(), presentModes.end(), m_pendingSwapChainPresentMode) != presentModes.end());
+	auto presentModeSupported = [&](VkPresentModeKHR mode)
+	{
+		return std::find(m_availablePresentModes.begin(), m_availablePresentModes.end(), mode) != m_availablePresentModes.end();
+	};
+
+	VkPresentModeKHR pendingPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+
+	if (m_desiredPresentInterval == 0)
+	{
+		if (presentModeSupported(VK_PRESENT_MODE_IMMEDIATE_KHR))
+		{
+			pendingPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+		}
+		else if (presentModeSupported(VK_PRESENT_MODE_FIFO_RELAXED_KHR))
+		{
+			pendingPresentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+		}
+		else if (presentModeSupported(VK_PRESENT_MODE_MAILBOX_KHR))
+		{
+			pendingPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+		}
+	}
+
+	RUSH_ASSERT(presentModeSupported(pendingPresentMode));
 
 	u32 desiredSwapChainImageCount = max<u32>(m_desiredSwapChainImageCount, surfCaps.minImageCount);
 
@@ -1550,7 +1572,7 @@ void GfxDevice::createSwapChain()
 	swapChainCreateInfo.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
 	swapChainCreateInfo.queueFamilyIndexCount = 0;
 	swapChainCreateInfo.pQueueFamilyIndices   = nullptr;
-	swapChainCreateInfo.presentMode           = m_pendingSwapChainPresentMode;
+	swapChainCreateInfo.presentMode           = pendingPresentMode;
 	swapChainCreateInfo.oldSwapchain          = m_swapChain;
 	swapChainCreateInfo.clipped               = true;
 	swapChainCreateInfo.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -1603,7 +1625,9 @@ void GfxDevice::createSwapChain()
 		    retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
 	}
 
-	m_swapChainPresentMode = m_pendingSwapChainPresentMode;
+	m_presentInterval      = m_desiredPresentInterval;
+	m_swapChainPresentMode = pendingPresentMode;
+
 	m_swapChainValid = true;
 }
 
@@ -2627,7 +2651,7 @@ static void writeTimestamp(GfxContext* context, u32 slotIndex, VkPipelineStageFl
 void Gfx_BeginFrame()
 {
 	if (!g_device->m_resizeEvents.empty() ||
-	    g_device->m_pendingSwapChainPresentMode != g_device->m_swapChainPresentMode)
+		g_device->m_desiredPresentInterval != g_device->m_presentInterval)
 	{
 		g_device->createSwapChain();
 		g_device->m_resizeEvents.clear();
@@ -2822,15 +2846,7 @@ void Gfx_Present()
 
 void Gfx_SetPresentInterval(u32 interval)
 {
-	g_device->m_presentInterval = interval;
-	if (interval == 0)
-	{
-		g_device->m_pendingSwapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-	}
-	else
-	{
-		g_device->m_pendingSwapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-	}
+	g_device->m_desiredPresentInterval = interval;
 }
 
 void Gfx_Finish()

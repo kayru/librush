@@ -382,11 +382,12 @@ public:
 	VkSwapchainKHR       m_swapChain                   = VK_NULL_HANDLE;
 	VkSurfaceKHR         m_swapChainSurface            = VK_NULL_HANDLE;
 	VkExtent2D           m_swapChainExtent             = VkExtent2D{0, 0};
-	VkPresentModeKHR     m_swapChainPresentMode        = VK_PRESENT_MODE_FIFO_KHR;
-	VkPresentModeKHR     m_pendingSwapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	VkPresentModeKHR     m_swapChainPresentMode        = VK_PRESENT_MODE_MAX_ENUM_KHR;
 	std::vector<VkImage> m_swapChainImages;
 	u32                  m_swapChainIndex = 0;
 	bool                 m_swapChainValid = false;
+
+	std::vector<VkPresentModeKHR> m_availablePresentModes;
 
 	GfxTexture              m_depthBufferTexture;
 	std::vector<GfxTexture> m_swapChainTextures;
@@ -452,7 +453,8 @@ public:
 
 	std::vector<GfxContext*> m_freeContexts[u32(GfxContextType::count)];
 
-	u32 m_presentInterval            = 1; // TODO: this should control the vsync period
+	u32 m_presentInterval            = 1;
+	u32 m_desiredPresentInterval     = m_presentInterval;
 	u32 m_desiredSwapChainImageCount = 2;
 
 	Window*             m_window = nullptr;
