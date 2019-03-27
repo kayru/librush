@@ -5,9 +5,9 @@
 #include "GfxRef.h"
 #include "UtilLog.h"
 #include "Window.h"
+#include "UtilString.h"
 
 #include <algorithm>
-#include <string>
 
 #ifdef __GNUC__
 #include <limits.h>
@@ -2926,7 +2926,7 @@ ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 	return result;
 }
 
-static ShaderVK::InputMapping parseVertexInputMapping(const std::string& vertexAttributeName)
+static ShaderVK::InputMapping parseVertexInputMapping(const StringView& vertexAttributeName)
 {
 	ShaderVK::InputMapping result;
 	result.location      = 0;

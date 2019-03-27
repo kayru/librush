@@ -3,8 +3,8 @@
 #ifdef RUSH_PLATFORM_LINUX
 
 #include "Window.h"
+#include "UtilString.h"
 
-#include <string>
 #include <xcb/xcb.h>
 
 namespace Rush
@@ -26,7 +26,7 @@ public:
 
 private:
 	xcb_window_t m_nativeHandle = 0;
-	std::string m_caption;
+	String m_caption;
 };
 }
 

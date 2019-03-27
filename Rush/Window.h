@@ -6,7 +6,7 @@
 #include "UtilTuple.h"
 
 #include <vector>
-#include <cstring>
+#include <string.h>
 
 namespace Rush
 {
@@ -141,7 +141,7 @@ const char* toStringShort(Key key);
 class MouseState
 {
 public:
-	MouseState() : doubleclick(false), pos(0, 0), wheelH(0), wheelV(0) { std::memset(buttons, 0, sizeof(buttons)); }
+	MouseState() : doubleclick(false), pos(0, 0), wheelH(0), wheelV(0) { memset(buttons, 0, sizeof(buttons)); }
 
 	bool buttons[10];
 	bool doubleclick;
@@ -154,7 +154,7 @@ public:
 class KeyboardState
 {
 public:
-	KeyboardState() { std::memset(keys, 0, sizeof(keys)); }
+	KeyboardState() { memset(keys, 0, sizeof(keys)); }
 
 	bool isKeyDown(u8 code) const { return keys[code]; }
 

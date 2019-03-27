@@ -5,9 +5,9 @@
 #include "MathTypes.h"
 #include "UtilResourcePool.h"
 #include "UtilTuple.h"
+#include "UtilString.h"
 
 #include <initializer_list>
-#include <string>
 
 // clang-format off
 

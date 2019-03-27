@@ -3,7 +3,7 @@
 #include "MathCommon.h"
 #include "Rush.h"
 
-#include <cstring>
+#include <string.h>
 
 namespace Rush
 {
@@ -43,7 +43,7 @@ public:
 		pos2     = min(pos2, m_size);
 		size     = pos2 - m_pos;
 
-		std::memcpy(&m_dataRW[m_pos], buf, size);
+		memcpy(&m_dataRW[m_pos], buf, size);
 		m_pos = pos2;
 
 		return size;
@@ -54,7 +54,7 @@ public:
 		pos2     = min(pos2, m_size);
 		size     = pos2 - m_pos;
 
-		std::memcpy(buf, &m_dataRO[m_pos], size);
+		memcpy(buf, &m_dataRO[m_pos], size);
 		m_pos = pos2;
 
 		return size;

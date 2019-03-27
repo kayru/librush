@@ -7,7 +7,7 @@
 
 #include <limits>
 #include <vector>
-#include <cstring>
+#include <string.h>
 
 namespace Rush
 {
@@ -50,7 +50,7 @@ public:
 	ResourcePool()
 	{
 		T default_value;
-		std::memset(&default_value, 0, sizeof(default_value));
+		memset(&default_value, 0, sizeof(default_value));
 		push(default_value);
 	}
 

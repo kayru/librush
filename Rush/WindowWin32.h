@@ -3,8 +3,8 @@
 #ifdef RUSH_PLATFORM_WINDOWS
 
 #include "Window.h"
+#include "UtilString.h"
 
-#include <string>
 #include <windows.h>
 
 namespace Rush
@@ -35,7 +35,7 @@ private:
 
 	HWND m_hwnd;
 
-	std::string m_caption;
+	String m_caption;
 
 	Tuple2i m_pendingSize;
 
