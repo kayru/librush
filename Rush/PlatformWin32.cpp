@@ -30,7 +30,7 @@ const char* Platform_GetExecutableDirectory()
 	{
 		GetModuleFileNameA(nullptr, path, sizeof(path));
 
-		size_t pathLen  = std::strlen(path);
+		size_t pathLen  = strlen(path);
 		size_t slashIdx = (size_t)-1;
 		for (size_t i = pathLen - 1; i > 0; --i)
 		{

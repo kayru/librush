@@ -4,9 +4,9 @@
 
 #include "UtilDataStream.h"
 #include "UtilString.h"
+#include "UtilArray.h"
 
 #include <stdio.h>
-#include <vector>
 
 namespace Rush
 {

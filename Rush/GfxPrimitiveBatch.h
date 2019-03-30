@@ -4,7 +4,7 @@
 #include "MathTypes.h"
 #include "UtilColor.h"
 #include "UtilLinearAllocator.h"
-#include "UtilStaticArray.h"
+#include "UtilArray.h"
 #include "UtilTuple.h"
 
 namespace Rush

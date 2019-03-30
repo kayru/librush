@@ -3,10 +3,9 @@
 #include "Rush.h"
 
 #include "UtilLog.h"
-#include "UtilStaticArray.h"
+#include "UtilArray.h"
 
 #include <limits>
-#include <vector>
 #include <string.h>
 
 namespace Rush
@@ -84,7 +83,7 @@ public:
 
 	T& operator[](HANDLE_TYPE h) { return data[h.index()]; }
 
-	std::vector<T>      data;
-	std::vector<size_t> empty;
+	DynamicArray<T>      data;
+	DynamicArray<size_t> empty;
 };
 }

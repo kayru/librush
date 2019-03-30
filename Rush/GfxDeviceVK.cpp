@@ -15,6 +15,7 @@
 #endif
 
 #include <stdlib.h>
+#include <string.h>
 
 namespace Rush
 {
@@ -92,60 +93,60 @@ void releaseResource(ResourcePool<ObjectType, HandleType>& pool, HandleType hand
 	Gfx_Release(g_device);
 }
 
-static std::vector<VkSurfaceFormatKHR> enumerateSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+static DynamicArray<VkSurfaceFormatKHR> enumerateSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
 {
 	u32 count = 0;
 
 	V(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count, nullptr));
-	std::vector<VkSurfaceFormatKHR> enumerated(count);
+	DynamicArray<VkSurfaceFormatKHR> enumerated(count);
 
 	V(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count, enumerated.data()));
 
 	return enumerated;
 }
 
-static std::vector<VkLayerProperties> enumarateInstanceLayers()
+static DynamicArray<VkLayerProperties> enumarateInstanceLayers()
 {
 	u32 count = 0;
 
 	V(vkEnumerateInstanceLayerProperties(&count, nullptr));
-	std::vector<VkLayerProperties> enumerated(count);
+	DynamicArray<VkLayerProperties> enumerated(count);
 
 	V(vkEnumerateInstanceLayerProperties(&count, enumerated.data()));
 
 	return enumerated;
 }
 
-static std::vector<VkExtensionProperties> enumerateInstanceExtensions()
+static DynamicArray<VkExtensionProperties> enumerateInstanceExtensions()
 {
 	u32 count = 0;
 
 	V(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
-	std::vector<VkExtensionProperties> enumerated(count);
+	DynamicArray<VkExtensionProperties> enumerated(count);
 
 	V(vkEnumerateInstanceExtensionProperties(nullptr, &count, enumerated.data()));
 
 	return enumerated;
 }
 
-static std::vector<VkLayerProperties> enumerateDeviceLayers(VkPhysicalDevice physicalDevice)
+static DynamicArray<VkLayerProperties> enumerateDeviceLayers(VkPhysicalDevice physicalDevice)
 {
 	u32 count = 0;
 
 	V(vkEnumerateDeviceLayerProperties(physicalDevice, &count, nullptr));
-	std::vector<VkLayerProperties> enumerated(count);
+	DynamicArray<VkLayerProperties> enumerated(count);
 
 	V(vkEnumerateDeviceLayerProperties(physicalDevice, &count, enumerated.data()));
 
 	return enumerated;
 }
 
-static std::vector<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalDevice physicalDevice)
+static DynamicArray<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalDevice physicalDevice)
 {
 	u32 count = 0;
 
 	V(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, nullptr));
-	std::vector<VkExtensionProperties> enumerated(count);
+	DynamicArray<VkExtensionProperties> enumerated(count);
 
 	V(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, enumerated.data()));
 
@@ -404,7 +405,7 @@ static VkShaderStageFlags convertStageFlags(GfxStageFlags flags)
 	return res;
 }
 
-static bool isLayerSupported(const std::vector<VkLayerProperties>& layers, const char* name)
+static bool isLayerSupported(const DynamicArray<VkLayerProperties>& layers, const char* name)
 {
 	for (const auto& it : layers)
 	{
@@ -416,7 +417,7 @@ static bool isLayerSupported(const std::vector<VkLayerProperties>& layers, const
 	return false;
 }
 
-static bool isExtensionSupported(const std::vector<VkExtensionProperties>& extensions, const char* name)
+static bool isExtensionSupported(const DynamicArray<VkExtensionProperties>& extensions, const char* name)
 {
 	for (const auto& it : extensions)
 	{
@@ -428,7 +429,7 @@ static bool isExtensionSupported(const std::vector<VkExtensionProperties>& exten
 	return false;
 }
 
-static bool enableLayer(std::vector<const char*>& layers, const std::vector<VkLayerProperties>& availableLayers,
+static bool enableLayer(DynamicArray<const char*>& layers, const DynamicArray<VkLayerProperties>& availableLayers,
     const char* name, bool required = false)
 {
 	if (isLayerSupported(availableLayers, name))
@@ -444,8 +445,8 @@ static bool enableLayer(std::vector<const char*>& layers, const std::vector<VkLa
 	return false;
 }
 
-static bool enableExtension(std::vector<const char*>& extensions,
-    const std::vector<VkExtensionProperties>& availableExtensions, const char* name, bool required = false)
+static bool enableExtension(DynamicArray<const char*>& extensions,
+    const DynamicArray<VkExtensionProperties>& availableExtensions, const char* name, bool required = false)
 {
 	if (isExtensionSupported(availableExtensions, name))
 	{
@@ -483,8 +484,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	auto enumeratedInstanceLayers     = enumarateInstanceLayers();
 	auto enumeratedInstanceExtensions = enumerateInstanceExtensions();
 
-	std::vector<const char*> enabledInstanceLayers;
-	std::vector<const char*> enabledInstanceExtensions;
+	DynamicArray<const char*> enabledInstanceLayers;
+	DynamicArray<const char*> enabledInstanceExtensions;
 
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_SURFACE_EXTENSION_NAME, true);
 
@@ -556,7 +557,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		VendorID_Intel  = 0x8086,
 	};
 
-	std::memset(&m_physicalDeviceProps, 0, sizeof(m_physicalDeviceProps));
+	memset(&m_physicalDeviceProps, 0, sizeof(m_physicalDeviceProps));
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProps);
 
 	vkGetPhysicalDeviceFeatures(m_physicalDevice, &m_physicalDeviceFeatures);
@@ -604,7 +605,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	float queuePriorities[] = {0.0f};
 
-	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	DynamicArray<VkDeviceQueueCreateInfo> queueCreateInfos;
 	queueCreateInfos.reserve(queueCount);
 
 	{
@@ -645,8 +646,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		queueCreateInfos.push_back(info);
 	}
 
-	std::vector<const char*> enabledDeviceLayers;
-	std::vector<const char*> enabledDeviceExtensions;
+	DynamicArray<const char*> enabledDeviceLayers;
+	DynamicArray<const char*> enabledDeviceExtensions;
 
 	enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
 
@@ -671,8 +672,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.KHR_maintenance1 =
 	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
-	std::memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
-	std::memset(&m_nvRayTracingProps, 0, sizeof(m_nvRayTracingProps));
+	memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
+	memset(&m_nvRayTracingProps, 0, sizeof(m_nvRayTracingProps));
 
 	void* physicalDeviceProps2Next = nullptr;
 
@@ -778,7 +779,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// Memory types
 
-	std::memset(&m_deviceMemoryProps, 0, sizeof(m_deviceMemoryProps));
+	memset(&m_deviceMemoryProps, 0, sizeof(m_deviceMemoryProps));
 	vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_deviceMemoryProps);
 	m_memoryTraits.resize(m_deviceMemoryProps.memoryTypeCount);
 	for (u32 i = 0; i < m_deviceMemoryProps.memoryTypeCount; ++i)
@@ -1869,9 +1870,9 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 	RUSH_ASSERT(g_vulkanDevice);
 	RUSH_ASSERT(commandPool);
 
-	std::memset(&m_currentRenderRect, 0, sizeof(m_currentRenderRect));
-	std::memset(&m_pending.constantBufferOffsets, 0, sizeof(m_pending.constantBufferOffsets));
-	std::memset(&m_pending.vertexBufferStride, 0, sizeof(m_pending.vertexBufferStride));
+	memset(&m_currentRenderRect, 0, sizeof(m_currentRenderRect));
+	memset(&m_pending.constantBufferOffsets, 0, sizeof(m_pending.constantBufferOffsets));
+	memset(&m_pending.vertexBufferStride, 0, sizeof(m_pending.vertexBufferStride));
 
 	VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 	fenceCreateInfo.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
@@ -2586,7 +2587,7 @@ void Gfx_Release(GfxDevice* dev)
 	g_device = nullptr;
 }
 
-static void getQueryPoolResults(VkDevice device, VkQueryPool pool, u32 count, std::vector<u64>& output)
+static void getQueryPoolResults(VkDevice device, VkQueryPool pool, u32 count, DynamicArray<u64>& output)
 {
 	output.resize(count);
 	u32 stride = sizeof(*output.data());
@@ -3165,7 +3166,7 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		}
 	}
 
-	std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
+	DynamicArray<VkDescriptorSetLayoutBinding> layoutBindings;
 
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
 	    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};

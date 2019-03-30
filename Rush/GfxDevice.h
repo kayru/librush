@@ -378,7 +378,7 @@ template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, 
 	return (u32)sizeof(data);
 }
 
-template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, const std::vector<T>& data)
+template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBuffer h, const DynamicArray<T>& data)
 {
 	u32 dataSize = (u32)(data.size() * sizeof(data[0]));
 	Gfx_UpdateBuffer(rc, h, data.data(), dataSize);

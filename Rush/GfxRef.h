@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GfxDevice.h"
+#include "UtilBuffer.h"
 
 namespace Rush
 {
@@ -189,7 +190,7 @@ template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferRef 
 	return Gfx_UpdateBufferT(rc, h.get(), data);
 }
 
-template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferRef h, const std::vector<T>& data)
+template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferRef h, const BufferView<T>& data)
 {
 	return Gfx_UpdateBufferT(rc, h.get(), data);
 }

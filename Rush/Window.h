@@ -4,8 +4,8 @@
 
 #include "MathTypes.h"
 #include "UtilTuple.h"
+#include "UtilArray.h"
 
-#include <vector>
 #include <string.h>
 
 namespace Rush
@@ -255,7 +255,7 @@ protected:
 	MouseState    m_mouse;
 	KeyboardState m_keyboard;
 
-	std::vector<WindowEventListener*> m_listeners;
+	DynamicArray<WindowEventListener*> m_listeners;
 
 private:
 	WindowMessageInterceptor* m_interceptor;
@@ -381,7 +381,7 @@ struct WindowEvent
 	}
 };
 
-class WindowEventListener : public std::vector<WindowEvent>
+class WindowEventListener : public DynamicArray<WindowEvent>
 {
 public:
 	template <typename IDT> struct ID
@@ -404,7 +404,7 @@ public:
 	{
 		owner = rhs.owner;
 		registerListener();
-		std::vector<WindowEvent>::operator=(rhs);
+		DynamicArray<WindowEvent>::operator=(rhs);
 		return *this;
 	}
 
@@ -426,7 +426,7 @@ public:
 		}
 	}
 
-	void clear() { std::vector<WindowEvent>::clear(); }
+	void clear() { DynamicArray<WindowEvent>::clear(); }
 
 private:
 	void registerListener()

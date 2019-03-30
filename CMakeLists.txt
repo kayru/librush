@@ -38,6 +38,8 @@ target_sources(Rush PRIVATE
 	Rush/PlatformLinux.cpp
 	Rush/PlatformWin32.cpp
 	Rush/Rush.h
+	Rush/UtilArray.h
+	Rush/UtilBuffer.h
 	Rush/UtilCamera.cpp
 	Rush/UtilCamera.h
 	Rush/UtilCameraManipulator.cpp
@@ -46,12 +48,13 @@ target_sources(Rush PRIVATE
 	Rush/UtilDataStream.h
 	Rush/UtilFile.cpp
 	Rush/UtilFile.h
+	Rush/UtilHash.h
 	Rush/UtilLinearAllocator.h
 	Rush/UtilLog.cpp
 	Rush/UtilLog.h
 	Rush/UtilRandom.h
 	Rush/UtilResourcePool.h
-	Rush/UtilStaticArray.h
+	Rush/UtilString.h
 	Rush/UtilTimer.cpp
 	Rush/UtilTimer.h
 	Rush/UtilTuple.h

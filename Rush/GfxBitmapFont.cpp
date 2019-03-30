@@ -3,6 +3,8 @@
 #include "UtilFile.h"
 #include "UtilLog.h"
 
+#include <string.h>
+
 namespace Rush
 {
 
@@ -153,7 +155,7 @@ bool BitmapFontDesc::read(DataStream& stream)
 			if (pages)
 			{
 				stream.read(pages, blockSize);
-				pageLength = (u32)std::strlen(pages->names);
+				pageLength = (u32)strlen(pages->names);
 				pageCount  = blockSize / (pageLength + 1);
 			}
 			break;
@@ -185,14 +187,14 @@ bool BitmapFontDesc::read(DataStream& stream)
 		u32 clamped_page_len = min<u32>(pageLength, sizeof(PageData) - 1);
 		for (u32 i = 0; i < m_pageCount; ++i)
 		{
-			std::memcpy(m_pages[i].filename, (char*)pages + (pageLength + 1) * i, clamped_page_len);
+			memcpy(m_pages[i].filename, (char*)pages + (pageLength + 1) * i, clamped_page_len);
 			m_pages[i].filename[clamped_page_len] = 0;
 		}
 
 		// handle char into
 		for (u32 i = 0; i < 256; ++i)
 		{
-			std::memset(&m_chars[i], 0, sizeof(CharData));
+			memset(&m_chars[i], 0, sizeof(CharData));
 			m_chars[i].page = InvalidPage;
 		}
 
@@ -227,8 +229,8 @@ bool BitmapFontDesc::read(DataStream& stream)
 
 BitmapFontDesc::BitmapFontDesc() : m_pageCount(0), m_size(0)
 {
-	std::memset(&m_pages, 0, sizeof(m_pages));
-	std::memset(&m_chars, 0, sizeof(m_chars));
+	memset(&m_pages, 0, sizeof(m_pages));
+	memset(&m_chars, 0, sizeof(m_chars));
 }
 
 #if RUSH_RENDER_API != RUSH_RENDER_API_NULL

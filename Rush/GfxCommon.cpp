@@ -1,5 +1,6 @@
 #include "GfxCommon.h"
 #include "UtilLog.h"
+#include <string.h>
 
 namespace Rush
 {
@@ -346,12 +347,12 @@ GfxShaderSource::GfxShaderSource(GfxShaderSourceType _type, const char* _code, s
 	{
 		_size = (size_t)strlen(_code) + 1;
 		this->resize(_size);
-		std::memcpy(this->data(), _code, _size);
+		memcpy(this->data(), _code, _size);
 	}
 	else
 	{
 		this->resize(_size);
-		std::memcpy(this->data(), _code, _size);
+		memcpy(this->data(), _code, _size);
 	}
 }
 

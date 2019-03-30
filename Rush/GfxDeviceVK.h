@@ -6,6 +6,7 @@
 
 #include "GfxRef.h"
 #include "Window.h"
+#include "UtilArray.h"
 
 #include <unordered_map>
 
@@ -41,7 +42,7 @@ struct ShaderVK : GfxRefCount
 		u8                            location = 0;
 	};
 	static_assert(sizeof(InputMapping) == 2, "InputMapping is expected to be exactly 2 bytes");
-	std::vector<InputMapping> inputMappings;
+	DynamicArray<InputMapping> inputMappings;
 
 	void destroy();
 };
@@ -49,7 +50,7 @@ struct ShaderVK : GfxRefCount
 struct TechniqueVK : GfxRefCount
 {
 	u32                                          id = 0;
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+	DynamicArray<VkPipelineShaderStageCreateInfo> shaderStages;
 	GfxShaderBindingDesc                         bindings;
 	GfxRef<GfxVertexFormat>                      vf;
 	GfxRef<GfxVertexShader>                      vs;
@@ -72,7 +73,7 @@ struct TechniqueVK : GfxRefCount
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
 
-	std::vector<VkDescriptorSet> descriptorSetCache;
+	DynamicArray<VkDescriptorSet> descriptorSetCache;
 	u32                          descriptorSetCacheFrame = 0;
 
 	VkSpecializationInfo* specializationInfo = nullptr;
@@ -86,7 +87,7 @@ struct VertexFormatVK : GfxRefCount
 {
 	u32                                            id = 0;
 	GfxVertexFormatDesc                            desc;
-	std::vector<VkVertexInputAttributeDescription> attributes;
+	DynamicArray<VkVertexInputAttributeDescription> attributes;
 	u32                                            vertexStreamCount          = 0;
 	u32                                            instanceDataStream         = 0xFFFFFFFF;
 	u32                                            instanceDataAttributeIndex = 0xFFFFFFFF;
@@ -203,8 +204,8 @@ private:
 	void          freeBlock(MemoryBlockVK block);
 
 	u32                        m_memoryType = 0;
-	std::vector<MemoryBlockVK> m_availableBlocks;
-	std::vector<MemoryBlockVK> m_fullBlocks;
+	DynamicArray<MemoryBlockVK> m_availableBlocks;
+	DynamicArray<MemoryBlockVK> m_fullBlocks;
 	bool                       m_hostVisible = false;
 
 	static const u32 m_defaultBlockSize = 16 * 1024 * 1024;
@@ -344,7 +345,7 @@ public:
 	VkPhysicalDeviceFeatures         m_physicalDeviceFeatures;
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps;
 	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps;
-	std::vector<MemoryTraitsVK>      m_memoryTraits;
+	DynamicArray<MemoryTraitsVK>      m_memoryTraits;
 
 	struct MemoryTypes
 	{
@@ -364,8 +365,8 @@ public:
 	std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKey::Hash>    m_renderPasses;
 	std::unordered_map<FrameBufferKey, VkFramebuffer, FrameBufferKey::Hash> m_frameBuffers;
 
-	std::vector<VkPhysicalDevice>        m_physicalDevices;
-	std::vector<VkQueueFamilyProperties> m_queueProps;
+	DynamicArray<VkPhysicalDevice>        m_physicalDevices;
+	DynamicArray<VkQueueFamilyProperties> m_queueProps;
 
 	VkQueue m_graphicsQueue = VK_NULL_HANDLE;
 	VkQueue m_computeQueue  = VK_NULL_HANDLE;
@@ -383,14 +384,14 @@ public:
 	VkSurfaceKHR         m_swapChainSurface            = VK_NULL_HANDLE;
 	VkExtent2D           m_swapChainExtent             = VkExtent2D{0, 0};
 	VkPresentModeKHR     m_swapChainPresentMode        = VK_PRESENT_MODE_MAX_ENUM_KHR;
-	std::vector<VkImage> m_swapChainImages;
+	DynamicArray<VkImage> m_swapChainImages;
 	u32                  m_swapChainIndex = 0;
 	bool                 m_swapChainValid = false;
 
-	std::vector<VkPresentModeKHR> m_availablePresentModes;
+	DynamicArray<VkPresentModeKHR> m_availablePresentModes;
 
 	GfxTexture              m_depthBufferTexture;
-	std::vector<GfxTexture> m_swapChainTextures;
+	DynamicArray<GfxTexture> m_swapChainTextures;
 
 	// resources
 
@@ -409,13 +410,13 @@ public:
 
 	struct DestructionQueue
 	{
-		std::vector<VkDeviceMemory> memory;
-		std::vector<VkBuffer>       buffers;
-		std::vector<VkImage>        images;
-		std::vector<VkImageView>    imageViews;
-		std::vector<VkBufferView>   bufferViews;
-		std::vector<GfxContext*>    contexts;
-		std::vector<VkSampler>      samplers;
+		DynamicArray<VkDeviceMemory> memory;
+		DynamicArray<VkBuffer>       buffers;
+		DynamicArray<VkImage>        images;
+		DynamicArray<VkImageView>    imageViews;
+		DynamicArray<VkBufferView>   bufferViews;
+		DynamicArray<GfxContext*>    contexts;
+		DynamicArray<VkSampler>      samplers;
 
 		void flush(VkDevice vulkanDevice);
 	};
@@ -425,8 +426,8 @@ public:
 		VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
 
 		VkQueryPool      timestampPool = VK_NULL_HANDLE;
-		std::vector<u64> timestampPoolData;
-		std::vector<u16> timestampSlotMap;
+		DynamicArray<u64> timestampPoolData;
+		DynamicArray<u16> timestampSlotMap;
 		u32              timestampIssuedCount = 0;
 
 		DestructionQueue destructionQueue;
@@ -441,7 +442,7 @@ public:
 		bool    presentSemaphoreWaited = false;
 	};
 
-	std::vector<FrameData> m_frameData;
+	DynamicArray<FrameData> m_frameData;
 	FrameData*             m_currentFrame = nullptr;
 
 	u32 m_uniqueResourceCounter = 1;
@@ -451,7 +452,7 @@ public:
 
 	GfxContext* m_currentUploadContext = nullptr;
 
-	std::vector<GfxContext*> m_freeContexts[u32(GfxContextType::count)];
+	DynamicArray<GfxContext*> m_freeContexts[u32(GfxContextType::count)];
 
 	u32 m_presentInterval            = 1;
 	u32 m_desiredPresentInterval     = m_presentInterval;
@@ -595,8 +596,8 @@ public:
 	VkSemaphore m_completionSemaphore    = VK_NULL_HANDLE;
 	bool        m_useCompletionSemaphore = false;
 
-	std::vector<VkSemaphore>          m_waitSemaphores;
-	std::vector<VkPipelineStageFlags> m_waitDstStageMasks;
+	DynamicArray<VkSemaphore>          m_waitSemaphores;
+	DynamicArray<VkPipelineStageFlags> m_waitDstStageMasks;
 
 	GfxContextType m_type = GfxContextType::Graphics;
 
@@ -607,8 +608,8 @@ public:
 		u32                                srcStageMask    = 0; // VkPipelineStageFlagBits
 		u32                                dstStageMask    = 0; // VkPipelineStageFlagBits
 		u32                                dependencyFlags = 0;
-		std::vector<VkImageMemoryBarrier>  imageBarriers;
-		std::vector<VkBufferMemoryBarrier> bufferBarriers;
+		DynamicArray<VkImageMemoryBarrier>  imageBarriers;
+		DynamicArray<VkBufferMemoryBarrier> bufferBarriers;
 	} m_pendingBarriers;
 
 	struct BufferCopyCommand
@@ -618,7 +619,7 @@ public:
 		VkBufferCopy region;
 	};
 
-	std::vector<BufferCopyCommand> m_pendingBufferUploads;
+	DynamicArray<BufferCopyCommand> m_pendingBufferUploads;
 };
 
 void Gfx_vkFillBuffer(GfxContext* ctx, GfxBuffer h, u32 value);

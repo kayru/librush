@@ -49,7 +49,7 @@ u32 FileOut::write(const void* buf, u32 size)
 
 		u32 bytesToCopy = min(inBytesLeft, outBytesLeft);
 
-		std::memcpy(&m_buffer[m_bufferPos], &((char*)buf)[inBufPos], bytesToCopy);
+		memcpy(&m_buffer[m_bufferPos], &((char*)buf)[inBufPos], bytesToCopy);
 
 		m_bufferPos += bytesToCopy;
 		inBufPos += bytesToCopy;

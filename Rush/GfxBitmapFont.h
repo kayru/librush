@@ -4,8 +4,7 @@
 
 #include "GfxCommon.h"
 #include "GfxPrimitiveBatch.h"
-
-#include <vector>
+#include "UtilArray.h"
 
 namespace Rush
 {
@@ -47,10 +46,10 @@ public:
 
 struct BitmapFontData
 {
-	BitmapFontDesc   font;
-	std::vector<u32> pixels;
-	u32              width;
-	u32              height;
+	BitmapFontDesc    font;
+	DynamicArray<u32> pixels;
+	u32               width;
+	u32               height;
 };
 
 #if RUSH_RENDER_API != RUSH_RENDER_API_NULL
@@ -77,11 +76,11 @@ private:
 	void createSprites();
 
 private:
-	BitmapFontDesc              m_fontDesc;
-	std::vector<GfxTexture>     m_textures;
-	std::vector<GfxTextureDesc> m_textureDesc;
-	TexturedQuad2D              m_chars[256];
-	float                       m_scale;
+	BitmapFontDesc               m_fontDesc;
+	DynamicArray<GfxTexture>     m_textures;
+	DynamicArray<GfxTextureDesc> m_textureDesc;
+	TexturedQuad2D               m_chars[256];
+	float                        m_scale;
 };
 #endif
 

@@ -643,7 +643,7 @@ const char* toString(GfxVertexFormatDesc::Semantic type);
 
 u16 dataTypeSize(GfxVertexFormatDesc::DataType type);
 
-struct GfxShaderSource : public std::vector<char>
+struct GfxShaderSource : public DynamicArray<char>
 {
 	GfxShaderSource() : type(GfxShaderSourceType_Unknown) {}
 	GfxShaderSource(GfxShaderSourceType _type, const char* _code, size_t _size = 0, const char* _entry = "main");
