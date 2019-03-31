@@ -486,6 +486,7 @@ static const u32 g_embeddedFontBitmap6x8[] =
 };
 // clang-format on
 
+namespace {
 RUSH_FORCEINLINE u32 selectBit(u32 a, u32 b, u32 m) { return ((b ^ a) & m) ^ b; }
 
 RUSH_FORCEINLINE void blitColumn6x8(u32* output, u32 color, int m, int b)
@@ -496,6 +497,7 @@ RUSH_FORCEINLINE void blitColumn6x8(u32* output, u32 color, int m, int b)
 	output[3] = selectBit(output[3], color, u32((m << (28 - b)) >> 31));
 	output[4] = selectBit(output[4], color, u32((m << (27 - b)) >> 31));
 	output[5] = selectBit(output[5], color, u32((m << (26 - b)) >> 31));
+}
 }
 
 void EmbeddedFont_Blit6x8(u32* output, u32 width, u32 color, const char* str)

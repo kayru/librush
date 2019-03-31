@@ -37,11 +37,11 @@ struct ShaderVK : GfxRefCount
 
 	struct InputMapping
 	{
-		GfxVertexFormatDesc::Semantic semantic : 4;
-		u8                            semanticIndex : 4;
+		GfxVertexFormatDesc::Semantic semantic = GfxVertexFormatDesc::Semantic::Unused;
+		u8                            semanticIndex = 0;
 		u8                            location = 0;
 	};
-	static_assert(sizeof(InputMapping) == 2, "InputMapping is expected to be exactly 2 bytes");
+
 	DynamicArray<InputMapping> inputMappings;
 
 	void destroy();

@@ -9,6 +9,7 @@
 #include <mach-o/dyld.h>
 #include <limits.h>
 #include <string_view>
+#include <string>
 
 using namespace Rush;
 

@@ -2400,7 +2400,6 @@ void GfxContext::applyState()
 	static const VkDescriptorImageInfo defaultImageInfo = {};
 
 	static const u32 maxImageInfoCount  = GfxContext::MaxStorageImages + GfxContext::MaxTextures;
-	static const u32 maxBufferInfoCount = GfxContext::MaxStorageBuffers;
 
 	VkDescriptorImageInfo imageInfos[maxImageInfoCount];
 	u32                   imageInfoCount = 0;
@@ -2927,6 +2926,7 @@ ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 	return result;
 }
 
+#if 0
 static ShaderVK::InputMapping parseVertexInputMapping(const StringView& vertexAttributeName)
 {
 	ShaderVK::InputMapping result;
@@ -2966,6 +2966,7 @@ static ShaderVK::InputMapping parseVertexInputMapping(const StringView& vertexAt
 
 	return result;
 }
+#endif
 
 // vertex shader
 GfxVertexShader Gfx_CreateVertexShader(const GfxShaderSource& code)
@@ -3530,7 +3531,6 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (desc.height >> mipLevel));
 			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (desc.depth >> mipLevel));
 
-			const size_t levelSize = (size_t(mipWidth * mipHeight * mipDepth) * bitsPerPixel) / 8;
 			const size_t alignedLevelSize =
 			    alignCeiling((u64(mipWidth * mipHeight * mipDepth) * bitsPerPixel), bitsPerElement) / 8;
 
@@ -4143,10 +4143,6 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 			V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &buffer.bufferView));
 		}
 	}
-
-	VkBufferCreateInfo stagingBufferCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-	stagingBufferCreateInfo.usage              = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	stagingBufferCreateInfo.size               = size;
 
 	VkMemoryRequirements memoryReq = {};
 	memoryReq.alignment            = alignment;

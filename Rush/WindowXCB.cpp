@@ -257,6 +257,7 @@ void WindowXCB::pollEvents()
 			case XCB_CONFIGURE_NOTIFY:
 			{
 				const xcb_configure_notify_event_t* event = (const xcb_configure_notify_event_t *)xcbEvent;
+				RUSH_UNUSED(event);
 				break;
 			}
 			case XCB_MOTION_NOTIFY:

@@ -55,7 +55,7 @@
 #   define RUSH_DISABLE_OPTIMIZATION __pragma(optimize("", off))
 #   define RUSH_ENABLE_OPTIMIZATION __pragma(optimize("", on))
 #elif defined(__GNUC__)
-#   define RUSH_FORCEINLINE __attribute__((always_inline))
+#   define RUSH_FORCEINLINE __attribute__((always_inline)) inline
 #   define RUSH_NOINLINE __attribute__((noinline))
 #   define RUSH_BREAK {__builtin_trap();}
 #   define RUSH_FUNCTION __func__

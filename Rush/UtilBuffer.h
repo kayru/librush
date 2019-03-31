@@ -135,7 +135,7 @@ struct Buffer
 
 	static void deallocateBytes(void* ptr)
 	{
-		delete ptr;
+		delete [] (char*)ptr;
 	}
 };
 
