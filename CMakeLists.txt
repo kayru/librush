@@ -42,8 +42,6 @@ target_sources(Rush PRIVATE
 	Rush/UtilBuffer.h
 	Rush/UtilCamera.cpp
 	Rush/UtilCamera.h
-	Rush/UtilCameraManipulator.cpp
-	Rush/UtilCameraManipulator.h
 	Rush/UtilColor.h
 	Rush/UtilDataStream.h
 	Rush/UtilFile.cpp
