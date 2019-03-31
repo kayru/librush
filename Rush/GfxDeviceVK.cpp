@@ -3073,13 +3073,13 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		// todo: batch all allocations into one
 
 		size_t specializationEntriesSize = sizeof(VkSpecializationMapEntry) * desc.specializationConstantCount;
-		void*  specializationEntriesCopy = malloc(specializationEntriesSize);
+		void*  specializationEntriesCopy = allocateBytes(specializationEntriesSize);
 		memcpy(specializationEntriesCopy, desc.specializationConstants, specializationEntriesSize);
 
-		void* specializationDataCopy = malloc(desc.specializationDataSize);
+		void* specializationDataCopy = allocateBytes(desc.specializationDataSize);
 		memcpy(specializationDataCopy, desc.specializationData, desc.specializationDataSize);
 
-		res.specializationInfo = (VkSpecializationInfo*)malloc(sizeof(VkSpecializationInfo));
+		res.specializationInfo = (VkSpecializationInfo*)allocateBytes(sizeof(VkSpecializationInfo));
 
 		res.specializationInfo->mapEntryCount = desc.specializationConstantCount;
 		res.specializationInfo->pMapEntries   = reinterpret_cast<VkSpecializationMapEntry*>(specializationEntriesCopy);
@@ -3286,9 +3286,9 @@ void TechniqueVK::destroy()
 {
 	if (specializationInfo)
 	{
-		free(const_cast<void*>(specializationInfo->pData));
-		free(const_cast<VkSpecializationMapEntry*>(specializationInfo->pMapEntries));
-		free(specializationInfo);
+		deallocateBytes(const_cast<void*>(specializationInfo->pData));
+		deallocateBytes(const_cast<VkSpecializationMapEntry*>(specializationInfo->pMapEntries));
+		deallocateBytes(specializationInfo);
 	}
 
 	delete[] waveLimits;
@@ -4705,7 +4705,7 @@ void ShaderVK::destroy()
 {
 	// TODO: queue-up destruction
 	vkDestroyShaderModule(g_vulkanDevice, module, nullptr);
-	free(const_cast<char*>(entry));
+	deallocateBytes(const_cast<char*>(entry));
 }
 
 void BufferVK::destroy()

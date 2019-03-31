@@ -137,21 +137,21 @@ bool BitmapFontDesc::read(DataStream& stream)
 		switch (blockType)
 		{
 		case BlockType::Info:
-			info = (InfoBlock*)malloc(blockSize);
+			info = (InfoBlock*)allocateBytes(blockSize);
 			if (info)
 			{
 				stream.read(info, blockSize);
 			}
 			break;
 		case BlockType::Common:
-			common = (CommonBlock*)malloc(blockSize);
+			common = (CommonBlock*)allocateBytes(blockSize);
 			if (common)
 			{
 				stream.read(common, blockSize);
 			}
 			break;
 		case BlockType::Pages:
-			pages = (PagesBlock*)malloc(blockSize);
+			pages = (PagesBlock*)allocateBytes(blockSize);
 			if (pages)
 			{
 				stream.read(pages, blockSize);
@@ -160,7 +160,7 @@ bool BitmapFontDesc::read(DataStream& stream)
 			}
 			break;
 		case BlockType::Chars:
-			chars = (CharsBlock*)malloc(blockSize);
+			chars = (CharsBlock*)allocateBytes(blockSize);
 			if (chars)
 			{
 				stream.read(chars, blockSize);
@@ -168,7 +168,7 @@ bool BitmapFontDesc::read(DataStream& stream)
 			}
 			break;
 		case BlockType::Kerning:
-			kerning = (KerningBlock*)malloc(blockSize);
+			kerning = (KerningBlock*)allocateBytes(blockSize);
 			if (kerning)
 			{
 				stream.read(kerning, blockSize);
@@ -218,11 +218,11 @@ bool BitmapFontDesc::read(DataStream& stream)
 		RUSH_LOG_ERROR("BitmapFontDesc::read() Failed to load font data (info, pages or chars).");
 	}
 
-	free(info);
-	free(common);
-	free(pages);
-	free(chars);
-	free(kerning);
+	deallocateBytes(info);
+	deallocateBytes(common);
+	deallocateBytes(pages);
+	deallocateBytes(chars);
+	deallocateBytes(kerning);
 
 	return true;
 }

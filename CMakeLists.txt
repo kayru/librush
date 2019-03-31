@@ -50,6 +50,7 @@ target_sources(Rush PRIVATE
 	Rush/UtilLinearAllocator.h
 	Rush/UtilLog.cpp
 	Rush/UtilLog.h
+	Rush/UtilMemory.h
 	Rush/UtilRandom.h
 	Rush/UtilResourcePool.h
 	Rush/UtilString.h

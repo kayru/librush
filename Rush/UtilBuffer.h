@@ -1,9 +1,8 @@
 #pragma once
 
 #include "Rush.h"
+#include "UtilMemory.h"
 
-#include <string.h>
-#include <new>
 #include <utility>
 
 namespace Rush
@@ -128,14 +127,10 @@ struct Buffer
 		buf.m_size = newSize;
 	}
 
-	static void* allocateBytes(size_t sizeBytes)
+	static void destroy(Buffer& buf)
 	{
-		return new char[sizeBytes];
-	}
-
-	static void deallocateBytes(void* ptr)
-	{
-		delete [] (char*)ptr;
+		destructRange(buf.m_data, buf.m_data + buf.m_size);
+		deallocateBytes(buf.m_data);
 	}
 };
 

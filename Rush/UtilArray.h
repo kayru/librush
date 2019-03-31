@@ -69,8 +69,7 @@ public:
 
 	~DynamicArray()
 	{
-		Buffer<T>::destructRange(begin(), end());
-		Buffer<T>::deallocateBytes(m_buffer.m_data);
+		Buffer<T>::destroy(m_buffer);
 	}
 
 	T&       operator[](size_t i) { return m_buffer.m_data[i]; }
