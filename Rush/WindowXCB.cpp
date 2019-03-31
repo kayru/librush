@@ -8,6 +8,7 @@
 
 #include <xcb/xcb_keysyms.h>
 #include <X11/Xutil.h>
+#include <stdlib.h>
 
 namespace Rush
 {
