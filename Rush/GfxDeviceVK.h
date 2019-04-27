@@ -4,7 +4,6 @@
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_VK
 
-#include "GfxRef.h"
 #include "Window.h"
 #include "UtilArray.h"
 

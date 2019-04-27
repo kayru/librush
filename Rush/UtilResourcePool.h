@@ -79,6 +79,12 @@ public:
 		}
 	}
 
+	void reset()
+	{
+		data.clear();
+		empty.clear();
+	}
+
 	const T& operator[](HANDLE_TYPE h) const { return data[h.index()]; }
 
 	T& operator[](HANDLE_TYPE h) { return data[h.index()]; }

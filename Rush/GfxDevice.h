@@ -212,7 +212,7 @@ void Gfx_Release(GfxDepthStencilState h);
 void Gfx_Release(GfxRasterizerState h);
 void Gfx_Release(GfxBuffer h);
 
-const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTexture h);
+const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTextureArg h);
 GfxTexture             Gfx_GetBackBufferColorTexture();
 GfxTexture             Gfx_GetBackBufferDepthTexture();
 
@@ -221,7 +221,6 @@ void            Gfx_UnmapBuffer(GfxMappedBuffer& lock);
 void            Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size = 0);
 void*           Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size);
 void            Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h);
-void            Gfx_DestroyBuffer(GfxBufferArg h);
 
 GfxContext* Gfx_AcquireContext();
 void        Gfx_Release(GfxContext* rc);

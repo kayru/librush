@@ -29,7 +29,6 @@ target_sources(Rush PRIVATE
 	Rush/GfxEmbeddedShadersMSL.cpp
 	Rush/GfxPrimitiveBatch.cpp
 	Rush/GfxPrimitiveBatch.h
-	Rush/GfxRef.h
 	Rush/MathCommon.h
 	Rush/MathTypes.cpp
 	Rush/MathTypes.h

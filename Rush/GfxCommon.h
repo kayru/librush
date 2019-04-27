@@ -110,6 +110,17 @@ typedef ResourceHandle<GfxDepthStencilDesc>   GfxDepthStencilState;
 typedef ResourceHandle<GfxRasterizerDesc>     GfxRasterizerState;
 typedef ResourceHandle<GfxTechniqueDesc>      GfxTechnique;
 
+struct GfxRefCount
+{
+	void addReference() { m_refs++; }
+	u32 removeReference()
+	{
+		RUSH_ASSERT(m_refs != 0);
+		return m_refs--;
+	}
+	u32 m_refs = 0;
+};
+
 template <typename T>
 class GfxOwn
 {
@@ -120,22 +131,22 @@ public:
 	GfxOwn(const GfxOwn& rhs) = delete;
 	GfxOwn& operator=(const GfxOwn<T>& other) = delete;
 
-	RUSH_FORCEINLINE GfxOwn() : m_handle(InvalidResourceHandle()) {}
-	RUSH_FORCEINLINE GfxOwn(InvalidResourceHandle) : m_handle(InvalidResourceHandle()) {}
-	RUSH_FORCEINLINE GfxOwn(GfxOwn&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
-	RUSH_FORCEINLINE GfxOwn& operator=(GfxOwn<T>&& rhs)
+	GfxOwn() : m_handle(InvalidResourceHandle()) {}
+	GfxOwn(InvalidResourceHandle) : m_handle(InvalidResourceHandle()) {}
+	GfxOwn(GfxOwn&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
+	GfxOwn& operator=(GfxOwn<T>&& rhs)
 	{
 		m_handle = rhs.m_handle;
 		rhs.m_handle = InvalidResourceHandle();
 		return *this;
 	}
-	RUSH_FORCEINLINE ~GfxOwn()
+	~GfxOwn()
 	{
 		reset();
 	}
 
-	RUSH_FORCEINLINE T get() const { return m_handle; }
-	RUSH_FORCEINLINE bool valid() const { return m_handle.valid(); }
+	T get() const { return m_handle; }
+	bool valid() const { return m_handle.valid(); }
 
 	T detach() const
 	{
@@ -144,7 +155,7 @@ public:
 		return result;
 	}
 
-	RUSH_FORCEINLINE void reset()
+	void reset()
 	{
 		if (m_handle.valid())
 		{
@@ -160,6 +171,61 @@ private:
 	T m_handle;
 };
 
+template <typename T> class GfxArg;
+
+template <typename T> class GfxRef
+{
+public:
+
+	GfxRef() : m_handle(InvalidResourceHandle()) {}
+	GfxRef(const GfxRef& rhs)
+	{
+		if (rhs.m_handle.valid())
+		{
+			m_handle = rhs.m_handle;
+			Gfx_Retain(m_handle);
+		}
+	}
+
+	GfxRef(GfxRef&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
+	~GfxRef() { Gfx_Release(m_handle); }
+
+	GfxRef& operator=(GfxRef<T>&& rhs)
+	{
+		m_handle = rhs.m_handle;
+		rhs.m_handle = InvalidResourceHandle();
+		return *this;
+	}
+
+	GfxRef& operator=(const GfxRef<T>& other)
+	{
+		retain(other.get());
+		return *this;
+	}
+
+	bool operator==(const GfxRef<T>& other) const { return m_handle == other.m_handle; }
+	bool operator==(const T& other) const { return m_handle == other; }
+	bool operator!=(const GfxRef<T>& other) const { return m_handle != other.m_handle; }
+	bool operator!=(const T& other) const { return m_handle != other; }
+
+	T get() const { return m_handle; }
+	bool valid() const { return m_handle.valid(); }
+
+	void reset()
+	{
+		if (m_handle.valid())
+		{
+			Gfx_Release(m_handle);
+		}
+		m_handle = InvalidResourceHandle();
+	}
+
+	void retain(GfxArg<T> h);
+
+private:
+	T m_handle;
+};
+
 template <typename T>
 class GfxArg
 {
@@ -171,6 +237,7 @@ public:
 	RUSH_FORCEINLINE GfxArg(T h) : m_handle(h) {};
 	RUSH_FORCEINLINE GfxArg(InvalidResourceHandle) : m_handle(InvalidResourceHandle()) {};
 	RUSH_FORCEINLINE GfxArg(const GfxOwn<T>& h) : m_handle(h.get()) {};
+	RUSH_FORCEINLINE GfxArg(const GfxRef<T>& h) : m_handle(h.get()) {};
 
 	RUSH_FORCEINLINE operator T() const { return m_handle; }
 	RUSH_FORCEINLINE bool valid() const { return m_handle.valid(); }
@@ -890,4 +957,21 @@ struct GfxSubresourceRange
 	u32                 baseArrayLayer = 0;
 	u32                 layerCount     = 0;
 };
+
+template<typename T>
+inline void GfxRef<T>::retain(GfxArg<T> h)
+{
+	if (h.valid())
+	{
+		Gfx_Retain(h);
+	}
+
+	if (m_handle.valid())
+	{
+		Gfx_Release(m_handle);
+	}
+
+	m_handle = h;
+}
+
 }

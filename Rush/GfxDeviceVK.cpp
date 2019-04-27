@@ -2,7 +2,6 @@
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_VK
 
-#include "GfxRef.h"
 #include "UtilLog.h"
 #include "Window.h"
 #include "UtilString.h"
@@ -3642,7 +3641,7 @@ GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextur
 	return GfxDevice::makeOwn(retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels)));
 }
 
-const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
+const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h)
 {
 	if (h.valid())
 	{
