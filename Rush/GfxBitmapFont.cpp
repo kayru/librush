@@ -241,9 +241,9 @@ BitmapFontRenderer::BitmapFontRenderer(const BitmapFontData& data) : m_scale(1.0
 	GfxTextureDesc td = GfxTextureDesc::make2D(data.width, data.height, GfxFormat_RGBA8_Unorm);
 	m_textureDesc.push_back(td);
 
-	GfxTexture th = Gfx_CreateTexture(td, data.pixels.data());
+	auto th = Gfx_CreateTexture(td, data.pixels.data());
 
-	m_textures.push_back(th);
+	m_textures.push_back(std::move(th));
 
 	createSprites();
 }
@@ -258,19 +258,15 @@ BitmapFontRenderer::BitmapFontRenderer(const void* headerData, size_t headerSize
 	GfxTextureDesc td = GfxTextureDesc::make2D(width, height, format);
 	m_textureDesc.push_back(td);
 
-	GfxTexture th = Gfx_CreateTexture(td, pixelsData);
+	auto th = Gfx_CreateTexture(td, pixelsData);
 
-	m_textures.push_back(th);
+	m_textures.push_back(std::move(th));
 
 	createSprites();
 }
 
 BitmapFontRenderer::~BitmapFontRenderer()
 {
-	for (size_t i = 0; i < m_textures.size(); ++i)
-	{
-		Gfx_Release(m_textures[i]);
-	}
 }
 
 Vec2 BitmapFontRenderer::draw(PrimitiveBatch* batch, const Vec2& pos, const char* str, ColorRGBA8 col, bool flush)

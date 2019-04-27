@@ -72,7 +72,6 @@ HandleType retainResource(ResourcePool<ObjectType, HandleType>& pool, const Obje
 	RUSH_ASSERT(object.id != 0);
 	auto handle = pool.push(object);
 	Gfx_Retain(handle);
-	Gfx_Retain(g_device);
 	return handle;
 }
 
@@ -89,8 +88,6 @@ void releaseResource(ResourcePool<ObjectType, HandleType>& pool, HandleType hand
 	t.destroy();
 
 	pool.remove(handle);
-
-	Gfx_Release(g_device);
 }
 
 static DynamicArray<VkSurfaceFormatKHR> enumerateSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
@@ -476,10 +473,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	g_device = this;
 
+	m_refs = 1;
+
 	m_window = window;
 	m_window->retain();
-
-	m_refs = 1;
 
 	auto enumeratedInstanceLayers     = enumarateInstanceLayers();
 	auto enumeratedInstanceExtensions = enumerateInstanceExtensions();
@@ -1005,9 +1002,18 @@ GfxDevice::~GfxDevice()
 
 	for (FrameData& it : m_frameData)
 	{
-		it.destructionQueue.flush(m_vulkanDevice);
+		it.localOnlyAllocator.releaseBlocks();
+		it.hostVisibleAllocator.releaseBlocks();
+		it.hostOnlyAllocator.releaseBlocks();
+		it.hostOnlyCachedAllocator.releaseBlocks();
+	}
+
+	for (FrameData& it : m_frameData)
+	{
 		vkDestroyDescriptorPool(m_vulkanDevice, it.descriptorPool, nullptr);
 		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, nullptr);
+
+		it.destructionQueue.flush(m_vulkanDevice);
 	}
 
 	for (auto& contextPool : m_freeContexts)
@@ -1035,6 +1041,10 @@ GfxDevice::~GfxDevice()
 	if (m_computeCommandPool)
 	{
 		vkDestroyCommandPool(m_vulkanDevice, m_computeCommandPool, nullptr);
+	}
+	if (m_transferCommandPool)
+	{
+		vkDestroyCommandPool(m_vulkanDevice, m_transferCommandPool, nullptr);
 	}
 	vkDestroySurfaceKHR(m_vulkanInstance, m_swapChainSurface, nullptr);
 	vkDestroySemaphore(m_vulkanDevice, m_presentCompleteSemaphore, nullptr);
@@ -1581,7 +1591,7 @@ void GfxDevice::createSwapChain()
 	GfxTextureDesc depthBufferDesc = GfxTextureDesc::make2D(
 	    m_swapChainExtent.width, m_swapChainExtent.height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil);
 
-	Gfx_Release(m_depthBufferTexture);
+	m_depthBufferTexture.reset();
 	m_depthBufferTexture = retainResource(m_textures, TextureVK::create(depthBufferDesc, nullptr, 0, nullptr));
 
 	auto oldSwapChain = m_swapChain;
@@ -1601,9 +1611,9 @@ void GfxDevice::createSwapChain()
 	m_frameData.resize(swapChainImageCount);
 	m_swapChainImages.resize(swapChainImageCount);
 
-	for (auto it : m_swapChainTextures)
+	for (auto& it : m_swapChainTextures)
 	{
-		Gfx_Release(it);
+		it.reset();
 	}
 	m_swapChainTextures.resize(swapChainImageCount);
 
@@ -1623,7 +1633,7 @@ void GfxDevice::createSwapChain()
 		GfxTextureDesc textureDesc = GfxTextureDesc::make2D(
 		    m_swapChainExtent.width, m_swapChainExtent.height, swapChainFormat, GfxUsageFlags::RenderTarget);
 		m_swapChainTextures[i] =
-		    retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
+			makeOwn(retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED)));
 	}
 
 	m_presentInterval      = m_desiredPresentInterval;
@@ -1938,25 +1948,6 @@ void GfxContext::endBuild()
 	m_isActive = false;
 
 	V(vkEndCommandBuffer(m_commandBuffer));
-
-	m_pending.technique.reset();
-	m_pending.indexBuffer.reset();
-	m_pending.blendState.reset();
-	m_pending.depthStencilState.reset();
-	m_pending.rasterizerState.reset();
-
-	for (auto& it : m_pending.vertexBuffer)
-		it.reset();
-	for (auto& it : m_pending.constantBuffers)
-		it.reset();
-	for (auto& it : m_pending.textures)
-		it.reset();
-	for (auto& it : m_pending.samplers)
-		it.reset();
-	for (auto& it : m_pending.storageImages)
-		it.reset();
-	for (auto& it : m_pending.storageBuffers)
-		it.reset();
 
 	m_pending = PendingState();
 }
@@ -2274,11 +2265,11 @@ void GfxContext::applyState()
 	{
 		PipelineInfoVK info = {};
 
-		info.techniqueHandle         = m_pending.technique.get();
+		info.techniqueHandle         = m_pending.technique;
 		info.primitiveType           = m_pending.primitiveType;
-		info.depthStencilStateHandle = m_pending.depthStencilState.get();
-		info.rasterizerStateHandle   = m_pending.rasterizerState.get();
-		info.blendStateHandle        = m_pending.blendState.get();
+		info.depthStencilStateHandle = m_pending.depthStencilState;
+		info.rasterizerStateHandle   = m_pending.rasterizerState;
+		info.blendStateHandle        = m_pending.blendState;
 		for (u32 i = 0; i < RUSH_COUNTOF(info.vertexBufferStride); ++i)
 		{
 			info.vertexBufferStride[i] = m_pending.vertexBufferStride[i];
@@ -2290,7 +2281,7 @@ void GfxContext::applyState()
 	}
 
 	RUSH_ASSERT(m_pending.technique.valid());
-	TechniqueVK& technique = g_device->m_techniques[m_pending.technique.get()];
+	TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
 
 	VkPipelineBindPoint bindPoint =
 	    technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -2306,7 +2297,7 @@ void GfxContext::applyState()
 		{
 			RUSH_ASSERT(m_pending.vertexBuffer[i].valid());
 
-			BufferVK& buffer = g_device->m_buffers[m_pending.vertexBuffer[i].get()];
+			BufferVK& buffer = g_device->m_buffers[m_pending.vertexBuffer[i]];
 			validateBufferUse(buffer);
 
 			VkDeviceSize bufferOffset = buffer.info.offset;
@@ -2316,7 +2307,7 @@ void GfxContext::applyState()
 
 	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer))
 	{
-		BufferVK& buffer = g_device->m_buffers[m_pending.indexBuffer.get()];
+		BufferVK& buffer = g_device->m_buffers[m_pending.indexBuffer];
 		validateBufferUse(buffer);
 
 		VkDeviceSize offset = buffer.info.offset;
@@ -2379,7 +2370,7 @@ void GfxContext::applyState()
 
 		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
 
-		BufferVK& buffer = g_device->m_buffers[m_pending.constantBuffers[i].get()];
+		BufferVK& buffer = g_device->m_buffers[m_pending.constantBuffers[i]];
 		validateBufferUse(buffer);
 
 		pendingConstantBufferInfo[i] = buffer.info;
@@ -2412,7 +2403,7 @@ void GfxContext::applyState()
 		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
 		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 
-		SamplerVK& sampler = g_device->m_samplers[m_pending.samplers[i].get()];
+		SamplerVK& sampler = g_device->m_samplers[m_pending.samplers[i]];
 
 		imageInfos[imageInfoCount]         = defaultImageInfo;
 		imageInfos[imageInfoCount].sampler = sampler.native;
@@ -2438,7 +2429,7 @@ void GfxContext::applyState()
 		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
 		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 
-		TextureVK& texture = g_device->m_textures[m_pending.textures[i].get()];
+		TextureVK& texture = g_device->m_textures[m_pending.textures[i]];
 
 		imageInfos[imageInfoCount] = defaultImageInfo;
 
@@ -2474,7 +2465,7 @@ void GfxContext::applyState()
 		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
 		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 
-		TextureVK& texture = g_device->m_textures[m_pending.storageImages[i].get()];
+		TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
 
 		imageInfos[imageInfoCount] = defaultImageInfo;
 
@@ -2505,7 +2496,7 @@ void GfxContext::applyState()
 		RUSH_ASSERT(m_pending.storageBuffers[i].valid());
 		RUSH_ASSERT(descriptorCount < maxDescriptorCount);
 
-		BufferVK& buffer = g_device->m_buffers[m_pending.storageBuffers[i].get()];
+		BufferVK& buffer = g_device->m_buffers[m_pending.storageBuffers[i]];
 		validateBufferUse(buffer);
 
 		const bool isTyped = i >= technique.storageBufferCount;
@@ -2575,10 +2566,10 @@ void Gfx_Release(GfxDevice* dev)
 	if (dev->removeReference() > 1)
 		return;
 
-	Gfx_Release(dev->m_depthBufferTexture);
-	for (GfxTexture it : dev->m_swapChainTextures)
+	dev->m_depthBufferTexture.reset();
+	for (auto& it : dev->m_swapChainTextures)
 	{
-		Gfx_Release(it);
+		it.reset();
 	}
 
 	delete dev;
@@ -2794,7 +2785,7 @@ void Gfx_EndFrame()
 
 	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 
-	TextureVK& backBufferTexture = g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex]];
+	TextureVK& backBufferTexture = g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
 	g_context->addImageBarrier(
 	    backBufferTexture.image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, backBufferTexture.currentLayout);
 	backBufferTexture.currentLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
@@ -2879,7 +2870,7 @@ static VkFormat convertFormat(const GfxVertexFormatDesc::Element& vertexElement)
 	}
 }
 
-GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
+GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 {
 	VertexFormatVK format;
 
@@ -2906,10 +2897,10 @@ GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 		format.vertexStreamCount      = max<u32>(format.vertexStreamCount, element.stream + 1);
 	}
 
-	return retainResource(g_device->m_vertexFormats, format);
+	return GfxDevice::makeOwn(retainResource(g_device->m_vertexFormats, format));
 }
 
-void Gfx_DestroyVertexFormat(GfxVertexFormat h) { releaseResource(g_device->m_vertexFormats, h); }
+void Gfx_Release(GfxVertexFormat h) { releaseResource(g_device->m_vertexFormats, h); }
 
 ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 {
@@ -2969,7 +2960,7 @@ static ShaderVK::InputMapping parseVertexInputMapping(const StringView& vertexAt
 #endif
 
 // vertex shader
-GfxVertexShader Gfx_CreateVertexShader(const GfxShaderSource& code)
+GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
@@ -2978,7 +2969,7 @@ GfxVertexShader Gfx_CreateVertexShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return retainResource(g_device->m_vertexShaders, res);
+		return GfxDevice::makeOwn(retainResource(g_device->m_vertexShaders, res));
 	}
 	else
 	{
@@ -2986,10 +2977,10 @@ GfxVertexShader Gfx_CreateVertexShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_DestroyVertexShader(GfxVertexShader h) { releaseResource(g_device->m_vertexShaders, h); }
+void Gfx_Release(GfxVertexShader h) { releaseResource(g_device->m_vertexShaders, h); }
 
 // pixel shader
-GfxPixelShader Gfx_CreatePixelShader(const GfxShaderSource& code)
+GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
@@ -2998,7 +2989,7 @@ GfxPixelShader Gfx_CreatePixelShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return retainResource(g_device->m_pixelShaders, res);
+		return GfxDevice::makeOwn(retainResource(g_device->m_pixelShaders, res));
 	}
 	else
 	{
@@ -3006,10 +2997,10 @@ GfxPixelShader Gfx_CreatePixelShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_DestroyPixelShader(GfxPixelShader h) { releaseResource(g_device->m_pixelShaders, h); }
+void Gfx_Release(GfxPixelShader h) { releaseResource(g_device->m_pixelShaders, h); }
 
 // geometry shader
-GfxGeometryShader Gfx_CreateGeometryShader(const GfxShaderSource& code)
+GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
@@ -3018,7 +3009,7 @@ GfxGeometryShader Gfx_CreateGeometryShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return retainResource(g_device->m_geometryShaders, res);
+		return GfxDevice::makeOwn(retainResource(g_device->m_geometryShaders, res));
 	}
 	else
 	{
@@ -3026,10 +3017,10 @@ GfxGeometryShader Gfx_CreateGeometryShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_DestroyGeometryShader(GfxGeometryShader h) { releaseResource(g_device->m_geometryShaders, h); }
+void Gfx_Release(GfxGeometryShader h) { releaseResource(g_device->m_geometryShaders, h); }
 
 // compute shader
-GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code)
+GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
@@ -3038,7 +3029,7 @@ GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return retainResource(g_device->m_computeShaders, res);
+		return GfxDevice::makeOwn(retainResource(g_device->m_computeShaders, res));
 	}
 	else
 	{
@@ -3046,10 +3037,10 @@ GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_DestroyComputeShader(GfxComputeShader h) { releaseResource(g_device->m_computeShaders, h); }
+void Gfx_Release(GfxComputeShader h) { releaseResource(g_device->m_computeShaders, h); }
 
 // technique
-GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
+GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 {
 	TechniqueVK res;
 
@@ -3279,11 +3270,19 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, nullptr, &res.pipelineLayout));
 
-	return retainResource(g_device->m_techniques, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_techniques, res));
 }
 
 void TechniqueVK::destroy()
 {
+	RUSH_ASSERT(m_refs == 0);
+
+	vf.reset();
+	vs.reset();
+	gs.reset();
+	ps.reset();
+	cs.reset();
+
 	if (specializationInfo)
 	{
 		deallocateBytes(const_cast<void*>(specializationInfo->pData));
@@ -3298,7 +3297,7 @@ void TechniqueVK::destroy()
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, nullptr);
 }
 
-void Gfx_DestroyTechnique(GfxTechnique h) { releaseResource(g_device->m_techniques, h); }
+void Gfx_Release(GfxTechnique h) { releaseResource(g_device->m_techniques, h); }
 
 // texture
 
@@ -3638,9 +3637,9 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLa
 	return res;
 }
 
-GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
+GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
-	return retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels));
+	return GfxDevice::makeOwn(retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels)));
 }
 
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
@@ -3658,6 +3657,8 @@ const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
 
 void TextureVK::destroy()
 {
+	RUSH_ASSERT(m_refs == 0);
+
 	if (imageView)
 	{
 		g_device->enqueueDestroyImageView(imageView);
@@ -3683,22 +3684,22 @@ void TextureVK::destroy()
 	}
 }
 
-void Gfx_DestroyTexture(GfxTexture h) { releaseResource(g_device->m_textures, h); }
+void Gfx_Release(GfxTexture h) { releaseResource(g_device->m_textures, h); }
 
 // blend state
-GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
+GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 {
 	BlendStateVK res;
 	res.id   = g_device->generateId();
 	res.desc = desc;
 
-	return retainResource(g_device->m_blendStates, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_blendStates, res));
 }
 
-void Gfx_DestroyBlendState(GfxBlendState h) { releaseResource(g_device->m_blendStates, h); }
+void Gfx_Release(GfxBlendState h) { releaseResource(g_device->m_blendStates, h); }
 
 // sampler state
-GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
+GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 {
 	SamplerVK res;
 
@@ -3724,36 +3725,36 @@ GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 
 	V(vkCreateSampler(g_vulkanDevice, &samplerCreateInfo, nullptr, &res.native));
 
-	return retainResource(g_device->m_samplers, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_samplers, res));
 }
 
-void SamplerVK::destroy() { g_device->enqueueDestroySampler(native); }
+void SamplerVK::destroy() { RUSH_ASSERT(m_refs == 0); g_device->enqueueDestroySampler(native); }
 
-void Gfx_DestroySamplerState(GfxSampler h) { releaseResource(g_device->m_samplers, h); }
+void Gfx_Release(GfxSampler h) { releaseResource(g_device->m_samplers, h); }
 
 // depth stencil state
-GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
+GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
 {
 	DepthStencilStateVK res;
 	res.id   = g_device->generateId();
 	res.desc = desc;
 
-	return retainResource(g_device->m_depthStencilStates, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_depthStencilStates, res));
 }
 
-void Gfx_DestroyDepthStencilState(GfxDepthStencilState h) { releaseResource(g_device->m_depthStencilStates, h); }
+void Gfx_Release(GfxDepthStencilState h) { releaseResource(g_device->m_depthStencilStates, h); }
 
 // rasterizer state
-GfxRasterizerState Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
+GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
 {
 	RasterizerStateVK res;
 	res.id   = g_device->generateId();
 	res.desc = desc;
 
-	return retainResource(g_device->m_rasterizerStates, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_rasterizerStates, res));
 }
 
-void Gfx_DestroyRasterizerState(GfxRasterizerState h) { releaseResource(g_device->m_rasterizerStates, h); }
+void Gfx_Release(GfxRasterizerState h) { releaseResource(g_device->m_rasterizerStates, h); }
 
 static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 {
@@ -3800,7 +3801,7 @@ static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 }
 
 // buffers
-GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
+GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 {
 	BufferVK res;
 
@@ -3849,8 +3850,7 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 
 		V(vkBindBufferMemory(g_vulkanDevice, stagingBuffer, stagingMemory, 0));
 
-		V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, nullptr, &res.info.buffer));
-		res.ownsBuffer = true;
+		RUSH_ASSERT(res.info.buffer != VK_NULL_HANDLE);
 
 		VkMemoryRequirements memoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
@@ -3914,7 +3914,7 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &res.bufferView));
 	}
 
-	return retainResource(g_device->m_buffers, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_buffers, res));
 }
 
 void Gfx_vkFlushBarriers(GfxContext* ctx) { ctx->flushBarriers(); }
@@ -4001,20 +4001,20 @@ static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
 {
 	for (u32 i = 0; i < GfxContext::MaxVertexStreams; ++i)
 	{
-		if (buffer.id == g_device->m_buffers[rc->m_pending.vertexBuffer[i].get()].id)
+		if (buffer.id == g_device->m_buffers[rc->m_pending.vertexBuffer[i]].id)
 		{
 			rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 		}
 	}
 
-	if (buffer.id == g_device->m_buffers[rc->m_pending.indexBuffer.get()].id)
+	if (buffer.id == g_device->m_buffers[rc->m_pending.indexBuffer].id)
 	{
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
 	}
 
 	for (u32 i = 0; i < GfxContext::MaxStorageBuffers; ++i)
 	{
-		if (buffer.id == g_device->m_buffers[rc->m_pending.storageBuffers[i].get()].id)
+		if (buffer.id == g_device->m_buffers[rc->m_pending.storageBuffers[i]].id)
 		{
 			rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 		}
@@ -4022,7 +4022,7 @@ static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
 
 	for (u32 i = 0; i < GfxContext::MaxConstantBuffers; ++i)
 	{
-		if (buffer.id == g_device->m_buffers[rc->m_pending.constantBuffers[i].get()].id)
+		if (buffer.id == g_device->m_buffers[rc->m_pending.constantBuffers[i]].id)
 		{
 			rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
 		}
@@ -4078,7 +4078,7 @@ static VkMemoryRequirements getBufferMemoryRequirements(const BufferVK& buffer)
 }
 #endif
 
-void Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 size)
+void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
 	RUSH_ASSERT(data);
 
@@ -4087,7 +4087,7 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 size)
 	Gfx_EndUpdateBuffer(rc, h);
 }
 
-void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
+void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 {
 	if (!h.valid())
 	{
@@ -4184,9 +4184,9 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBuffer h, u32 size)
 	return block.mappedBuffer;
 }
 
-void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBuffer h) {}
+void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h) {}
 
-void Gfx_DestroyBuffer(GfxBuffer h) { releaseResource(g_device->m_buffers, h); }
+void Gfx_Release(GfxBuffer h) { releaseResource(g_device->m_buffers, h); }
 
 // context
 
@@ -4329,11 +4329,11 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 	vkCmdSetScissor(rc->m_commandBuffer, 0, 1, &scissor);
 }
 
-void Gfx_SetTechnique(GfxContext* rc, GfxTechnique h)
+void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h)
 {
 	if (rc->m_pending.technique != h)
 	{
-		rc->m_pending.technique.retain(h);
+		rc->m_pending.technique = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
 	}
 }
@@ -4347,22 +4347,22 @@ void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
 	}
 }
 
-void Gfx_SetIndexStream(GfxContext* rc, GfxBuffer h)
+void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h)
 {
 	if (rc->m_pending.indexBuffer != h)
 	{
-		rc->m_pending.indexBuffer.retain(h);
+		rc->m_pending.indexBuffer = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
 	}
 }
 
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBuffer h)
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
 
 	if (rc->m_pending.vertexBuffer[idx] != h)
 	{
-		rc->m_pending.vertexBuffer[idx].retain(h);
+		rc->m_pending.vertexBuffer[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 
 		if (h.valid())
@@ -4376,7 +4376,7 @@ void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBuffer h)
 	}
 }
 
-void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTexture h)
+void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.storageImages));
 
@@ -4388,74 +4388,74 @@ void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTexture h)
 			RUSH_ASSERT(!!(desc.usage & GfxUsageFlags::StorageImage));
 		}
 
-		rc->m_pending.storageImages[idx].retain(h);
+		rc->m_pending.storageImages[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageImage;
 	}
 }
 
-void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
+void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.storageBuffers));
 
 	if (rc->m_pending.storageBuffers[idx] != h)
 	{
-		rc->m_pending.storageBuffers[idx].retain(h);
+		rc->m_pending.storageBuffers[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 	}
 }
 
-void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
+void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute);
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.textures));
 
 	if (rc->m_pending.textures[idx] != h)
 	{
-		rc->m_pending.textures[idx].retain(h);
+		rc->m_pending.textures[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
 	}
 }
 
-void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSampler h)
+void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h)
 {
 	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute);
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.samplers));
 
 	if (rc->m_pending.samplers[idx] != h)
 	{
-		rc->m_pending.samplers[idx].retain(h);
+		rc->m_pending.samplers[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
 	}
 }
 
-void Gfx_SetBlendState(GfxContext* rc, GfxBlendState nextState)
+void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState)
 {
 	if (rc->m_pending.blendState != nextState)
 	{
-		rc->m_pending.blendState.retain(nextState);
+		rc->m_pending.blendState = nextState;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_BlendState;
 	}
 }
 
-void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilState nextState)
+void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nextState)
 {
 	if (rc->m_pending.depthStencilState != nextState)
 	{
-		rc->m_pending.depthStencilState.retain(nextState);
+		rc->m_pending.depthStencilState = nextState;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_DepthStencilState;
 	}
 }
 
-void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerState nextState)
+void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState)
 {
 	if (rc->m_pending.rasterizerState != nextState)
 	{
-		rc->m_pending.rasterizerState.retain(nextState);
+		rc->m_pending.rasterizerState = nextState;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_RasterizerState;
 	}
 }
 
-void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBuffer h, size_t offset)
+void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset)
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
 	RUSH_ASSERT(index < RUSH_COUNTOF(GfxContext::m_pending.constantBuffers));
@@ -4463,17 +4463,17 @@ void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBuffer h, size_t offset
 	if (rc->m_pending.constantBuffers[index] != h || rc->m_pending.constantBufferOffsets[index] != offset)
 	{
 		rc->m_pending.constantBufferOffsets[index] = offset;
-		rc->m_pending.constantBuffers[index].retain(h);
+		rc->m_pending.constantBuffers[index] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
 	}
 }
 
-GfxTexture Gfx_GetBackBufferColorTexture() { return g_device->m_swapChainTextures[g_device->m_swapChainIndex]; }
+GfxTexture Gfx_GetBackBufferColorTexture() { return g_device->m_swapChainTextures[g_device->m_swapChainIndex].get(); }
 
-GfxTexture Gfx_GetBackBufferDepthTexture() { return g_device->m_depthBufferTexture; }
+GfxTexture Gfx_GetBackBufferDepthTexture() { return g_device->m_depthBufferTexture.get(); }
 
 void Gfx_AddImageBarrier(
-    GfxContext* rc, GfxTexture textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
+    GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
 {
 	auto& texture = g_device->m_textures[textureHandle];
 
@@ -4521,7 +4521,7 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* p
 	if (pushConstants)
 	{
 		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique.get()];
+		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique];
 		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
 		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
 		    pushConstantsSize, pushConstants);
@@ -4533,14 +4533,14 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* p
 }
 
 void Gfx_DispatchIndirect(
-    GfxContext* rc, GfxBuffer argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize)
+    GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize)
 {
 	rc->applyState();
 
 	if (pushConstants)
 	{
 		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique.get()];
+		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique];
 		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
 		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
 		    pushConstantsSize, pushConstants);
@@ -4588,7 +4588,7 @@ static void drawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 base
 	if (pushConstants)
 	{
 		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique.get()];
+		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique];
 		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
 		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
 		    pushConstantsSize, pushConstants);
@@ -4621,7 +4621,7 @@ void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u3
 	drawIndexed(rc, indexCount, firstIndex, baseVertex, vertexCount, instanceCount, instanceOffset, nullptr, 0);
 }
 
-void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBuffer argsBuffer, size_t argsBufferOffset, u32 drawCount)
+void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount)
 {
 	RUSH_ASSERT(rc->m_isRenderPassActive);
 	rc->applyState();
@@ -4703,6 +4703,7 @@ void Gfx_Retain(GfxBuffer h) { g_device->m_buffers[h].addReference(); }
 
 void ShaderVK::destroy()
 {
+	RUSH_ASSERT(m_refs == 0);
 	// TODO: queue-up destruction
 	vkDestroyShaderModule(g_vulkanDevice, module, nullptr);
 	deallocateBytes(const_cast<char*>(entry));
@@ -4710,6 +4711,8 @@ void ShaderVK::destroy()
 
 void BufferVK::destroy()
 {
+	RUSH_ASSERT(m_refs == 0);
+
 	if (info.buffer && ownsBuffer)
 	{
 		g_device->enqueueDestroyBuffer(info.buffer);

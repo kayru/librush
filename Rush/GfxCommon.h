@@ -77,6 +77,8 @@ class Window;
 class GfxDevice;
 class GfxContext;
 
+template <typename T> class GfxOwn;
+
 struct Vec2;
 struct Vec3;
 struct Vec4;
@@ -107,6 +109,88 @@ typedef ResourceHandle<GfxBlendStateDesc>     GfxBlendState;
 typedef ResourceHandle<GfxDepthStencilDesc>   GfxDepthStencilState;
 typedef ResourceHandle<GfxRasterizerDesc>     GfxRasterizerState;
 typedef ResourceHandle<GfxTechniqueDesc>      GfxTechnique;
+
+template <typename T>
+class GfxOwn
+{
+public:
+
+	friend GfxDevice;
+
+	GfxOwn(const GfxOwn& rhs) = delete;
+	GfxOwn& operator=(const GfxOwn<T>& other) = delete;
+
+	RUSH_FORCEINLINE GfxOwn() : m_handle(InvalidResourceHandle()) {}
+	RUSH_FORCEINLINE GfxOwn(InvalidResourceHandle) : m_handle(InvalidResourceHandle()) {}
+	RUSH_FORCEINLINE GfxOwn(GfxOwn&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
+	RUSH_FORCEINLINE GfxOwn& operator=(GfxOwn<T>&& rhs)
+	{
+		m_handle = rhs.m_handle;
+		rhs.m_handle = InvalidResourceHandle();
+		return *this;
+	}
+	RUSH_FORCEINLINE ~GfxOwn()
+	{
+		reset();
+	}
+
+	RUSH_FORCEINLINE T get() const { return m_handle; }
+	RUSH_FORCEINLINE bool valid() const { return m_handle.valid(); }
+
+	T detach() const
+	{
+		T result = m_handle;
+		m_handle = InvalidResourceHandle()
+			return result;
+	}
+
+	RUSH_FORCEINLINE void reset()
+	{
+		if (m_handle.valid())
+		{
+			Gfx_Release(m_handle);
+		}
+		m_handle = InvalidResourceHandle();
+	}
+
+private:
+
+	GfxOwn(T h) : m_handle(h) {}
+
+	T m_handle;
+};
+
+template <typename T>
+class GfxArg
+{
+public:
+
+	friend GfxDevice;
+	friend GfxContext;
+
+	RUSH_FORCEINLINE GfxArg(T h) : m_handle(h) {};
+	RUSH_FORCEINLINE GfxArg(InvalidResourceHandle) : m_handle(InvalidResourceHandle()) {};
+	RUSH_FORCEINLINE GfxArg(const GfxOwn<T>& h) : m_handle(h.get()) {};
+
+	RUSH_FORCEINLINE operator T() const { return m_handle; }
+	RUSH_FORCEINLINE bool valid() const { return m_handle.valid(); }
+
+private:
+	T m_handle;
+};
+
+typedef GfxArg<GfxVertexFormat>       GfxVertexFormatArg;
+typedef GfxArg<GfxVertexShader>       GfxVertexShaderArg;
+typedef GfxArg<GfxPixelShader>        GfxPixelShaderArg;
+typedef GfxArg<GfxGeometryShader>     GfxGeometryShaderArg;
+typedef GfxArg<GfxComputeShader>      GfxComputeShaderArg;
+typedef GfxArg<GfxTexture>            GfxTextureArg;
+typedef GfxArg<GfxBuffer>             GfxBufferArg;
+typedef GfxArg<GfxSampler>            GfxSamplerArg;
+typedef GfxArg<GfxBlendState>         GfxBlendStateArg;
+typedef GfxArg<GfxDepthStencilState>  GfxDepthStencilStateArg;
+typedef GfxArg<GfxRasterizerState>    GfxRasterizerStateArg;
+typedef GfxArg<GfxTechnique>          GfxTechniqueArg;
 
 enum class GfxContextType : u8
 {
@@ -678,13 +762,13 @@ struct GfxTechniqueDesc
 	}
 
 	GfxTechniqueDesc(
-	    GfxPixelShader _ps, GfxVertexShader _vs, GfxVertexFormat _vf, const GfxShaderBindingDesc& _bindings)
+	    GfxPixelShaderArg _ps, GfxVertexShaderArg _vs, GfxVertexFormatArg _vf, const GfxShaderBindingDesc& _bindings)
 	: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
 	{
 		
 	}
 
-	GfxTechniqueDesc(GfxComputeShader _cs, const GfxShaderBindingDesc& _bindings) : cs(_cs), bindings(_bindings)
+	GfxTechniqueDesc(GfxComputeShaderArg _cs, const GfxShaderBindingDesc& _bindings) : cs(_cs), bindings(_bindings)
 	{
 	}
 

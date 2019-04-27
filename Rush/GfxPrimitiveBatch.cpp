@@ -113,7 +113,7 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	m_samplerLiner = Gfx_CreateSamplerState(GfxSamplerDesc::makeLinear());
 	m_samplerPoint = Gfx_CreateSamplerState(GfxSamplerDesc::makePoint());
 
-	m_currSampler = m_samplerPoint;
+	m_currSampler = m_samplerPoint.get();
 
 	m_depth = caps.deviceNearDepth;
 }
@@ -121,30 +121,6 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 PrimitiveBatch::~PrimitiveBatch()
 {
 	delete[] m_vertices.data();
-
-	for (u32 i = 0; i < TechniqueID_COUNT; ++i)
-	{
-		Gfx_Release(m_techniques[i]);
-	}
-
-	if (m_constantBuffer.valid())
-	{
-		Gfx_Release(m_constantBuffer);
-	}
-
-	Gfx_Release(m_samplerLiner);
-	Gfx_Release(m_samplerPoint);
-
-	Gfx_Release(m_vertexBuffer);
-
-	Gfx_Release(m_vertexShader2D);
-	Gfx_Release(m_vertexShader3D);
-	Gfx_Release(m_pixelShaderPlain);
-	Gfx_Release(m_pixelShaderTextured);
-
-	Gfx_Release(m_vertexFormat2D);
-	Gfx_Release(m_vertexFormat3D);
-
 	Gfx_Release(m_context);
 }
 
@@ -154,8 +130,8 @@ GfxTechnique PrimitiveBatch::getNextTechnique()
 	{
 		switch (m_mode)
 		{
-		case BatchMode_2D: return m_techniques[TechniqueID_Textured2D];
-		case BatchMode_3D: return m_techniques[TechniqueID_Textured3D];
+		case BatchMode_2D: return m_techniques[TechniqueID_Textured2D].get();
+		case BatchMode_3D: return m_techniques[TechniqueID_Textured3D].get();
 		default: return InvalidResourceHandle();
 		}
 	}
@@ -163,8 +139,8 @@ GfxTechnique PrimitiveBatch::getNextTechnique()
 	{
 		switch (m_mode)
 		{
-		case BatchMode_2D: return m_techniques[TechniqueID_Plain2D];
-		case BatchMode_3D: return m_techniques[TechniqueID_Plain3D];
+		case BatchMode_2D: return m_techniques[TechniqueID_Plain2D].get();
+		case BatchMode_3D: return m_techniques[TechniqueID_Plain3D].get();
 		default: return InvalidResourceHandle();
 		}
 	}
@@ -182,7 +158,8 @@ void PrimitiveBatch::flush()
 	Gfx_SetTechnique(m_context, nextTechnique);
 
 	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), (u32)m_vertices.sizeInBytes());
-	Gfx_SetTexture(m_context, GfxStage::Pixel, 0, m_currTexture, m_currSampler);
+	Gfx_SetTexture(m_context, GfxStage::Pixel, 0, m_currTexture);
+	Gfx_SetSampler(m_context, GfxStage::Pixel, 0, m_currSampler);
 	Gfx_SetVertexStream(m_context, 0, m_vertexBuffer);
 	Gfx_SetPrimitive(m_context, m_currPrim);
 
@@ -670,7 +647,7 @@ void PrimitiveBatch::setColor(ColorRGBA color)
 	}
 }
 
-void PrimitiveBatch::setTexture(GfxTexture tex)
+void PrimitiveBatch::setTexture(GfxTextureArg tex)
 {
 	if (m_currTexture != tex)
 	{
@@ -679,7 +656,7 @@ void PrimitiveBatch::setTexture(GfxTexture tex)
 	}
 }
 
-void PrimitiveBatch::setSampler(GfxSampler smp)
+void PrimitiveBatch::setSampler(GfxSamplerArg smp)
 {
 	if (m_currSampler != smp)
 	{

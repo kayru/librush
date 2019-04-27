@@ -68,8 +68,8 @@ public:
 	void end3D();
 
 	void setColor(ColorRGBA color);
-	void setTexture(GfxTexture tex);
-	void setSampler(GfxSampler smp);
+	void setTexture(GfxTextureArg tex);
+	void setSampler(GfxSamplerArg smp);
 	void setSampler(SamplerState smp);
 	void setPrimitive(GfxPrimitive prim);
 
@@ -124,17 +124,18 @@ private:
 	ColorRGBA m_currColor;
 
 	GfxPrimitive m_currPrim;
-	GfxTexture   m_currTexture;
-	GfxSampler   m_currSampler;
 
-	GfxSampler m_samplerLiner;
-	GfxSampler m_samplerPoint;
+	GfxTexture m_currTexture;
+	GfxSampler m_currSampler;
 
-	GfxBuffer                    m_vertexBuffer;
+	GfxOwn<GfxSampler> m_samplerLiner;
+	GfxOwn<GfxSampler> m_samplerPoint;
+
+	GfxOwn<GfxBuffer>            m_vertexBuffer;
 	LinearAllocator<BatchVertex> m_vertices;
 
-	GfxVertexFormat m_vertexFormat2D;
-	GfxVertexFormat m_vertexFormat3D;
+	GfxOwn<GfxVertexFormat> m_vertexFormat2D;
+	GfxOwn<GfxVertexFormat> m_vertexFormat3D;
 
 	struct Constants
 	{
@@ -142,15 +143,15 @@ private:
 		Vec4 transform2D; // xy: scale, zw: bias
 		Vec4 color;
 	};
-	Constants m_constants;
-	GfxBuffer m_constantBuffer;
-	bool      m_constantBufferDirty;
+	Constants         m_constants;
+	GfxOwn<GfxBuffer> m_constantBuffer;
+	bool              m_constantBufferDirty;
 
-	GfxVertexShader m_vertexShader2D;
-	GfxVertexShader m_vertexShader3D;
+	GfxOwn<GfxVertexShader> m_vertexShader2D;
+	GfxOwn<GfxVertexShader> m_vertexShader3D;
 
-	GfxPixelShader m_pixelShaderPlain;
-	GfxPixelShader m_pixelShaderTextured;
+	GfxOwn<GfxPixelShader> m_pixelShaderPlain;
+	GfxOwn<GfxPixelShader> m_pixelShaderTextured;
 
 	enum TechniqueID
 	{
@@ -161,7 +162,7 @@ private:
 		TechniqueID_COUNT
 	};
 
-	GfxTechnique m_techniques[TechniqueID_COUNT];
+	GfxOwn<GfxTechnique> m_techniques[TechniqueID_COUNT];
 
 	float m_depth;
 };

@@ -76,11 +76,11 @@ private:
 	void createSprites();
 
 private:
-	BitmapFontDesc               m_fontDesc;
-	DynamicArray<GfxTexture>     m_textures;
-	DynamicArray<GfxTextureDesc> m_textureDesc;
-	TexturedQuad2D               m_chars[256];
-	float                        m_scale;
+	BitmapFontDesc                   m_fontDesc;
+	DynamicArray<GfxOwn<GfxTexture>> m_textures;
+	DynamicArray<GfxTextureDesc>     m_textureDesc;
+	TexturedQuad2D                   m_chars[256];
+	float                            m_scale;
 };
 #endif
 

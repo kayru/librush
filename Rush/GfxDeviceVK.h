@@ -194,6 +194,7 @@ struct MemoryBlockVK
 class MemoryAllocatorVK
 {
 public:
+
 	void          init(u32 memoryType, bool hostVisible);
 	MemoryBlockVK alloc(u64 size, u64 alignment);
 	void          reset();
@@ -235,7 +236,6 @@ public:
 	void enqueueDestroyImageView(VkImageView object);
 	void enqueueDestroyBufferView(VkBufferView object);
 	void enqueueDestroySampler(VkSampler object);
-	;
 	void enqueueDestroyContext(GfxContext* object);
 
 	u32 generateId();
@@ -390,23 +390,26 @@ public:
 
 	DynamicArray<VkPresentModeKHR> m_availablePresentModes;
 
-	GfxTexture              m_depthBufferTexture;
-	DynamicArray<GfxTexture> m_swapChainTextures;
+	GfxOwn<GfxTexture>               m_depthBufferTexture;
+	DynamicArray<GfxOwn<GfxTexture>> m_swapChainTextures;
 
 	// resources
 
+	ResourcePool<TechniqueVK, GfxTechnique>                 m_techniques;
 	ResourcePool<ShaderVK, GfxVertexShader>                 m_vertexShaders;
 	ResourcePool<ShaderVK, GfxPixelShader>                  m_pixelShaders;
 	ResourcePool<ShaderVK, GfxGeometryShader>               m_geometryShaders;
 	ResourcePool<ShaderVK, GfxComputeShader>                m_computeShaders;
 	ResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
 	ResourcePool<BufferVK, GfxBuffer>                       m_buffers;
-	ResourcePool<TechniqueVK, GfxTechnique>                 m_techniques;
 	ResourcePool<DepthStencilStateVK, GfxDepthStencilState> m_depthStencilStates;
 	ResourcePool<RasterizerStateVK, GfxRasterizerState>     m_rasterizerStates;
 	ResourcePool<TextureVK, GfxTexture>                     m_textures;
 	ResourcePool<BlendStateVK, GfxBlendState>               m_blendStates;
 	ResourcePool<SamplerVK, GfxSampler>                     m_samplers;
+
+	template <typename HandleType>
+	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
 
 	struct DestructionQueue
 	{
@@ -425,10 +428,10 @@ public:
 	{
 		VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
 
-		VkQueryPool      timestampPool = VK_NULL_HANDLE;
+		VkQueryPool       timestampPool = VK_NULL_HANDLE;
 		DynamicArray<u64> timestampPoolData;
 		DynamicArray<u16> timestampSlotMap;
-		u32              timestampIssuedCount = 0;
+		u32               timestampIssuedCount = 0;
 
 		DestructionQueue destructionQueue;
 
@@ -565,20 +568,20 @@ public:
 
 	struct PendingState
 	{
-		GfxPrimitive                 primitiveType = GfxPrimitive::TriangleList;
-		GfxRef<GfxTechnique>         technique;
-		GfxRef<GfxBuffer>            vertexBuffer[MaxVertexStreams];
-		GfxRef<GfxBuffer>            indexBuffer;
-		GfxRef<GfxBuffer>            constantBuffers[MaxConstantBuffers];
-		GfxRef<GfxTexture>           textures[MaxTextures];
-		GfxRef<GfxSampler>           samplers[MaxTextures];
-		GfxRef<GfxTexture>           storageImages[MaxStorageImages];
-		GfxRef<GfxBuffer>            storageBuffers[MaxStorageBuffers];
-		GfxRef<GfxBlendState>        blendState;
-		GfxRef<GfxDepthStencilState> depthStencilState;
-		GfxRef<GfxRasterizerState>   rasterizerState;
-		size_t                       constantBufferOffsets[MaxConstantBuffers] = {};
-		u32                          vertexBufferStride[MaxVertexStreams]      = {};
+		GfxPrimitive         primitiveType = GfxPrimitive::TriangleList;
+		GfxTechnique         technique;
+		GfxBuffer            vertexBuffer[MaxVertexStreams];
+		GfxBuffer            indexBuffer;
+		GfxBuffer            constantBuffers[MaxConstantBuffers];
+		GfxTexture           textures[MaxTextures];
+		GfxSampler           samplers[MaxTextures];
+		GfxTexture           storageImages[MaxStorageImages];
+		GfxBuffer            storageBuffers[MaxStorageBuffers];
+		GfxBlendState        blendState;
+		GfxDepthStencilState depthStencilState;
+		GfxRasterizerState   rasterizerState;
+		size_t               constantBufferOffsets[MaxConstantBuffers] = {};
+		u32                  vertexBufferStride[MaxVertexStreams]      = {};
 	} m_pending;
 
 	VkPipeline m_activePipeline = VK_NULL_HANDLE;
