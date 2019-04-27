@@ -23,6 +23,7 @@ public:
 	DynamicArray(size_t size, const T& defaultValue)
 		: DynamicArray()
 	{
+		static_assert(std::is_copy_constructible<T>::value, "Type must be copy-constructible");
 		resize(size, defaultValue);
 	}
 
@@ -99,6 +100,7 @@ public:
 
 	RUSH_FORCEINLINE void resize(size_t desiredSize, const T& defaultValue)
 	{
+		static_assert(std::is_copy_constructible<T>::value, "Type must be copy-constructible");
 		Buffer<T>::resize(m_buffer, desiredSize, defaultValue);
 	}
 
@@ -109,6 +111,7 @@ public:
 
 	RUSH_FORCEINLINE void push(const T& val)
 	{
+		static_assert(std::is_copy_constructible<T>::value, "Type must be copy-constructible");
 		Buffer<T>::push(m_buffer, val);
 	}
 
@@ -132,6 +135,7 @@ public:
 
 	RUSH_FORCEINLINE void push_back(const T& val)
 	{
+		static_assert(std::is_copy_constructible<T>::value, "Type must be copy-constructible");
 		Buffer<T>::push(m_buffer, val);
 	}
 
