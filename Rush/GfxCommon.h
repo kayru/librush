@@ -140,8 +140,8 @@ public:
 	T detach() const
 	{
 		T result = m_handle;
-		m_handle = InvalidResourceHandle()
-			return result;
+		m_handle = InvalidResourceHandle();
+		return result;
 	}
 
 	RUSH_FORCEINLINE void reset()
