@@ -248,6 +248,7 @@ void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState);
 void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset = 0);
 void Gfx_AddImageBarrier(GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState,
     GfxSubresourceRange* subresourceRange = nullptr);
+void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst);
 
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ);
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize);

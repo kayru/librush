@@ -333,6 +333,21 @@ static VkPrimitiveTopology convertPrimitiveType(GfxPrimitive primitiveType)
 	}
 }
 
+static VkSampleCountFlagBits convertSampleCount(u32 samples)
+{
+	switch (samples)
+	{
+	default: RUSH_LOG_ERROR("Unexpected sample count"); return VK_SAMPLE_COUNT_1_BIT;
+	case 1: return VK_SAMPLE_COUNT_1_BIT;
+	case 2: return VK_SAMPLE_COUNT_2_BIT;
+	case 4: return VK_SAMPLE_COUNT_4_BIT;
+	case 8: return VK_SAMPLE_COUNT_8_BIT;
+	case 16: return VK_SAMPLE_COUNT_16_BIT;
+	case 32: return VK_SAMPLE_COUNT_32_BIT;
+	case 64: return VK_SAMPLE_COUNT_64_BIT;
+	};
+}
+
 static VkFormat convertFormat(GfxFormat format)
 {
 	switch (format)
@@ -1111,6 +1126,8 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 		}
 		key.primitiveType        = info.primitiveType;
 		key.colorAttachmentCount = info.colorAttachmentCount;
+		key.colorSampleCount     = info.colorSampleCount;
+		key.depthSampleCount     = info.depthSampleCount;
 	}
 
 	auto existingPipeline = m_pipelines.find(key);
@@ -1251,9 +1268,11 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 
 		// multisample
 
+		RUSH_ASSERT(info.colorSampleCount == info.depthSampleCount); // TODO: support mixed attachments
+
 		VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
 		createInfo.pMultisampleState            = &ms;
-		ms.rasterizationSamples                 = VK_SAMPLE_COUNT_1_BIT;
+		ms.rasterizationSamples                 = convertSampleCount(info.colorSampleCount);
 		ms.sampleShadingEnable                  = false;
 		ms.minSampleShading                     = 0.0f;
 		ms.pSampleMask                          = nullptr;
@@ -1335,6 +1354,7 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 
 	key.flags              = desc.flags;
 	key.depthStencilFormat = g_device->m_textures[desc.depth].desc.format;
+	key.depthSampleCount   = g_device->m_textures[desc.depth].desc.samples;
 
 	u32 colorTargetCount = 0;
 	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
@@ -1343,12 +1363,20 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 		{
 			colorTargetCount++;
 			key.colorFormats[i] = g_device->m_textures[desc.color[i]].desc.format;
+			u32 sampleCount = g_device->m_textures[desc.color[i]].desc.samples;
+			RUSH_ASSERT(key.colorSampleCount == 0 || key.colorSampleCount == sampleCount);
+			key.colorSampleCount = sampleCount;
 		}
 		else
 		{
 			break;
 		}
 	}
+
+	if (key.depthSampleCount == 0 && key.colorSampleCount != 0) key.depthSampleCount = key.colorSampleCount;
+	if (key.depthSampleCount != 0 && key.colorSampleCount == 0) key.colorSampleCount = key.depthSampleCount;
+	if (key.colorSampleCount == 0) key.colorSampleCount = 1;
+	if (key.depthSampleCount == 0) key.depthSampleCount = 1;
 
 	auto existingPass = m_renderPasses.find(key);
 	if (existingPass != m_renderPasses.end())
@@ -1368,15 +1396,17 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 	if (desc.depth.valid())
 	{
 		auto& attachment = attachmentDesc[attachmentCount];
+		
+		const auto& textureDesc = g_device->m_textures[desc.depth].desc;
 
-		attachment.samples        = VK_SAMPLE_COUNT_1_BIT;
+		attachment.samples        = convertSampleCount(textureDesc.samples);
 		attachment.loadOp         = clearDepthStencil ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
 		attachment.stencilLoadOp  = clearDepthStencil ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachment.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachment.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		attachment.format         = convertFormat(g_device->m_textures[desc.depth].desc.format);
+		attachment.format         = convertFormat(textureDesc.format);
 
 		depthAttachmentReference.attachment = attachmentCount;
 		depthAttachmentReference.layout     = attachment.initialLayout;
@@ -1389,8 +1419,10 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 	{
 		auto& attachment = attachmentDesc[attachmentCount];
 
-		attachment.format  = convertFormat(g_device->m_textures[desc.color[i]].desc.format);
-		attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		const auto& textureDesc = g_device->m_textures[desc.color[i]].desc;
+
+		attachment.format  = convertFormat(textureDesc.format);
+		attachment.samples = convertSampleCount(textureDesc.samples);
 		if (discardColor)
 		{
 			attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -2205,11 +2237,14 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	m_currentRenderRect.extent.width  = UINT_MAX;
 	m_currentRenderRect.extent.height = UINT_MAX;
 
+	u32 depthSampleCount = 0;
+
 	u32          clearValueCount = 0;
 	VkClearValue clearValues[1 + GfxPassDesc::MaxTargets];
 	if (desc.depth.valid())
 	{
 		TextureVK& texture                = g_device->m_textures[desc.depth];
+		depthSampleCount = texture.desc.samples;
 		m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 		m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
 
@@ -2227,11 +2262,15 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 
 	const bool shouldClearColor = !!(desc.flags & GfxPassFlags::ClearColor);
 
+	u32 colorSampleCount = 0;
+
 	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
 		if (desc.color[i].valid())
 		{
 			TextureVK& texture                = g_device->m_textures[desc.color[i]];
+			RUSH_ASSERT(colorSampleCount == 0 || colorSampleCount == texture.desc.samples);
+			colorSampleCount = texture.desc.samples;
 			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 			m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
 			addImageBarrier(texture.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, texture.currentLayout);
@@ -2247,6 +2286,11 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 			break;
 		}
 	}
+
+	if (depthSampleCount == 0 && colorSampleCount != 0) depthSampleCount = colorSampleCount;
+	if (depthSampleCount != 0 && colorSampleCount == 0) colorSampleCount = depthSampleCount;
+	if (colorSampleCount == 0) colorSampleCount = 1;
+	if (depthSampleCount == 0) depthSampleCount = 1;
 
 	VkRenderPassBeginInfo renderPassBeginInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
 	renderPassBeginInfo.renderPass            = g_device->createRenderPass(desc);
@@ -2265,6 +2309,8 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	m_currentRenderPassDesc       = desc;
 	m_currentRenderPass           = renderPassBeginInfo.renderPass;
 	m_currentColorAttachmentCount = desc.getColorTargetCount();
+	m_currentColorSampleCount     = colorSampleCount;
+	m_currentDepthSampleCount     = depthSampleCount;
 
 	m_isRenderPassActive = true;
 
@@ -2278,6 +2324,41 @@ void GfxContext::endRenderPass()
 	vkCmdEndRenderPass(m_commandBuffer);
 	m_isRenderPassActive = false;
 	m_currentRenderPass  = VK_NULL_HANDLE;
+}
+
+void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
+{
+	TextureVK& srcTexture = g_device->m_textures[src];
+	TextureVK& dstTexture = g_device->m_textures[dst];
+
+	VkImageResolve region = {};
+	region.srcSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+	region.srcOffset = VkOffset3D{ 0,0,0 };
+	region.dstSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+	region.dstOffset = VkOffset3D{ 0,0,0 };
+	region.extent = VkExtent3D{ srcTexture.desc.width, srcTexture.desc.height, srcTexture.desc.depth };
+
+	VkImage srcImage = srcTexture.image;
+	VkImageLayout srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+	VkImage dstImage = dstTexture.image;
+	VkImageLayout dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+	VkImageSubresourceRange srcRange = {
+		aspectFlagsFromFormat(srcTexture.desc.format), 0, srcTexture.desc.mips, 0, 1 };
+
+	VkImageSubresourceRange dstRange = {
+		aspectFlagsFromFormat(dstTexture.desc.format), 0, dstTexture.desc.mips, 0, 1 };
+
+	addImageBarrier(srcTexture.image, srcImageLayout, srcTexture.currentLayout, &srcRange);
+	srcTexture.currentLayout = srcImageLayout;
+
+	addImageBarrier(dstTexture.image, dstImageLayout, dstTexture.currentLayout, &dstRange);
+	dstTexture.currentLayout = dstImageLayout;
+
+	flushBarriers();
+
+	vkCmdResolveImage(m_commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, 1, &region);
 }
 
 void GfxContext::applyState()
@@ -2302,6 +2383,8 @@ void GfxContext::applyState()
 		}
 		info.renderPass           = m_currentRenderPass;
 		info.colorAttachmentCount = m_currentColorAttachmentCount;
+		info.colorSampleCount     = m_currentColorSampleCount;
+		info.depthSampleCount     = m_currentDepthSampleCount;
 
 		m_activePipeline = g_device->createPipeline(info);
 	}
@@ -3456,7 +3539,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	imageCreateInfo.extent.height = desc.height;
 	imageCreateInfo.extent.depth  = desc.depth;
 	imageCreateInfo.mipLevels     = desc.mips;
-	imageCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.samples       = convertSampleCount(desc.samples);
 	imageCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
 
 	GfxFormat viewFormat = desc.format;
@@ -3491,6 +3574,16 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	if (!!(desc.usage & GfxUsageFlags::StorageImage))
 	{
 		imageCreateInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	}
+
+	if (!!(desc.usage & GfxUsageFlags::TransferSrc))
+	{
+		imageCreateInfo.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	}
+
+	if (!!(desc.usage & GfxUsageFlags::TransferDst))
+	{
+		imageCreateInfo.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	}
 
 	if (data)
@@ -4523,6 +4616,8 @@ void Gfx_AddImageBarrier(
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline;
+	
 	if (!desc.depth.valid() && !desc.color[0].valid())
 	{
 		GfxPassDesc backBufferPassDesc = desc;
@@ -4537,6 +4632,11 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 }
 
 void Gfx_EndPass(GfxContext* rc) { rc->endRenderPass(); }
+
+void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
+{
+	rc->resolveImage(src, dst);
+}
 
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 {

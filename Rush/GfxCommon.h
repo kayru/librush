@@ -136,8 +136,13 @@ public:
 	GfxOwn(GfxOwn&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
 	GfxOwn& operator=(GfxOwn<T>&& rhs)
 	{
-		m_handle = rhs.m_handle;
-		rhs.m_handle = InvalidResourceHandle();
+		if (m_handle != rhs.m_handle)
+		{
+			reset();
+			m_handle = rhs.m_handle;
+			rhs.m_handle = InvalidResourceHandle();
+		}
+
 		return *this;
 	}
 	~GfxOwn()
@@ -192,8 +197,13 @@ public:
 
 	GfxRef& operator=(GfxRef<T>&& rhs)
 	{
-		m_handle = rhs.m_handle;
-		rhs.m_handle = InvalidResourceHandle();
+		if (m_handle != rhs.m_handle)
+		{
+			reset();
+			m_handle = rhs.m_handle;
+			rhs.m_handle = InvalidResourceHandle();
+		}
+		
 		return *this;
 	}
 
@@ -404,13 +414,20 @@ enum class GfxUsageFlags : u8
 {
 	None = 0,
 
-	ShaderResource = 1 << 0,
-	RenderTarget   = 1 << 1,
-	DepthStencil   = 1 << 2,
-	StorageImage   = 1 << 3,
+	ShaderResource  = 1 << 0,
+	RenderTarget    = 1 << 1,
+	DepthStencil    = 1 << 2,
+	StorageImage    = 1 << 3,
+	TransferSrc     = 1 << 4,
+	TransferDst     = 1 << 5,
 
 	RenderTarget_ShaderResource = ShaderResource | RenderTarget,
 	DepthStencil_ShaderResource = ShaderResource | DepthStencil,
+};
+
+enum class GfxSampleCount : u8
+{
+
 };
 
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxUsageFlags, u8);
@@ -879,6 +896,7 @@ struct GfxTextureDesc
 	u32           height    = 0;
 	u32           depth     = 0;
 	u32           mips      = 0;
+	u32           samples   = 1;
 	GfxFormat     format    = GfxFormat_Unknown;
 	TextureType   type      = TextureType::Tex2D;
 	GfxUsageFlags usage     = GfxUsageFlags::ShaderResource;

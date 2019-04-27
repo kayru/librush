@@ -179,6 +179,8 @@ struct PipelineInfoVK
 	u32                  instanceBufferStride;
 	VkRenderPass         renderPass;
 	u32                  colorAttachmentCount;
+	u32                  colorSampleCount;
+	u32                  depthSampleCount;
 };
 
 struct MemoryBlockVK
@@ -271,6 +273,8 @@ public:
 		GfxFormat    depthStencilFormat;
 		GfxFormat    colorFormats[GfxPassDesc::MaxTargets];
 		GfxPassFlags flags;
+		u32 colorSampleCount = 0;
+		u32 depthSampleCount = 0;
 
 		bool operator==(const RenderPassKey& other) const
 		{
@@ -282,7 +286,9 @@ public:
 				}
 			}
 
-			return flags == other.flags && depthStencilFormat == other.depthStencilFormat;
+			return flags == other.flags && depthStencilFormat == other.depthStencilFormat 
+				&& colorSampleCount == other.colorSampleCount 
+				&& depthSampleCount == other.depthSampleCount;
 		}
 
 		struct Hash
@@ -302,13 +308,16 @@ public:
 		u32          rasterizerStateId;
 		u32          vertexBufferStride[PipelineInfoVK::MaxVertexStreams];
 		u32          colorAttachmentCount;
+		u32          colorSampleCount;
+		u32          depthSampleCount;
 		GfxPrimitive primitiveType;
 
 		bool operator==(const PipelineKey& other) const
 		{
 			if (techniqueId != other.techniqueId || blendStateId != other.blendStateId ||
 			    depthStencilStateId != other.depthStencilStateId || rasterizerStateId != other.rasterizerStateId ||
-			    primitiveType != other.primitiveType || colorAttachmentCount != other.colorAttachmentCount)
+			    primitiveType != other.primitiveType || colorAttachmentCount != other.colorAttachmentCount ||
+				colorSampleCount != other.colorSampleCount || depthSampleCount != other.depthSampleCount)
 			{
 				return false;
 			}
@@ -539,6 +548,7 @@ public:
 
 	void beginRenderPass(const GfxPassDesc& desc);
 	void endRenderPass();
+	void resolveImage(GfxTextureArg src, GfxTextureArg dst);
 
 	void applyState();
 
@@ -597,6 +607,8 @@ public:
 	VkRenderPass  m_currentRenderPass  = VK_NULL_HANDLE;
 	GfxPassDesc   m_currentRenderPassDesc;
 	u32           m_currentColorAttachmentCount = 0;
+	u32           m_currentColorSampleCount = 0;
+	u32           m_currentDepthSampleCount = 0;
 
 	VkRect2D m_currentRenderRect = {};
 
