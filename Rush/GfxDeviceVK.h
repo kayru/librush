@@ -469,10 +469,12 @@ public:
 	struct SupportedExtensions
 	{
 		bool AMD_negative_viewport_height         = false;
-		bool KHR_maintenance1                     = false;
-		bool AMD_wave_limits                      = false;
-		bool NV_geometry_shader_passthrough       = false;
 		bool AMD_shader_explicit_vertex_parameter = false;
+		bool AMD_wave_limits                      = false;
+		bool EXT_sample_locations                 = false;
+		bool KHR_maintenance1                     = false;
+		bool NV_framebuffer_mixed_samples         = false;
+		bool NV_geometry_shader_passthrough       = false;
 		bool NV_ray_tracing                       = false;
 	} m_supportedExtensions;
 

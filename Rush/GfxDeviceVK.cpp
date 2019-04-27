@@ -659,6 +659,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_RAY_TRACING_EXTENSION_NAME, false);
 	}
 
+	m_supportedExtensions.NV_framebuffer_mixed_samples = enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME);
+	m_supportedExtensions.EXT_sample_locations = enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
+
 	if (!cfg.debug)
 	{
 		m_supportedExtensions.AMD_wave_limits =
