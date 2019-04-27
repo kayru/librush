@@ -85,6 +85,11 @@ public:
 		empty.clear();
 	}
 
+	u32 allocatedCount() const
+	{
+		return u32(data.size() - empty.size());
+	}
+
 	const T& operator[](HANDLE_TYPE h) const { return data[h.index()]; }
 
 	T& operator[](HANDLE_TYPE h) { return data[h.index()]; }

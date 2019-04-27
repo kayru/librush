@@ -520,6 +520,8 @@ public:
 	GfxContext(GfxContextType contextType = GfxContextType::Graphics);
 	~GfxContext();
 
+	void setName(const char* name) { m_name = name; }
+
 	void beginBuild();
 	void endBuild();
 	void submit(VkQueue queue);
@@ -541,6 +543,7 @@ public:
 	VkFence         m_fence;
 	VkCommandBuffer m_commandBuffer;
 	bool            m_isActive = false;
+	const char*     m_name = "";
 
 	enum DirtyStateFlag
 	{
@@ -607,9 +610,9 @@ public:
 
 	struct PendingBarriers
 	{
-		u32                                srcStageMask    = 0; // VkPipelineStageFlagBits
-		u32                                dstStageMask    = 0; // VkPipelineStageFlagBits
-		u32                                dependencyFlags = 0;
+		u32                                 srcStageMask    = 0; // VkPipelineStageFlagBits
+		u32                                 dstStageMask    = 0; // VkPipelineStageFlagBits
+		u32                                 dependencyFlags = 0;
 		DynamicArray<VkImageMemoryBarrier>  imageBarriers;
 		DynamicArray<VkBufferMemoryBarrier> bufferBarriers;
 	} m_pendingBarriers;

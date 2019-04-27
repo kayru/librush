@@ -61,7 +61,7 @@ typedef struct VkPhysicalDeviceWaveLimitPropertiesAMD
 
 inline void* offsetPtr(void* p, size_t offset) { return static_cast<char*>(p) + offset; }
 
-static GfxContext* allocateContext(GfxContextType type);
+static GfxContext* allocateContext(GfxContextType type, const char* name);
 static GfxContext* getUploadContext();
 static u32         aspectFlagsFromFormat(GfxFormat format);
 
@@ -984,6 +984,8 @@ GfxDevice::~GfxDevice()
 	m_window->release();
 	m_window = nullptr;
 
+	// Synchronize to GPU
+
 	V(vkQueueWaitIdle(m_graphicsQueue));
 	if (m_computeQueue)
 	{
@@ -994,6 +996,36 @@ GfxDevice::~GfxDevice()
 		V(vkQueueWaitIdle(m_transferQueue));
 	}
 
+	V(vkDeviceWaitIdle(m_vulkanDevice));
+
+	// Release everything
+
+	for (FrameData& it : m_frameData)
+	{
+		it.destructionQueue.flush(m_vulkanDevice);
+	}
+
+	for (auto& contextPool : m_freeContexts)
+	{
+		for (GfxContext* p : contextPool)
+		{
+			Gfx_Release(p);
+		}
+	}
+
+	m_techniques.reset();
+	m_vertexShaders.reset();
+	m_pixelShaders.reset();
+	m_geometryShaders.reset();
+	m_computeShaders.reset();
+	m_vertexFormats.reset();
+	m_buffers.reset();
+	m_depthStencilStates.reset();
+	m_rasterizerStates.reset();
+	m_textures.reset();
+	m_blendStates.reset();
+	m_samplers.reset();
+	
 	for (auto& it : m_pipelines)
 	{
 		vkDestroyPipeline(m_vulkanDevice, it.second, nullptr);
@@ -1013,14 +1045,6 @@ GfxDevice::~GfxDevice()
 		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, nullptr);
 
 		it.destructionQueue.flush(m_vulkanDevice);
-	}
-
-	for (auto& contextPool : m_freeContexts)
-	{
-		for (GfxContext* p : contextPool)
-		{
-			Gfx_Release(p);
-		}
 	}
 
 	for (auto& it : m_renderPasses)
@@ -1643,7 +1667,7 @@ void GfxDevice::createSwapChain()
 
 inline void recycleContext(GfxContext* context)
 {
-	GfxContext* temp = allocateContext(context->m_type);
+	GfxContext* temp = allocateContext(context->m_type, "Recycled");
 
 	std::swap(context->m_commandBuffer, temp->m_commandBuffer);
 	std::swap(context->m_fence, temp->m_fence);
@@ -2530,7 +2554,7 @@ void GfxContext::applyState()
 	m_dirtyState = 0;
 }
 
-static GfxContext* allocateContext(GfxContextType type)
+static GfxContext* allocateContext(GfxContextType type, const char* name)
 {
 	GfxContext* result = nullptr;
 
@@ -2546,6 +2570,8 @@ static GfxContext* allocateContext(GfxContextType type)
 		result = pool.back();
 		pool.pop_back();
 	}
+
+	result->setName(name);
 
 	return result;
 }
@@ -2596,7 +2622,7 @@ static GfxContext* getUploadContext()
 	{
 		GfxContextType contextType = g_device->m_transferQueue ? GfxContextType::Transfer : GfxContextType::Graphics;
 
-		g_device->m_currentUploadContext = allocateContext(contextType);
+		g_device->m_currentUploadContext = allocateContext(contextType, "Upload");
 		g_device->m_currentUploadContext->beginBuild();
 	}
 	return g_device->m_currentUploadContext;
@@ -2739,7 +2765,7 @@ void GfxDevice::captureScreenshot()
 	V(vkBindBufferMemory(m_vulkanDevice, buffer, memory, 0));
 	V(vkMapMemory(m_vulkanDevice, memory, 0, memoryReq.size, 0, &mappedBuffer));
 
-	GfxContext* context = allocateContext(GfxContextType::Graphics);
+	GfxContext* context = allocateContext(GfxContextType::Graphics, "Screenshot");
 	context->beginBuild();
 
 	// copy image to buffer
@@ -4196,7 +4222,7 @@ GfxContext* Gfx_BeginAsyncCompute(GfxContext* parentContext)
 
 	g_device->flushUploadContext(parentContext);
 
-	GfxContext* asyncContext = allocateContext(GfxContextType::Compute);
+	GfxContext* asyncContext = allocateContext(GfxContextType::Compute, "Compute");
 
 #if 0
 	if (vkGetFenceStatus(g_vulkanDevice, asyncContext->m_fence) == VK_NOT_READY)
@@ -4239,6 +4265,7 @@ GfxContext* Gfx_AcquireContext()
 	{
 		g_context         = new GfxContext(GfxContextType::Graphics);
 		g_context->m_refs = 1;
+		g_context->setName("Immediate");
 	}
 	else
 	{
