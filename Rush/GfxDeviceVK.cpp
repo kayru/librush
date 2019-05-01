@@ -974,6 +974,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
+	m_caps.mixedSamplesNV = m_supportedExtensions.NV_framebuffer_mixed_samples;
+	m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations;
+
+	m_caps.maxColorSamples = (m_physicalDeviceProps.limits.framebufferColorSampleCounts + 1) >> 1;
+	m_caps.maxDepthSamples = (m_physicalDeviceProps.limits.framebufferColorSampleCounts + 1) >> 1;
+
 	if (subgroupProperties.subgroupSize)
 	{
 		m_caps.threadGroupSize = subgroupProperties.subgroupSize;

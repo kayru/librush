@@ -90,9 +90,11 @@ struct GfxCapability
 	bool        shaderInt64          = false;
 	bool        shaderWaveIntrinsics = false;
 	bool        asyncCompute         = false;
+	bool        sampleLocations      = false;
 
 	bool rayTracing                  = false;
 	bool geometryShaderPassthroughNV = false;
+	bool mixedSamplesNV              = false;
 	bool explicitVertexParameterAMD  = false;
 
 	float deviceFarDepth  = 1.0f;
@@ -102,6 +104,9 @@ struct GfxCapability
 
 	u32 shaderTypeMask  = 0;
 	u32 threadGroupSize = 64;
+
+	u32 maxColorSamples = 1;
+	u32 maxDepthSamples = 1;
 
 	ProjectionFlags projectionFlags = ProjectionFlags::Default;
 
