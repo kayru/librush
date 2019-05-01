@@ -977,8 +977,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.mixedSamplesNV = m_supportedExtensions.NV_framebuffer_mixed_samples;
 	m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations;
 
-	m_caps.maxColorSamples = (m_physicalDeviceProps.limits.framebufferColorSampleCounts + 1) >> 1;
-	m_caps.maxDepthSamples = (m_physicalDeviceProps.limits.framebufferColorSampleCounts + 1) >> 1;
+	m_caps.colorSampleCounts = m_physicalDeviceProps.limits.framebufferColorSampleCounts;
+	m_caps.depthSampleCounts = m_physicalDeviceProps.limits.framebufferDepthSampleCounts;
 
 	if (subgroupProperties.subgroupSize)
 	{

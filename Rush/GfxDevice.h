@@ -105,8 +105,8 @@ struct GfxCapability
 	u32 shaderTypeMask  = 0;
 	u32 threadGroupSize = 64;
 
-	u32 maxColorSamples = 1;
-	u32 maxDepthSamples = 1;
+	u32 colorSampleCounts = 1;
+	u32 depthSampleCounts = 1;
 
 	ProjectionFlags projectionFlags = ProjectionFlags::Default;
 
