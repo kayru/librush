@@ -660,31 +660,32 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	DynamicArray<const char*> enabledDeviceLayers;
 	DynamicArray<const char*> enabledDeviceExtensions;
 
-	enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
-
-	m_supportedExtensions.NV_geometry_shader_passthrough = enableExtension(
-	    enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME, false);
-
-	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableExtension(
-	    enabledDeviceExtensions, enumeratedDeviceExtensions, VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME, false);
-
-	if (enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, false))
+	auto enableDeviceExtension = [&](const char* name, bool required = false)
 	{
-		m_supportedExtensions.NV_ray_tracing =
-		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_RAY_TRACING_EXTENSION_NAME, false);
+		return enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, name, required);
+	};
+
+	enableDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
+
+	m_supportedExtensions.NV_geometry_shader_passthrough = enableDeviceExtension(VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME, false);
+	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableDeviceExtension(VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME, false);
+
+	if (enableDeviceExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, false))
+	{
+		m_supportedExtensions.NV_ray_tracing = enableDeviceExtension(VK_NV_RAY_TRACING_EXTENSION_NAME, false);
 	}
 
-	m_supportedExtensions.NV_framebuffer_mixed_samples = enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME);
-	m_supportedExtensions.EXT_sample_locations = enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
+	m_supportedExtensions.NV_mesh_shader = enableDeviceExtension(VK_NV_MESH_SHADER_EXTENSION_NAME);
+
+	m_supportedExtensions.NV_framebuffer_mixed_samples = enableDeviceExtension(VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME);
+	m_supportedExtensions.EXT_sample_locations = enableDeviceExtension(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
 
 	if (!cfg.debug)
 	{
-		m_supportedExtensions.AMD_wave_limits =
-		    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_wave_limits", false);
+		m_supportedExtensions.AMD_wave_limits = enableDeviceExtension("VK_AMD_wave_limits", false);
 	}
 
-	m_supportedExtensions.KHR_maintenance1 =
-	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
+	m_supportedExtensions.KHR_maintenance1 = enableDeviceExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
 	memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
 	memset(&m_nvRayTracingProps, 0, sizeof(m_nvRayTracingProps));
@@ -720,12 +721,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	if (!m_supportedExtensions.KHR_maintenance1)
 	{
-		m_supportedExtensions.AMD_negative_viewport_height = enableExtension(
-		    enabledDeviceExtensions, enumeratedDeviceExtensions, "VK_AMD_negative_viewport_height", false);
+		m_supportedExtensions.AMD_negative_viewport_height = enableDeviceExtension("VK_AMD_negative_viewport_height", false);
 	}
 
-	bool debugMerkersAvailable =
-	    enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, VK_EXT_DEBUG_MARKER_EXTENSION_NAME, false);
+	bool debugMerkersAvailable = enableDeviceExtension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME, false);
 
 	if (cfg.debug)
 	{
@@ -970,12 +969,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations &&
 	    !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
 
-	m_caps.rayTracing                  = m_supportedExtensions.NV_ray_tracing;
-	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
+	m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations;
+
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
-	m_caps.mixedSamplesNV = m_supportedExtensions.NV_framebuffer_mixed_samples;
-	m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations;
+	m_caps.rayTracingNV                = m_supportedExtensions.NV_ray_tracing;
+	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
+	m_caps.mixedSamplesNV              = m_supportedExtensions.NV_framebuffer_mixed_samples;
+	m_caps.meshShaderNV                = m_supportedExtensions.NV_mesh_shader;
 
 	m_caps.colorSampleCounts = m_physicalDeviceProps.limits.framebufferColorSampleCounts;
 	m_caps.depthSampleCounts = m_physicalDeviceProps.limits.framebufferDepthSampleCounts;

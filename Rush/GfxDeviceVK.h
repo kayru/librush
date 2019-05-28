@@ -485,6 +485,7 @@ public:
 		bool NV_framebuffer_mixed_samples         = false;
 		bool NV_geometry_shader_passthrough       = false;
 		bool NV_ray_tracing                       = false;
+		bool NV_mesh_shader                       = false;
 	} m_supportedExtensions;
 
 	bool m_useNegativeViewport = false;

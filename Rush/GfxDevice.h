@@ -92,10 +92,12 @@ struct GfxCapability
 	bool        asyncCompute         = false;
 	bool        sampleLocations      = false;
 
-	bool rayTracing                  = false;
+	bool explicitVertexParameterAMD  = false;
+
+	bool rayTracingNV                = false;
 	bool geometryShaderPassthroughNV = false;
 	bool mixedSamplesNV              = false;
-	bool explicitVertexParameterAMD  = false;
+	bool meshShaderNV                = false;
 
 	float deviceFarDepth  = 1.0f;
 	float deviceNearDepth = 0.0f;
