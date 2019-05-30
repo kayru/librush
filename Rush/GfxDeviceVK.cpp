@@ -571,8 +571,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	memset(&m_physicalDeviceProps, 0, sizeof(m_physicalDeviceProps));
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProps);
 
-	vkGetPhysicalDeviceFeatures(m_physicalDevice, &m_physicalDeviceFeatures);
-	RUSH_ASSERT(m_physicalDeviceFeatures.shaderClipDistance);
+	m_physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	m_physicalDeviceFeatures2.pNext = &m_nvMeshShaderFeatures;
+
+	m_nvMeshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV;
+	m_nvMeshShaderFeatures.pNext = nullptr;
+
+	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
+	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
 
 	auto enumeratedDeviceLayers     = enumerateDeviceLayers(m_physicalDevice);
 	auto enumeratedDeviceExtensions = enumerateDeviceExtensions(m_physicalDevice);
@@ -687,9 +693,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_supportedExtensions.KHR_maintenance1 = enableDeviceExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
-	memset(&m_physicalDeviceProps2, 0, sizeof(m_physicalDeviceProps2));
-	memset(&m_nvRayTracingProps, 0, sizeof(m_nvRayTracingProps));
-
 	void* physicalDeviceProps2Next = nullptr;
 
 	if (m_supportedExtensions.NV_ray_tracing)
@@ -697,6 +700,13 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		m_nvRayTracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV;
 		m_nvRayTracingProps.pNext = physicalDeviceProps2Next;
 		physicalDeviceProps2Next = &m_nvRayTracingProps;
+	}
+
+	if (m_supportedExtensions.NV_mesh_shader)
+	{
+		m_nvMeshShaderProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV;
+		m_nvMeshShaderProps.pNext = physicalDeviceProps2Next;
+		physicalDeviceProps2Next = &m_nvMeshShaderProps;
 	}
 
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
@@ -741,7 +751,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		}
 	}
 
-	VkPhysicalDeviceFeatures enabledDeviceFeatures = m_physicalDeviceFeatures;
+	VkPhysicalDeviceFeatures enabledDeviceFeatures = m_physicalDeviceFeatures2.features;
 	enabledDeviceFeatures.robustBufferAccess       = false;
 
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
@@ -976,7 +986,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.rayTracingNV                = m_supportedExtensions.NV_ray_tracing;
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.mixedSamplesNV              = m_supportedExtensions.NV_framebuffer_mixed_samples;
-	m_caps.meshShaderNV                = m_supportedExtensions.NV_mesh_shader;
+	m_caps.meshShaderNV                = m_supportedExtensions.NV_mesh_shader && m_nvMeshShaderFeatures.meshShader;
 
 	m_caps.colorSampleCounts = m_physicalDeviceProps.limits.framebufferColorSampleCounts;
 	m_caps.depthSampleCounts = m_physicalDeviceProps.limits.framebufferDepthSampleCounts;
@@ -1043,6 +1053,7 @@ GfxDevice::~GfxDevice()
 	m_pixelShaders.reset();
 	m_geometryShaders.reset();
 	m_computeShaders.reset();
+	m_meshShaders.reset();
 	m_vertexFormats.reset();
 	m_buffers.reset();
 	m_depthStencilStates.reset();
@@ -1332,9 +1343,15 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 		VkPipelineDynamicStateCreateInfo dyn = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
 		createInfo.pDynamicState             = &dyn;
 
-		VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-		dyn.dynamicStateCount          = RUSH_COUNTOF(dynamicStates);
-		dyn.pDynamicStates             = dynamicStates;
+		StaticArray<VkDynamicState, 3> dynamicStates;
+		dynamicStates.pushBack(VK_DYNAMIC_STATE_VIEWPORT);
+		dynamicStates.pushBack(VK_DYNAMIC_STATE_SCISSOR);
+		if (m_caps.sampleLocations)
+		{
+			dynamicStates.pushBack(VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT);
+		}
+		dyn.dynamicStateCount          = u32(dynamicStates.currentSize);
+		dyn.pDynamicStates             = dynamicStates.data;
 
 		// render pass
 
@@ -3078,6 +3095,7 @@ static ShaderVK::InputMapping parseVertexInputMapping(const StringView& vertexAt
 #endif
 
 // vertex shader
+
 GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
@@ -3098,6 +3116,7 @@ GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 void Gfx_Release(GfxVertexShader h) { releaseResource(g_device->m_vertexShaders, h); }
 
 // pixel shader
+
 GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
@@ -3118,6 +3137,7 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 void Gfx_Release(GfxPixelShader h) { releaseResource(g_device->m_pixelShaders, h); }
 
 // geometry shader
+
 GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
@@ -3138,6 +3158,7 @@ GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 void Gfx_Release(GfxGeometryShader h) { releaseResource(g_device->m_geometryShaders, h); }
 
 // compute shader
+
 GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
@@ -3157,7 +3178,37 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 
 void Gfx_Release(GfxComputeShader h) { releaseResource(g_device->m_computeShaders, h); }
 
+// mesh shader
+
+GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
+{
+	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
+
+	ShaderVK res = createShader(g_vulkanDevice, code);
+	res.id = g_device->generateId();
+
+	if (res.module)
+	{
+		return GfxDevice::makeOwn(retainResource(g_device->m_meshShaders, res));
+	}
+	else
+	{
+		return InvalidResourceHandle();
+	}
+}
+
+void Gfx_Retain(GfxMeshShader h)
+{
+	g_device->m_meshShaders[h].addReference();
+}
+
+void Gfx_Release(GfxMeshShader h)
+{
+	releaseResource(g_device->m_meshShaders, h);
+}
+
 // technique
+
 GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 {
 	TechniqueVK res;
@@ -3273,6 +3324,21 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 			res.shaderStages.push_back(stageInfo);
 			res.ps.retain(desc.ps);
+		}
+
+		if (desc.ms.valid())
+		{
+			RUSH_ASSERT_MSG(!desc.vs.valid(), "Vertex shader can't be used together with mesh shader.");
+			RUSH_ASSERT_MSG(!desc.gs.valid(), "Geometry shader can't be used together with mesh shader.");
+
+			VkPipelineShaderStageCreateInfo stageInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+			stageInfo.stage  = VK_SHADER_STAGE_MESH_BIT_NV;
+			stageInfo.module = g_device->m_meshShaders[desc.ms].module;
+			stageInfo.pName  = g_device->m_meshShaders[desc.ms].entry;
+			stageInfo.pSpecializationInfo = res.specializationInfo;
+
+			res.shaderStages.push_back(stageInfo);
+			res.ms.retain(desc.ms);
 		}
 	}
 
@@ -4769,6 +4835,27 @@ void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t arg
 	// TODO: insert buffer barrier (VK_ACCESS_INDIRECT_COMMAND_READ_BIT)
 	vkCmdDrawIndexedIndirect(
 	    rc->m_commandBuffer, buffer.info.buffer, buffer.info.offset + argsBufferOffset, drawCount, buffer.desc.stride);
+
+	g_device->m_stats.drawCalls++;
+}
+
+void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize)
+{
+	RUSH_ASSERT(rc->m_isRenderPassActive);
+
+	rc->applyState();
+	rc->flushBarriers();
+
+	if (pushConstants)
+	{
+		RUSH_ASSERT(rc->m_pending.technique.valid());
+		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique];
+		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
+		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
+			pushConstantsSize, pushConstants);
+	}
+
+	vkCmdDrawMeshTasksNV(rc->m_commandBuffer, taskCount, firstTask);
 
 	g_device->m_stats.drawCalls++;
 }

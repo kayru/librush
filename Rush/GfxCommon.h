@@ -67,6 +67,7 @@
 #define RUSH_RENDER_API_NAME "Vulkan"
 #define RUSH_RENDER_SUPPORT_IMAGE_BARRIERS
 #define RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
+#define RUSH_RENDER_SUPPORT_MESH_SHADER
 #else // RUSH_RENDER_API_EXTERNAL
 #define RUSH_RENDER_API_NAME "Unknown"
 #endif
@@ -89,6 +90,7 @@ struct GfxVertexShaderDesc;
 struct GfxPixelShaderDesc;
 struct GfxGeometryShaderDesc;
 struct GfxComputeShaderDesc;
+struct GfxMeshShaderDesc;
 struct GfxTextureDesc;
 struct GfxBufferDesc;
 struct GfxSamplerDesc;
@@ -102,6 +104,7 @@ typedef ResourceHandle<GfxVertexShaderDesc>   GfxVertexShader;
 typedef ResourceHandle<GfxPixelShaderDesc>    GfxPixelShader;
 typedef ResourceHandle<GfxGeometryShaderDesc> GfxGeometryShader;
 typedef ResourceHandle<GfxComputeShaderDesc>  GfxComputeShader;
+typedef ResourceHandle<GfxMeshShaderDesc>     GfxMeshShader;
 typedef ResourceHandle<GfxTextureDesc>        GfxTexture;
 typedef ResourceHandle<GfxBufferDesc>         GfxBuffer;
 typedef ResourceHandle<GfxSamplerDesc>        GfxSampler;
@@ -261,6 +264,7 @@ typedef GfxArg<GfxVertexShader>       GfxVertexShaderArg;
 typedef GfxArg<GfxPixelShader>        GfxPixelShaderArg;
 typedef GfxArg<GfxGeometryShader>     GfxGeometryShaderArg;
 typedef GfxArg<GfxComputeShader>      GfxComputeShaderArg;
+typedef GfxArg<GfxMeshShader>         GfxMeshShaderArg;
 typedef GfxArg<GfxTexture>            GfxTextureArg;
 typedef GfxArg<GfxBuffer>             GfxBufferArg;
 typedef GfxArg<GfxSampler>            GfxSamplerArg;
@@ -846,10 +850,15 @@ struct GfxTechniqueDesc
 	}
 
 	GfxTechniqueDesc(
-	    GfxPixelShaderArg _ps, GfxVertexShaderArg _vs, GfxVertexFormatArg _vf, const GfxShaderBindingDesc& _bindings)
-	: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
+		GfxPixelShaderArg _ps, GfxVertexShaderArg _vs, GfxVertexFormatArg _vf, const GfxShaderBindingDesc& _bindings)
+		: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
 	{
-		
+	}
+
+	GfxTechniqueDesc(
+		GfxPixelShaderArg _ps, GfxMeshShaderArg _ms, const GfxShaderBindingDesc& _bindings)
+		: ps(_ps), ms(_ms), bindings(_bindings)
+	{
 	}
 
 	GfxTechniqueDesc(GfxComputeShaderArg _cs, const GfxShaderBindingDesc& _bindings) : cs(_cs), bindings(_bindings)
@@ -860,6 +869,7 @@ struct GfxTechniqueDesc
 	GfxPixelShader       ps;
 	GfxGeometryShader    gs;
 	GfxVertexShader      vs;
+	GfxMeshShader        ms;
 	GfxVertexFormat      vf;
 	GfxShaderBindingDesc bindings = {};
 

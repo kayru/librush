@@ -56,6 +56,7 @@ struct TechniqueVK : GfxRefCount
 	GfxRef<GfxGeometryShader>                    gs;
 	GfxRef<GfxPixelShader>                       ps;
 	GfxRef<GfxComputeShader>                     cs;
+	GfxRef<GfxMeshShader>                        ms;
 	VkDescriptorSetLayout                        descriptorSetLayout = VK_NULL_HANDLE;
 	VkPipelineLayout                             pipelineLayout      = VK_NULL_HANDLE;
 
@@ -350,9 +351,11 @@ public:
 	VkPhysicalDevice                 m_physicalDevice = VK_NULL_HANDLE;
 	VkPhysicalDeviceProperties       m_physicalDeviceProps;
 	VkPhysicalDeviceProperties2KHR   m_physicalDeviceProps2;
-	VkPhysicalDeviceFeatures         m_physicalDeviceFeatures;
-	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps;
-	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps;
+	VkPhysicalDeviceFeatures2        m_physicalDeviceFeatures2 = {};
+	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = {};
+	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
+	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps = {};
+	VkPhysicalDeviceMeshShaderPropertiesNV m_nvMeshShaderProps = {};
 	DynamicArray<MemoryTraitsVK>      m_memoryTraits;
 
 	struct MemoryTypes
@@ -408,6 +411,7 @@ public:
 	ResourcePool<ShaderVK, GfxPixelShader>                  m_pixelShaders;
 	ResourcePool<ShaderVK, GfxGeometryShader>               m_geometryShaders;
 	ResourcePool<ShaderVK, GfxComputeShader>                m_computeShaders;
+	ResourcePool<ShaderVK, GfxMeshShader>                   m_meshShaders;
 	ResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
 	ResourcePool<BufferVK, GfxBuffer>                       m_buffers;
 	ResourcePool<DepthStencilStateVK, GfxDepthStencilState> m_depthStencilStates;

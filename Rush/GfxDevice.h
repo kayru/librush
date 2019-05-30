@@ -183,6 +183,7 @@ GfxOwn<GfxVertexShader>      Gfx_CreateVertexShader(const GfxShaderSource& code)
 GfxOwn<GfxPixelShader>       Gfx_CreatePixelShader(const GfxShaderSource& code);
 GfxOwn<GfxGeometryShader>    Gfx_CreateGeometryShader(const GfxShaderSource& code);
 GfxOwn<GfxComputeShader>     Gfx_CreateComputeShader(const GfxShaderSource& code);
+GfxOwn<GfxMeshShader>        Gfx_CreateMeshShader(const GfxShaderSource& code);
 GfxOwn<GfxTechnique>         Gfx_CreateTechnique(const GfxTechniqueDesc& desc);
 GfxOwn<GfxTexture>           Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data = nullptr, u32 count = 0, const void* texels = nullptr);
 GfxOwn<GfxBlendState>        Gfx_CreateBlendState(const GfxBlendStateDesc& desc);
@@ -198,6 +199,7 @@ void Gfx_Retain(GfxVertexShader h);
 void Gfx_Retain(GfxPixelShader h);
 void Gfx_Retain(GfxGeometryShader h);
 void Gfx_Retain(GfxComputeShader h);
+void Gfx_Retain(GfxMeshShader h);
 void Gfx_Retain(GfxTechnique h);
 void Gfx_Retain(GfxTexture h);
 void Gfx_Retain(GfxBlendState h);
@@ -211,6 +213,7 @@ void Gfx_Release(GfxVertexShader h);
 void Gfx_Release(GfxPixelShader h);
 void Gfx_Release(GfxGeometryShader h);
 void Gfx_Release(GfxComputeShader h);
+void Gfx_Release(GfxMeshShader h);
 void Gfx_Release(GfxTechnique h);
 void Gfx_Release(GfxTexture h);
 void Gfx_Release(GfxBlendState h);
@@ -270,6 +273,8 @@ void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u3
 void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount);
 void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset,
     const void* pushConstants = nullptr, u32 pushConstantsSize = 0);
+
+void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize);
 
 void Gfx_PushMarker(GfxContext* rc, const char* marker);
 void Gfx_PopMarker(GfxContext* rc);
@@ -364,5 +369,12 @@ inline void Gfx_AddImageBarrier(
 #ifndef RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 inline GfxContext* Gfx_BeginAsyncCompute(GfxContext*) { return nullptr; }
 inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*){};
+#endif
+
+#ifndef RUSH_RENDER_SUPPORT_MESH_SHADER
+inline GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code) { InvalidResourceHandle(); };
+inline void Gfx_Retain(GfxMeshShader h) {};
+inline void Gfx_Release(GfxMeshShader h) {};
+inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
 #endif
 }
