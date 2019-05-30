@@ -408,6 +408,7 @@ enum GfxFormat : u32
 	GfxFormat_BC3_Unorm      = GfxFormatStorage_BC3 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
 	GfxFormat_BC3_Unorm_sRGB = GfxFormatStorage_BC3 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
 	GfxFormat_BC4_Unorm      = GfxFormatStorage_BC4 | GfxFormatType_Unorm | GfxFormatComponent_R,
+	GfxFormat_BC5_Unorm      = GfxFormatStorage_BC5 | GfxFormatType_Unorm | GfxFormatComponent_RG,
 	GfxFormat_BC6H_UFloat    = GfxFormatStorage_BC6H | GfxFormatType_UFloat | GfxFormatComponent_RGB,
 	GfxFormat_BC6H_SFloat    = GfxFormatStorage_BC6H | GfxFormatType_Float | GfxFormatComponent_RGB,
 	GfxFormat_BC7_Unorm      = GfxFormatStorage_BC7 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,

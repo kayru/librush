@@ -374,6 +374,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_BC3_Unorm: return VK_FORMAT_BC3_UNORM_BLOCK;
 	case GfxFormat_BC3_Unorm_sRGB: return VK_FORMAT_BC3_SRGB_BLOCK;
 	case GfxFormat_BC4_Unorm: return VK_FORMAT_BC4_UNORM_BLOCK;
+	case GfxFormat_BC5_Unorm: return VK_FORMAT_BC5_UNORM_BLOCK;
 	case GfxFormat_BC6H_SFloat: return VK_FORMAT_BC6H_SFLOAT_BLOCK;
 	case GfxFormat_BC6H_UFloat: return VK_FORMAT_BC6H_UFLOAT_BLOCK;
 	case GfxFormat_BC7_Unorm: return VK_FORMAT_BC7_UNORM_BLOCK;
