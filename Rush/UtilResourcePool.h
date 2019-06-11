@@ -17,8 +17,12 @@ struct InvalidResourceHandle
 struct UntypedResourceHandle
 {
 	typedef u16 IndexType;
-	UntypedResourceHandle(IndexType _index) : index(_index) {}
-	IndexType index;
+	UntypedResourceHandle(IndexType _index) : m_index(_index) {}
+
+	bool      valid() const { return m_index != 0; }
+	IndexType index() const { return m_index; }
+
+	IndexType m_index;
 };
 
 template <typename T> class ResourceHandle
@@ -28,13 +32,15 @@ public:
 
 	ResourceHandle() : m_index(0) {}
 	ResourceHandle(InvalidResourceHandle) : m_index(0) {}
-	explicit ResourceHandle(UntypedResourceHandle h) : m_index(h.index) {}
+	explicit ResourceHandle(UntypedResourceHandle h) : m_index(h.index()) {}
 
 	bool      valid() const { return m_index != 0; }
 	IndexType index() const { return m_index; }
 
 	bool operator==(const ResourceHandle<T>& rhs) const { return m_index == rhs.m_index; }
 	bool operator!=(const ResourceHandle<T>& rhs) const { return m_index != rhs.m_index; }
+
+	operator UntypedResourceHandle() const { return UntypedResourceHandle(m_index); }
 
 private:
 	ResourceHandle(IndexType idx) : m_index(idx) {}
@@ -91,7 +97,6 @@ public:
 	}
 
 	const T& operator[](HANDLE_TYPE h) const { return data[h.index()]; }
-
 	T& operator[](HANDLE_TYPE h) { return data[h.index()]; }
 
 	DynamicArray<T>      data;

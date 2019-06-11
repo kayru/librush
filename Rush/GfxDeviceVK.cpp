@@ -65,17 +65,23 @@ static GfxContext* allocateContext(GfxContextType type, const char* name);
 static GfxContext* getUploadContext();
 static u32         aspectFlagsFromFormat(GfxFormat format);
 
-template <typename ObjectType, typename HandleType>
-HandleType retainResource(ResourcePool<ObjectType, HandleType>& pool, const ObjectType& object)
+template <typename HandleType, typename ObjectType, typename PoolHandleType>
+GfxOwn<HandleType> retainResourceT(ResourcePool<ObjectType, PoolHandleType>& pool, const ObjectType& object)
 {
 	RUSH_ASSERT(object.id != 0);
 	auto handle = pool.push(object);
-	Gfx_Retain(handle);
-	return handle;
+	Gfx_Retain(HandleType(handle));
+	return GfxDevice::makeOwn(HandleType(handle));
 }
 
-template <typename ObjectType, typename HandleType>
-void releaseResource(ResourcePool<ObjectType, HandleType>& pool, HandleType handle)
+template <typename HandleType, typename ObjectType>
+GfxOwn<HandleType> retainResource(ResourcePool<ObjectType, HandleType>& pool, const ObjectType& object)
+{
+	return retainResourceT<HandleType>(pool, object);
+}
+
+template <typename HandleType, typename ObjectType, typename PoolHandleType>
+void releaseResource(ResourcePool<ObjectType, PoolHandleType>& pool, HandleType handle)
 {
 	if (!handle.valid())
 		return;
@@ -1050,11 +1056,7 @@ GfxDevice::~GfxDevice()
 	}
 
 	m_techniques.reset();
-	m_vertexShaders.reset();
-	m_pixelShaders.reset();
-	m_geometryShaders.reset();
-	m_computeShaders.reset();
-	m_meshShaders.reset();
+	m_shaders.reset();
 	m_vertexFormats.reset();
 	m_buffers.reset();
 	m_depthStencilStates.reset();
@@ -1189,7 +1191,7 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 		if (technique.vf.valid())
 		{
 			const VertexFormatVK& vertexFormat = m_vertexFormats[technique.vf.get()];
-			const ShaderVK&       vertexShader = m_vertexShaders[technique.vs.get()];
+			const ShaderVK&       vertexShader = m_shaders[technique.vs.get()];
 
 			if (vertexShader.inputMappings.empty())
 			{
@@ -1716,7 +1718,7 @@ void GfxDevice::createSwapChain()
 		GfxTextureDesc textureDesc = GfxTextureDesc::make2D(
 		    m_swapChainExtent.width, m_swapChainExtent.height, swapChainFormat, GfxUsageFlags::RenderTarget);
 		m_swapChainTextures[i] =
-			makeOwn(retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED)));
+			retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
 	}
 
 	m_presentInterval      = m_desiredPresentInterval;
@@ -3033,7 +3035,7 @@ GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 		format.vertexStreamCount      = max<u32>(format.vertexStreamCount, element.stream + 1);
 	}
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_vertexFormats, format));
+	return retainResource(g_device->m_vertexFormats, format);
 }
 
 void Gfx_Release(GfxVertexFormat h) { releaseResource(g_device->m_vertexFormats, h); }
@@ -3106,7 +3108,7 @@ GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return GfxDevice::makeOwn(retainResource(g_device->m_vertexShaders, res));
+		return retainResourceT<GfxVertexShader>(g_device->m_shaders, res);
 	}
 	else
 	{
@@ -3114,7 +3116,7 @@ GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxVertexShader h) { releaseResource(g_device->m_vertexShaders, h); }
+void Gfx_Release(GfxVertexShader h) { releaseResource(g_device->m_shaders, h); }
 
 // pixel shader
 
@@ -3127,7 +3129,7 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return GfxDevice::makeOwn(retainResource(g_device->m_pixelShaders, res));
+		return retainResourceT<GfxPixelShader>(g_device->m_shaders, res);
 	}
 	else
 	{
@@ -3135,7 +3137,7 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxPixelShader h) { releaseResource(g_device->m_pixelShaders, h); }
+void Gfx_Release(GfxPixelShader h) { releaseResource(g_device->m_shaders, h); }
 
 // geometry shader
 
@@ -3148,7 +3150,7 @@ GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return GfxDevice::makeOwn(retainResource(g_device->m_geometryShaders, res));
+		return retainResourceT<GfxGeometryShader>(g_device->m_shaders, res);
 	}
 	else
 	{
@@ -3156,7 +3158,7 @@ GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxGeometryShader h) { releaseResource(g_device->m_geometryShaders, h); }
+void Gfx_Release(GfxGeometryShader h) { releaseResource(g_device->m_shaders, h); }
 
 // compute shader
 
@@ -3169,7 +3171,7 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return GfxDevice::makeOwn(retainResource(g_device->m_computeShaders, res));
+		return retainResourceT<GfxComputeShader>(g_device->m_shaders, res);
 	}
 	else
 	{
@@ -3177,7 +3179,7 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxComputeShader h) { releaseResource(g_device->m_computeShaders, h); }
+void Gfx_Release(GfxComputeShader h) { releaseResource(g_device->m_shaders, h); }
 
 // mesh shader
 
@@ -3190,7 +3192,7 @@ GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
 
 	if (res.module)
 	{
-		return GfxDevice::makeOwn(retainResource(g_device->m_meshShaders, res));
+		return retainResourceT<GfxMeshShader>(g_device->m_shaders, res);
 	}
 	else
 	{
@@ -3200,12 +3202,12 @@ GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
 
 void Gfx_Retain(GfxMeshShader h)
 {
-	g_device->m_meshShaders[h].addReference();
+	g_device->m_shaders[h.index()].addReference();
 }
 
 void Gfx_Release(GfxMeshShader h)
 {
-	releaseResource(g_device->m_meshShaders, h);
+	releaseResource(g_device->m_shaders, h);
 }
 
 // technique
@@ -3252,8 +3254,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	{
 		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 		stageInfo.stage                           = VK_SHADER_STAGE_COMPUTE_BIT;
-		stageInfo.module                          = g_device->m_computeShaders[desc.cs].module;
-		stageInfo.pName                           = g_device->m_computeShaders[desc.cs].entry;
+		stageInfo.module                          = g_device->m_shaders[desc.cs].module;
+		stageInfo.pName                           = g_device->m_shaders[desc.cs].entry;
 		stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 		if (g_device->m_supportedExtensions.AMD_wave_limits && desc.csWaveLimit != 1.0f)
@@ -3283,8 +3285,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		{
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_VERTEX_BIT;
-			stageInfo.module                          = g_device->m_vertexShaders[desc.vs].module;
-			stageInfo.pName                           = g_device->m_vertexShaders[desc.vs].entry;
+			stageInfo.module                          = g_device->m_shaders[desc.vs].module;
+			stageInfo.pName                           = g_device->m_shaders[desc.vs].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.vsWaveLimit != 1.0f)
@@ -3301,8 +3303,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		{
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_GEOMETRY_BIT;
-			stageInfo.module                          = g_device->m_geometryShaders[desc.gs].module;
-			stageInfo.pName                           = g_device->m_geometryShaders[desc.gs].entry;
+			stageInfo.module                          = g_device->m_shaders[desc.gs].module;
+			stageInfo.pName                           = g_device->m_shaders[desc.gs].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			res.shaderStages.push_back(stageInfo);
@@ -3313,8 +3315,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		{
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_FRAGMENT_BIT;
-			stageInfo.module                          = g_device->m_pixelShaders[desc.ps].module;
-			stageInfo.pName                           = g_device->m_pixelShaders[desc.ps].entry;
+			stageInfo.module                          = g_device->m_shaders[desc.ps].module;
+			stageInfo.pName                           = g_device->m_shaders[desc.ps].entry;
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.psWaveLimit != 1.0f)
@@ -3334,8 +3336,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 			VkPipelineShaderStageCreateInfo stageInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 			stageInfo.stage  = VK_SHADER_STAGE_MESH_BIT_NV;
-			stageInfo.module = g_device->m_meshShaders[desc.ms].module;
-			stageInfo.pName  = g_device->m_meshShaders[desc.ms].entry;
+			stageInfo.module = g_device->m_shaders[desc.ms].module;
+			stageInfo.pName  = g_device->m_shaders[desc.ms].entry;
 			stageInfo.pSpecializationInfo = res.specializationInfo;
 
 			res.shaderStages.push_back(stageInfo);
@@ -3455,7 +3457,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, nullptr, &res.pipelineLayout));
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_techniques, res));
+	return retainResource(g_device->m_techniques, res);
 }
 
 void TechniqueVK::destroy()
@@ -3834,7 +3836,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLa
 
 GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
-	return GfxDevice::makeOwn(retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels)));
+	return retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels));
 }
 
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h)
@@ -3888,7 +3890,7 @@ GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 	res.id   = g_device->generateId();
 	res.desc = desc;
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_blendStates, res));
+	return retainResource(g_device->m_blendStates, res);
 }
 
 void Gfx_Release(GfxBlendState h) { releaseResource(g_device->m_blendStates, h); }
@@ -3920,7 +3922,7 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 
 	V(vkCreateSampler(g_vulkanDevice, &samplerCreateInfo, nullptr, &res.native));
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_samplers, res));
+	return retainResource(g_device->m_samplers, res);
 }
 
 void SamplerVK::destroy() { RUSH_ASSERT(m_refs == 0); g_device->enqueueDestroySampler(native); }
@@ -3934,7 +3936,7 @@ GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDe
 	res.id   = g_device->generateId();
 	res.desc = desc;
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_depthStencilStates, res));
+	return retainResource(g_device->m_depthStencilStates, res);
 }
 
 void Gfx_Release(GfxDepthStencilState h) { releaseResource(g_device->m_depthStencilStates, h); }
@@ -3946,7 +3948,7 @@ GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& de
 	res.id   = g_device->generateId();
 	res.desc = desc;
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_rasterizerStates, res));
+	return retainResource(g_device->m_rasterizerStates, res);
 }
 
 void Gfx_Release(GfxRasterizerState h) { releaseResource(g_device->m_rasterizerStates, h); }
@@ -4109,7 +4111,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &res.bufferView));
 	}
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_buffers, res));
+	return retainResource(g_device->m_buffers, res);
 }
 
 void Gfx_vkFlushBarriers(GfxContext* ctx) { ctx->flushBarriers(); }
@@ -4903,13 +4905,13 @@ void Gfx_Retain(GfxContext* rc) { rc->addReference(); }
 
 void Gfx_Retain(GfxVertexFormat h) { g_device->m_vertexFormats[h].addReference(); }
 
-void Gfx_Retain(GfxVertexShader h) { g_device->m_vertexShaders[h].addReference(); }
+void Gfx_Retain(GfxVertexShader h) { g_device->m_shaders[h].addReference(); }
 
-void Gfx_Retain(GfxPixelShader h) { g_device->m_pixelShaders[h].addReference(); }
+void Gfx_Retain(GfxPixelShader h) { g_device->m_shaders[h].addReference(); }
 
-void Gfx_Retain(GfxGeometryShader h) { g_device->m_geometryShaders[h].addReference(); }
+void Gfx_Retain(GfxGeometryShader h) { g_device->m_shaders[h].addReference(); }
 
-void Gfx_Retain(GfxComputeShader h) { g_device->m_computeShaders[h].addReference(); }
+void Gfx_Retain(GfxComputeShader h) { g_device->m_shaders[h].addReference(); }
 
 void Gfx_Retain(GfxTechnique h) { g_device->m_techniques[h].addReference(); }
 

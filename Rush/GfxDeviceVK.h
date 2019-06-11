@@ -407,11 +407,7 @@ public:
 	// resources
 
 	ResourcePool<TechniqueVK, GfxTechnique>                 m_techniques;
-	ResourcePool<ShaderVK, GfxVertexShader>                 m_vertexShaders;
-	ResourcePool<ShaderVK, GfxPixelShader>                  m_pixelShaders;
-	ResourcePool<ShaderVK, GfxGeometryShader>               m_geometryShaders;
-	ResourcePool<ShaderVK, GfxComputeShader>                m_computeShaders;
-	ResourcePool<ShaderVK, GfxMeshShader>                   m_meshShaders;
+	ResourcePool<ShaderVK, UntypedResourceHandle>           m_shaders;
 	ResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
 	ResourcePool<BufferVK, GfxBuffer>                       m_buffers;
 	ResourcePool<DepthStencilStateVK, GfxDepthStencilState> m_depthStencilStates;
