@@ -268,7 +268,7 @@ static MTLVertexFormat convertVertexFormat(const GfxVertexFormatDesc::Element& v
 	}
 }
 
-GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
+GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 {
 	VertexFormatMTL format;
 	format.uniqueId = g_device->generateId();
@@ -297,10 +297,10 @@ GfxVertexFormat Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 		usedStreamMask = usedStreamMask >> 1;
 	}
 
-	return retainResource(g_device->m_vertexFormats, format);
+	return GfxDevice::makeOwn(retainResource(g_device->m_vertexFormats, format));
 }
 
-void Gfx_DestroyVertexFormat(GfxVertexFormat h)
+void Gfx_Release(GfxVertexFormat h)
 {
 	releaseResource(g_device->m_vertexFormats, h);
 }
@@ -354,35 +354,35 @@ void ShaderMTL::destroy()
 
 // Compute shader
 
-GfxComputeShader Gfx_CreateComputeShader(const GfxShaderSource& code)
+GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 {
-	return retainResource(g_device->m_computeShaders, ShaderMTL::create(code));
+	return GfxDevice::makeOwn(retainResource(g_device->m_computeShaders, ShaderMTL::create(code)));
 }
 
-void Gfx_DestroyComputeShader(GfxComputeShader h)
+void Gfx_Release(GfxComputeShader h)
 {
 	releaseResource(g_device->m_computeShaders, h);
 }
 
 // vertex shader
 
-GfxVertexShader Gfx_CreateVertexShader(const GfxShaderSource& code)
+GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 {
-	return retainResource(g_device->m_vertexShaders, ShaderMTL::create(code));
+	return GfxDevice::makeOwn(retainResource(g_device->m_vertexShaders, ShaderMTL::create(code)));
 }
 
-void Gfx_DestroyVertexShader(GfxVertexShader h)
+void Gfx_Release(GfxVertexShader h)
 {
 	releaseResource(g_device->m_vertexShaders, h);
 }
 
 // pixel shader
-GfxPixelShader Gfx_CreatePixelShader(const GfxShaderSource& code)
+GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 {
-	return retainResource(g_device->m_pixelShaders, ShaderMTL::create(code));
+	return GfxDevice::makeOwn(retainResource(g_device->m_pixelShaders, ShaderMTL::create(code)));
 }
 
-void Gfx_DestroyPixelShader(GfxPixelShader h)
+void Gfx_Release(GfxPixelShader h)
 {
 	releaseResource(g_device->m_pixelShaders, h);
 }
@@ -396,7 +396,7 @@ void TechniqueMTL::destroy()
 	[computePipeline release];
 }
 
-GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
+GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 {
 	RUSH_ASSERT(desc.vs.valid() || desc.cs.valid());
 
@@ -438,10 +438,10 @@ GfxTechnique Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	result.storageBufferOffset = offset;
 	offset += desc.bindings.rwBuffers;
 
-	return retainResource(g_device->m_techniques, result);
+	return GfxDevice::makeOwn(retainResource(g_device->m_techniques, result));
 }
 
-void Gfx_DestroyTechnique(GfxTechnique h)
+void Gfx_Release(GfxTechnique h)
 {
 	releaseResource(g_device->m_techniques, h);
 }
@@ -560,15 +560,9 @@ void TextureMTL::destroy()
 	[native release];
 }
 
-GfxTexture Gfx_CreateTextureFromFile(const char* filename, TextureType type)
+GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
-	Log::error("Not implemented");
-	return GfxTexture();
-}
-
-GfxTexture Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
-{
-	return retainResource(g_device->m_textures, TextureMTL::create(desc, data, count, pixels));
+	return GfxDevice::makeOwn(retainResource(g_device->m_textures, TextureMTL::create(desc, data, count, pixels)));
 }
 
 const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
@@ -585,7 +579,7 @@ const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
 
 }
 
-void Gfx_DestroyTexture(GfxTexture h)
+void Gfx_Release(GfxTexture h)
 {
 	releaseResource(g_device->m_textures, h);
 }
@@ -596,15 +590,15 @@ void BlendStateMTL::destroy()
 {
 }
 
-GfxBlendState Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
+GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 {
 	BlendStateMTL result;
 	result.uniqueId = g_device->generateId();
 	result.desc = desc;
-	return retainResource(g_device->m_blendStates, result);
+	return GfxDevice::makeOwn(retainResource(g_device->m_blendStates, result));
 }
 
-void Gfx_DestroyBlendState(GfxBlendState h)
+void Gfx_Release(GfxBlendState h)
 {
 	releaseResource(g_device->m_blendStates, h);
 }
@@ -657,7 +651,7 @@ static MTLSamplerMipFilter convertMipFilter(GfxTextureFilter filter)
 	}
 }
 
-GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
+GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 {
 	MTLSamplerDescriptor* samplerDescriptor = [MTLSamplerDescriptor new];
 	
@@ -678,10 +672,10 @@ GfxSampler Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 
 	[samplerDescriptor release];
 
-	return retainResource(g_device->m_samplers, result);
+	return GfxDevice::makeOwn(retainResource(g_device->m_samplers, result));
 }
 
-void Gfx_DestroySamplerState(GfxSampler h)
+void Gfx_Release(GfxSampler h)
 {
 	releaseResource(g_device->m_samplers, h);
 }
@@ -718,7 +712,7 @@ static MTLCompareFunction convertCompareFunc(GfxCompareFunc compareFunc)
 	}
 }
 
-GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
+GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
 {
 	DepthStencilStateMTL result;
 	result.uniqueId = g_device->generateId();
@@ -732,10 +726,10 @@ GfxDepthStencilState Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc
 
 	[descriptor release];
 
-	return retainResource(g_device->m_depthStencilStates, result);
+	return GfxDevice::makeOwn(retainResource(g_device->m_depthStencilStates, result));
 }
 
-void Gfx_DestroyDepthStencilState(GfxDepthStencilState h)
+void Gfx_Release(GfxDepthStencilState h)
 {
 	releaseResource(g_device->m_depthStencilStates, h);
 }
@@ -746,15 +740,15 @@ void RasterizerStateMTL::destroy()
 {
 }
 
-GfxRasterizerState Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
+GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
 {
 	RasterizerStateMTL result;
 	result.uniqueId = g_device->generateId();
 	result.desc = desc;
-	return retainResource(g_device->m_rasterizerStates, result);
+	return GfxDevice::makeOwn(retainResource(g_device->m_rasterizerStates, result));
 }
 
-void Gfx_DestroyRasterizerState(GfxRasterizerState h)
+void Gfx_Release(GfxRasterizerState h)
 {
 	releaseResource(g_device->m_rasterizerStates, h);
 }
@@ -766,7 +760,7 @@ void BufferMTL::destroy()
 	[native release];
 }
 
-GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
+GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 {
 	const u32 bufferSize = alignCeiling(desc.count * desc.stride, 16);
 
@@ -799,7 +793,7 @@ GfxBuffer Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		}
 	}
 
-	return retainResource(g_device->m_buffers, res);
+	return GfxDevice::makeOwn(retainResource(g_device->m_buffers, res));
 }
 
 GfxMappedBuffer Gfx_MapBuffer(GfxBuffer vb, u32 offset, u32 size)
@@ -813,7 +807,7 @@ void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 	Log::error("Not implemented");
 }
 
-void Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 size)
+void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
 	if (!h.valid())
 	{
@@ -830,7 +824,7 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBuffer h, const void* data, u32 size)
 	// TODO: re-bind buffer if necessary
 }
 
-void Gfx_DestroyBuffer(GfxBuffer h)
+void Gfx_Release(GfxBuffer h)
 {
 	releaseResource(g_device->m_buffers, h);
 }
@@ -1193,6 +1187,11 @@ void Gfx_EndPass(GfxContext* rc)
 	rc->m_commandEncoder = nil;
 }
 
+void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
+{
+	Log::error("Not implemented");
+}
+
 
 void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags, float depth, u32 stencil)
 {
@@ -1211,7 +1210,7 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 	[rc->m_commandEncoder setScissorRect:metalRect];
 }
 
-void Gfx_SetTechnique(GfxContext* rc, GfxTechnique h)
+void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h)
 {
 	rc->m_pendingTechnique.retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique
@@ -1228,7 +1227,7 @@ void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
 }
 
-void Gfx_SetIndexStream(GfxContext* rc, GfxBuffer h)
+void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h)
 {
 	[rc->m_indexBuffer release];
 
@@ -1238,12 +1237,12 @@ void Gfx_SetIndexStream(GfxContext* rc, GfxBuffer h)
 	[rc->m_indexBuffer retain];
 }
 
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBuffer h)
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h)
 {
 	[rc->m_commandEncoder setVertexBuffer:g_device->m_buffers[h].native offset:0 atIndex:(GfxContext::MaxConstantBuffers+idx)];
 }
 
-void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTexture h)
+void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxStorageImages);
 
@@ -1251,7 +1250,7 @@ void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTexture h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageImage;
 }
 
-void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
+void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxStorageBuffers);
 
@@ -1259,7 +1258,7 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBuffer h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 }
 
-void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
+void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxSampledImages);
 	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute); // other stages not implemented
@@ -1268,7 +1267,7 @@ void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTexture h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
 }
 
-void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSampler h)
+void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxSamplers);
 	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute); // other stages not implemented
@@ -1277,25 +1276,25 @@ void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSampler h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
 }
 
-void Gfx_SetBlendState(GfxContext* rc, GfxBlendState h)
+void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg h)
 {
 	rc->m_pendingBlendState.retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_BlendState;
 }
 
-void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilState h)
+void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg h)
 {
 	rc->m_pendingDepthStencilState.retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_DepthStencilState;
 }
 
-void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerState h)
+void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg h)
 {
 	rc->m_pendingRasterizerState.retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_RasterizerState;
 }
 
-void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBuffer h, size_t offset)
+void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset)
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
 

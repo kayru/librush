@@ -1,7 +1,6 @@
 #pragma once
 
 #include "GfxDevice.h"
-#include "GfxRef.h"
 #include "UtilResourcePool.h"
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
@@ -47,9 +46,9 @@ struct TechniqueMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 
-	GfxVertexFormatRef vf;
-	GfxVertexShaderRef vs;
-	GfxPixelShaderRef ps;
+	GfxRef<GfxVertexFormat> vf;
+	GfxRef<GfxVertexShader> vs;
+	GfxRef<GfxPixelShader> ps;
 
 	id<MTLComputePipelineState> computePipeline = nil;
 	
@@ -124,6 +123,9 @@ public:
 	ResourcePool<BlendStateMTL, GfxBlendState> m_blendStates;
 	ResourcePool<SamplerMTL, GfxSampler> m_samplers;
 
+	template <typename HandleType>
+	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
+
 	GfxCapability m_caps;
 	GfxStats m_stats;
 
@@ -134,7 +136,7 @@ public:
 	MTLPixelFormat m_backBufferPixelFormat = MTLPixelFormatInvalid;
 	id<MTLCommandBuffer> m_commandBuffer = nil;
 
-	GfxTextureRef m_defaultDepthBuffer;
+	GfxRef<GfxTexture> m_defaultDepthBuffer;
 };
 
 class GfxContext : public GfxRefCount
@@ -182,16 +184,16 @@ public:
 	id<MTLComputeCommandEncoder> m_computeCommandEncoder = nil;
 	id<MTLDepthStencilState> m_depthStencilState = nil;
 
-	GfxTechniqueRef m_pendingTechnique;
-	GfxBlendStateRef m_pendingBlendState;
-	GfxRasterizerStateRef m_pendingRasterizerState;
-	GfxDepthStencilStateRef m_pendingDepthStencilState;
-	GfxBufferRef m_constantBuffers[MaxConstantBuffers];
+	GfxRef<GfxTechnique> m_pendingTechnique;
+	GfxRef<GfxBlendState> m_pendingBlendState;
+	GfxRef<GfxRasterizerState> m_pendingRasterizerState;
+	GfxRef<GfxDepthStencilState> m_pendingDepthStencilState;
+	GfxRef<GfxBuffer> m_constantBuffers[MaxConstantBuffers];
 	size_t m_constantBufferOffsets[MaxConstantBuffers] = {};
-	GfxSamplerRef m_samplers[u32(GfxStage::count)][MaxSamplers];
-	GfxTextureRef m_sampledImages[u32(GfxStage::count)][MaxSampledImages];
-	GfxTextureRef m_storageImages[MaxStorageImages];
-	GfxBufferRef m_storageBuffers[MaxStorageBuffers];
+	GfxRef<GfxSampler> m_samplers[u32(GfxStage::count)][MaxSamplers];
+	GfxRef<GfxTexture> m_sampledImages[u32(GfxStage::count)][MaxSampledImages];
+	GfxRef<GfxTexture> m_storageImages[MaxStorageImages];
+	GfxRef<GfxBuffer> m_storageBuffers[MaxStorageBuffers];
 	GfxPassDesc m_passDesc;
 
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;

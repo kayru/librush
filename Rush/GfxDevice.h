@@ -372,7 +372,7 @@ inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*){};
 #endif
 
 #ifndef RUSH_RENDER_SUPPORT_MESH_SHADER
-inline GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code) { InvalidResourceHandle(); };
+inline GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code) { return InvalidResourceHandle(); };
 inline void Gfx_Retain(GfxMeshShader h) {};
 inline void Gfx_Release(GfxMeshShader h) {};
 inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
