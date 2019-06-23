@@ -565,7 +565,7 @@ GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextur
 	return GfxDevice::makeOwn(retainResource(g_device->m_textures, TextureMTL::create(desc, data, count, pixels)));
 }
 
-const GfxTextureDesc& Gfx_GetTextureDesc(GfxTexture h)
+const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h)
 {
 	if (h.valid())
 	{
