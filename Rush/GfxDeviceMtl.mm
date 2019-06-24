@@ -495,6 +495,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 {
 	const bool isRenderTarget = !!(desc.usage & GfxUsageFlags::RenderTarget);
 	const bool isDepthStencil = !!(desc.usage & GfxUsageFlags::DepthStencil);
+	const bool isCube = desc.type == TextureType::TexCube;
 
 	TextureMTL result;
 	result.uniqueId = g_device->generateId();
@@ -509,6 +510,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 	textureDescriptor.mipmapLevelCount = desc.mips;
 	textureDescriptor.sampleCount = 1; // TODO
 	textureDescriptor.arrayLength = desc.isArray() ? desc.depth : 1;
+	textureDescriptor.textureType = isCube ? MTLTextureTypeCube : MTLTextureType2D;
 
 	if (isRenderTarget || isDepthStencil)
 	{
