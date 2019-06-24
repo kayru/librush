@@ -488,6 +488,24 @@ static MTLPixelFormat convertPixelFormat(GfxFormat format)
 			return MTLPixelFormatRGBA8Unorm;
 		case GfxFormat_BGRA8_Unorm:
 			return MTLPixelFormatBGRA8Unorm;
+		case GfxFormat_BC1_Unorm:
+			return MTLPixelFormatBC1_RGBA;
+		case GfxFormat_BC1_Unorm_sRGB:
+			return MTLPixelFormatBC1_RGBA_sRGB;
+		case GfxFormat_BC3_Unorm:
+			return MTLPixelFormatBC3_RGBA;
+		case GfxFormat_BC3_Unorm_sRGB:
+			return MTLPixelFormatBC3_RGBA_sRGB;
+		case GfxFormat_BC5_Unorm:
+			return MTLPixelFormatBC5_RGUnorm;
+		case GfxFormat_BC6H_SFloat:
+			return MTLPixelFormatBC6H_RGBFloat;
+		case GfxFormat_BC6H_UFloat:
+			return MTLPixelFormatBC6H_RGBUfloat;
+		case GfxFormat_BC7_Unorm:
+			return MTLPixelFormatBC7_RGBAUnorm;
+		case GfxFormat_BC7_Unorm_sRGB:
+			return MTLPixelFormatBC7_RGBAUnorm_sRGB;
 	};
 }
 
@@ -496,6 +514,8 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 	const bool isRenderTarget = !!(desc.usage & GfxUsageFlags::RenderTarget);
 	const bool isDepthStencil = !!(desc.usage & GfxUsageFlags::DepthStencil);
 	const bool isCube = desc.type == TextureType::TexCube;
+	const bool isBlockCompressed = isGfxFormatBlockCompressed(desc.format);
+	const int blockDim = isBlockCompressed ? 4 : 1;
 
 	TextureMTL result;
 	result.uniqueId = g_device->generateId();
@@ -530,6 +550,8 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 
 	result.native = [g_metalDevice newTextureWithDescriptor:textureDescriptor];
 
+	const u32 bitsPerPixel = getBitsPerPixel(desc.format);
+
 	for (u32 i=0; i<count; ++i)
 	{
 		const u32 mipLevel = data[i].mip;
@@ -540,17 +562,23 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 		const GfxTextureData& regionData = data[i];
 		MTLRegion region = { { 0, 0, 0 }, { mipWidth, mipHeight, mipDepth } };
 
-		u32 srcPitch = (getBitsPerPixel(desc.format) * mipWidth) / 8;
+		const u32 widthInBlocks = divUp(mipWidth, blockDim);
+		const u32 heightInBlocks = divUp(mipHeight, blockDim);
+
+		//const u32 srcPitch = (getBitsPerPixel(desc.format) * mipWidth) / 8;
 
 		const u8* srcPixels = reinterpret_cast<const u8*>(pixels) + data[i].offset;
 		RUSH_ASSERT(srcPixels);
+
+		const u32 rowSizeBytes = widthInBlocks * (blockDim*blockDim*bitsPerPixel) / 8;
+		const u32 levelSizeBytes = widthInBlocks * heightInBlocks * (blockDim*blockDim*bitsPerPixel) / 8;
 
 		[result.native replaceRegion:region
 			mipmapLevel:mipLevel
 			slice:regionData.slice
 			withBytes:srcPixels
-			bytesPerRow:srcPitch
-			bytesPerImage:srcPitch * mipHeight];
+			bytesPerRow:rowSizeBytes
+			bytesPerImage:levelSizeBytes];
 	}
 
 	[textureDescriptor release];
