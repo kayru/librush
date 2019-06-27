@@ -48,17 +48,18 @@ struct ShaderVK : GfxRefCount
 
 struct TechniqueVK : GfxRefCount
 {
-	u32                                          id = 0;
+	u32                                           id = 0;
 	DynamicArray<VkPipelineShaderStageCreateInfo> shaderStages;
-	GfxShaderBindingDesc                         bindings;
-	GfxRef<GfxVertexFormat>                      vf;
-	GfxRef<GfxVertexShader>                      vs;
-	GfxRef<GfxGeometryShader>                    gs;
-	GfxRef<GfxPixelShader>                       ps;
-	GfxRef<GfxComputeShader>                     cs;
-	GfxRef<GfxMeshShader>                        ms;
-	VkDescriptorSetLayout                        descriptorSetLayout = VK_NULL_HANDLE;
-	VkPipelineLayout                             pipelineLayout      = VK_NULL_HANDLE;
+	GfxShaderBindingDesc                          bindings;
+	GfxRef<GfxVertexFormat>                       vf;
+	GfxRef<GfxVertexShader>                       vs;
+	GfxRef<GfxGeometryShader>                     gs;
+	GfxRef<GfxPixelShader>                        ps;
+	GfxRef<GfxComputeShader>                      cs;
+	GfxRef<GfxMeshShader>                         ms;
+	VkDescriptorSetLayout                         descriptorSetLayout = VK_NULL_HANDLE;
+	VkPipelineLayout                              pipelineLayout      = VK_NULL_HANDLE;
+	VkDescriptorUpdateTemplate                    updateTemplate      = VK_NULL_HANDLE;
 
 	VkShaderStageFlags pushConstantStageFlags = VkShaderStageFlags(0);
 	u32                pushConstantsSize      = 0;
@@ -69,12 +70,13 @@ struct TechniqueVK : GfxRefCount
 	u32 storageImageCount       = 0;
 	u32 storageBufferCount      = 0;
 	u32 typedStorageBufferCount = 0; // last N storage buffers are typed
+	u32 totalDescriptorCount    = 0;
 
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
 
 	DynamicArray<VkDescriptorSet> descriptorSetCache;
-	u32                          descriptorSetCacheFrame = 0;
+	u32                           descriptorSetCacheFrame = 0;
 
 	VkSpecializationInfo* specializationInfo = nullptr;
 
@@ -138,6 +140,7 @@ struct TextureVK : GfxRefCount
 {
 	u32            id = 0;
 	GfxTextureDesc desc;
+	u32            aspectFlags = 0;
 
 	bool           ownsMemory = false;
 	VkDeviceMemory memory     = VK_NULL_HANDLE;
@@ -212,6 +215,31 @@ private:
 	bool                       m_hostVisible = false;
 
 	static const u32 m_defaultBlockSize = 16 * 1024 * 1024;
+};
+
+struct DescriptorPoolVK
+{
+	RUSH_DISALLOW_COPY_AND_ASSIGN(DescriptorPoolVK)
+
+	struct DescriptorsPerSetDesc
+	{
+		u16 uniformBuffers;
+		u16 samplers;
+		u16 sampledImages;
+		u16 storageImages;
+		u16 storageBuffers;
+		u16 storageTexelBuffers;
+		u16 accelerationStructures;
+	};
+
+	DescriptorPoolVK() = default;
+	DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSetDesc& desc, u32 maxSets);
+	DescriptorPoolVK(DescriptorPoolVK&& other);
+	~DescriptorPoolVK();
+	void reset();
+
+	VkDevice m_vulkanDevice = VK_NULL_HANDLE;
+	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
 };
 
 class GfxDevice : public GfxRefCount
@@ -391,13 +419,13 @@ public:
 
 	// swap chain
 
-	VkSwapchainKHR       m_swapChain                   = VK_NULL_HANDLE;
-	VkSurfaceKHR         m_swapChainSurface            = VK_NULL_HANDLE;
-	VkExtent2D           m_swapChainExtent             = VkExtent2D{0, 0};
-	VkPresentModeKHR     m_swapChainPresentMode        = VK_PRESENT_MODE_MAX_ENUM_KHR;
+	VkSwapchainKHR        m_swapChain                   = VK_NULL_HANDLE;
+	VkSurfaceKHR          m_swapChainSurface            = VK_NULL_HANDLE;
+	VkExtent2D            m_swapChainExtent             = VkExtent2D{0, 0};
+	VkPresentModeKHR      m_swapChainPresentMode        = VK_PRESENT_MODE_MAX_ENUM_KHR;
 	DynamicArray<VkImage> m_swapChainImages;
-	u32                  m_swapChainIndex = 0;
-	bool                 m_swapChainValid = false;
+	u32                   m_swapChainIndex = 0;
+	bool                  m_swapChainValid = false;
 
 	DynamicArray<VkPresentModeKHR> m_availablePresentModes;
 
@@ -434,7 +462,9 @@ public:
 
 	struct FrameData
 	{
-		VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+		VkDescriptorPool currentDescriptorPool = VK_NULL_HANDLE;
+		DynamicArray<DescriptorPoolVK> descriptorPools;
+		DynamicArray<DescriptorPoolVK> availableDescriptorPools;
 
 		VkQueryPool       timestampPool = VK_NULL_HANDLE;
 		DynamicArray<u64> timestampPoolData;
@@ -541,7 +571,7 @@ public:
 	void addDependency(VkSemaphore waitSemaphore, VkPipelineStageFlags waitDstStageMask);
 
 	// TODO: buffer barriers!
-	void addImageBarrier(VkImage image, VkImageLayout nextLayout, VkImageLayout currentLayout,
+	VkImageLayout addImageBarrier(VkImage image, VkImageLayout nextLayout, VkImageLayout currentLayout,
 	    VkImageSubresourceRange* subresourceRange = nullptr, bool force = false);
 	void addBufferBarrier(GfxBuffer h, VkAccessFlagBits srcAccess, VkAccessFlagBits dstAccess,
 	    VkPipelineStageFlagBits srcStage, VkPipelineStageFlagBits dstStage);

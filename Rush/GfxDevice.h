@@ -110,6 +110,8 @@ struct GfxCapability
 	u32 colorSampleCounts = 1;
 	u32 depthSampleCounts = 1;
 
+	u32 constantBufferAlignment = 4;
+
 	ProjectionFlags projectionFlags = ProjectionFlags::Default;
 
 	bool shaderTypeSupported(GfxShaderSourceType type) const { return (shaderTypeMask & (1 << type)) != 0; }
