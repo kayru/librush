@@ -585,26 +585,29 @@ public:
 
 	VkFence         m_fence;
 	VkCommandBuffer m_commandBuffer;
+	VkDescriptorSet m_currentDescriptorSet;
+
 	bool            m_isActive = false;
 	const char*     m_name = "";
 
 	enum DirtyStateFlag
 	{
-		DirtyStateFlag_Technique         = 1 << 0,
-		DirtyStateFlag_PrimitiveType     = 1 << 1,
-		DirtyStateFlag_VertexBuffer      = 1 << 2,
-		DirtyStateFlag_IndexBuffer       = 1 << 3,
-		DirtyStateFlag_Texture           = 1 << 4,
-		DirtyStateFlag_BlendState        = 1 << 5,
-		DirtyStateFlag_DepthStencilState = 1 << 6,
-		DirtyStateFlag_RasterizerState   = 1 << 7,
-		DirtyStateFlag_Sampler           = 1 << 8,
-		DirtyStateFlag_ConstantBuffer    = 1 << 9,
-		DirtyStateFlag_StorageImage      = 1 << 10,
-		DirtyStateFlag_StorageBuffer     = 1 << 11,
+		DirtyStateFlag_Technique              = 1 << 0,
+		DirtyStateFlag_PrimitiveType          = 1 << 1,
+		DirtyStateFlag_VertexBuffer           = 1 << 2,
+		DirtyStateFlag_IndexBuffer            = 1 << 3,
+		DirtyStateFlag_Texture                = 1 << 4,
+		DirtyStateFlag_BlendState             = 1 << 5,
+		DirtyStateFlag_DepthStencilState      = 1 << 6,
+		DirtyStateFlag_RasterizerState        = 1 << 7,
+		DirtyStateFlag_Sampler                = 1 << 8,
+		DirtyStateFlag_ConstantBuffer         = 1 << 9,
+		DirtyStateFlag_StorageImage           = 1 << 10,
+		DirtyStateFlag_StorageBuffer          = 1 << 11,
+		DirtyStateFlag_ConstantBufferOffset   = 1 << 12,
 
 		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler |
-		                             DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer,
+		                             DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer | DirtyStateFlag_ConstantBufferOffset,
 		DirtyStateFlag_Pipeline = DirtyStateFlag_Technique | DirtyStateFlag_PrimitiveType | DirtyStateFlag_BlendState |
 		                          DirtyStateFlag_DepthStencilState | DirtyStateFlag_RasterizerState,
 	};
@@ -625,7 +628,7 @@ public:
 		GfxBlendState        blendState;
 		GfxDepthStencilState depthStencilState;
 		GfxRasterizerState   rasterizerState;
-		size_t               constantBufferOffsets[MaxConstantBuffers] = {};
+		u32                  constantBufferOffsets[MaxConstantBuffers] = {};
 		u32                  vertexBufferStride[MaxVertexStreams]      = {};
 	} m_pending;
 

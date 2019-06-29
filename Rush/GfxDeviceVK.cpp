@@ -2447,6 +2447,12 @@ void GfxContext::applyState()
 		return;
 	}
 
+	RUSH_ASSERT(m_pending.technique.valid());
+	TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
+
+	VkPipelineBindPoint bindPoint =
+		technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+
 	if (m_dirtyState & DirtyStateFlag_Pipeline)
 	{
 		PipelineInfoVK info = {};
@@ -2466,17 +2472,10 @@ void GfxContext::applyState()
 		info.depthSampleCount = m_currentDepthSampleCount;
 
 		m_activePipeline = g_device->createPipeline(info);
-	}
 
-	RUSH_ASSERT(m_pending.technique.valid());
-	TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
-
-	VkPipelineBindPoint bindPoint =
-		technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
-
-	if (m_dirtyState & DirtyStateFlag_Pipeline)
-	{
 		vkCmdBindPipeline(m_commandBuffer, bindPoint, m_activePipeline);
+
+		m_dirtyState &= ~DirtyStateFlag_Pipeline;
 	}
 
 	if (m_dirtyState & DirtyStateFlag_VertexBuffer)
@@ -2491,6 +2490,8 @@ void GfxContext::applyState()
 			VkDeviceSize bufferOffset = buffer.info.offset;
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
 		}
+
+		m_dirtyState &= ~DirtyStateFlag_VertexBuffer;
 	}
 
 	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer))
@@ -2501,6 +2502,24 @@ void GfxContext::applyState()
 		VkDeviceSize offset = buffer.info.offset;
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
 			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+
+		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
+	}
+
+	if (m_dirtyState == DirtyStateFlag_ConstantBufferOffset)
+	{
+		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
+			0, 1, &m_currentDescriptorSet,
+			technique.constantBufferCount, m_pending.constantBufferOffsets);
+
+		m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
+
+		return;
+	}
+
+	if (m_dirtyState == 0)
+	{
+		return;
 	}
 
 	// allocate descriptor set
@@ -2545,7 +2564,7 @@ void GfxContext::applyState()
 		}
 	}
 
-	VkDescriptorSet descriptorSet = technique.descriptorSetCache.back();
+	m_currentDescriptorSet = technique.descriptorSetCache.back();
 	technique.descriptorSetCache.pop_back();
 
 #define USE_DESCRIPTOR_UPDATE_TEMPLATE 0
@@ -2627,7 +2646,8 @@ void GfxContext::applyState()
 		}
 	}
 
-	vkUpdateDescriptorSetWithTemplate(g_vulkanDevice, descriptorSet, technique.updateTemplate, descriptorInfos);
+	vkUpdateDescriptorSetWithTemplate(g_vulkanDevice, m_currentDescriptorSet, technique.updateTemplate, descriptorInfos);
+	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout, 0, 1, &m_currentDescriptorSet, 0, nullptr);
 
 #else // USE_DESCRIPTOR_UPDATE_TEMPLATE
 
@@ -2650,11 +2670,11 @@ void GfxContext::applyState()
 
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = descriptorSet;
+		writeDescriptorSet.dstSet = m_currentDescriptorSet;
 		writeDescriptorSet.dstBinding = bindingIndex;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = technique.constantBufferCount;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		writeDescriptorSet.pImageInfo = nullptr;
 		writeDescriptorSet.pBufferInfo = pendingConstantBufferInfo;
 		writeDescriptorSet.pTexelBufferView = nullptr;
@@ -2668,9 +2688,10 @@ void GfxContext::applyState()
 			validateBufferUse(buffer);
 
 			VkDescriptorBufferInfo& bufferInfo = pendingConstantBufferInfo[i];
+
 			bufferInfo.buffer = buffer.info.buffer;
-			bufferInfo.offset = buffer.info.offset + m_pending.constantBufferOffsets[i];
-			bufferInfo.range = min<u64>(buffer.info.range - m_pending.constantBufferOffsets[i], 65536);
+			bufferInfo.offset = buffer.info.offset;
+			bufferInfo.range = buffer.desc.stride;
 		}
 	}
 
@@ -2688,7 +2709,7 @@ void GfxContext::applyState()
 
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = descriptorSet;
+		writeDescriptorSet.dstSet = m_currentDescriptorSet;
 		writeDescriptorSet.dstBinding = bindingIndex;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = technique.samplerCount;
@@ -2721,7 +2742,7 @@ void GfxContext::applyState()
 
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = descriptorSet;
+		writeDescriptorSet.dstSet = m_currentDescriptorSet;
 		writeDescriptorSet.dstBinding = bindingIndex;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = technique.sampledImageCount;
@@ -2760,7 +2781,7 @@ void GfxContext::applyState()
 
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = descriptorSet;
+		writeDescriptorSet.dstSet = m_currentDescriptorSet;
 		writeDescriptorSet.dstBinding = bindingIndex;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = 1;
@@ -2797,7 +2818,7 @@ void GfxContext::applyState()
 
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = descriptorSet;
+		writeDescriptorSet.dstSet = m_currentDescriptorSet;
 		writeDescriptorSet.dstBinding = bindingIndex;
 		writeDescriptorSet.descriptorCount = 1;
 		writeDescriptorSet.dstArrayElement = 0;
@@ -2823,10 +2844,12 @@ void GfxContext::applyState()
 	}
 
 	vkUpdateDescriptorSets(g_vulkanDevice, writeDescriptorSetCount, writeDescriptorSets, 0, nullptr);
+	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
+		0, 1, &m_currentDescriptorSet,
+		technique.constantBufferCount, m_pending.constantBufferOffsets);
 
 #endif // USE_DESCRIPTOR_UPDATE_TEMPLATE
 
-	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
 	m_dirtyState = 0;
 }
@@ -3547,7 +3570,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		entry.dstBinding = bindingSlot;
 		entry.dstArrayElement = 0;
 		entry.descriptorCount = res.constantBufferCount;
-		entry.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		entry.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		entry.stride = descriptorSize;
 		entry.offset = bindingSlot * descriptorSize;
 		updateEntries.push(entry);
@@ -3556,7 +3579,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		{
 			VkDescriptorSetLayoutBinding uniformBinding = {};
 			uniformBinding.binding                      = bindingSlot++;
-			uniformBinding.descriptorType               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			uniformBinding.descriptorType               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 			uniformBinding.descriptorCount              = 1;
 			uniformBinding.stageFlags                   = resourceStageFlags;
 			layoutBindings.push_back(uniformBinding);
@@ -4888,11 +4911,16 @@ void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t off
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
 	RUSH_ASSERT(index < RUSH_COUNTOF(GfxContext::m_pending.constantBuffers));
 
-	if (rc->m_pending.constantBuffers[index] != h || rc->m_pending.constantBufferOffsets[index] != offset)
+	if (rc->m_pending.constantBuffers[index] != h)
 	{
-		rc->m_pending.constantBufferOffsets[index] = offset;
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer | GfxContext::DirtyStateFlag_ConstantBufferOffset;
+		rc->m_pending.constantBufferOffsets[index] = u32(offset);
 		rc->m_pending.constantBuffers[index] = h;
-		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
+	}
+	else if (rc->m_pending.constantBufferOffsets[index] != offset)
+	{
+		rc->m_pending.constantBufferOffsets[index] = u32(offset);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBufferOffset;
 	}
 }
 
@@ -5283,7 +5311,7 @@ DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSe
 	descriptorPoolCreateInfo.maxSets = maxSets;
 
 	VkDescriptorPoolSize poolSizes[] = {
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, desc.uniformBuffers * maxSets},
+		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, desc.uniformBuffers * maxSets},
 		{VK_DESCRIPTOR_TYPE_SAMPLER, desc.samplers * maxSets},
 		{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, desc.sampledImages * maxSets},
 		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, desc.storageImages * maxSets},
