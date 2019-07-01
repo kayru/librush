@@ -1340,7 +1340,7 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 
 	rc->applyState();
 
-	const auto& workGroupSize = g_device->m_techniques[m_pendingTechnique.get()].workGroupSize;
+	const auto& workGroupSize = g_device->m_techniques[rc->m_pendingTechnique.get()].workGroupSize;
 
 	[rc->m_computeCommandEncoder
 		dispatchThreadgroups:MTLSizeMake(sizeX, sizeY, sizeZ)
