@@ -57,6 +57,8 @@ struct TechniqueMTL : GfxRefCount
 	u32 sampledImageOffset = 0;
 	u32 storageImageOffset = 0;
 	u32 storageBufferOffset = 0;
+
+	Tuple3<u16> workGroupSize = {};
 	
 	void destroy();
 };

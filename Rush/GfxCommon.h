@@ -862,7 +862,8 @@ struct GfxTechniqueDesc
 	{
 	}
 
-	GfxTechniqueDesc(GfxComputeShaderArg _cs, const GfxShaderBindingDesc& _bindings) : cs(_cs), bindings(_bindings)
+	GfxTechniqueDesc(GfxComputeShaderArg _cs, const GfxShaderBindingDesc& _bindings, const Tuple3<u16>& _workGroupSize)
+		: cs(_cs), bindings(_bindings), workGroupSize(_workGroupSize)
 	{
 	}
 
@@ -873,6 +874,7 @@ struct GfxTechniqueDesc
 	GfxMeshShader        ms;
 	GfxVertexFormat      vf;
 	GfxShaderBindingDesc bindings = {};
+	Tuple3<u16>          workGroupSize = {};
 
 	u32                              specializationConstantCount = 0;
 	const GfxSpecializationConstant* specializationConstants     = nullptr;

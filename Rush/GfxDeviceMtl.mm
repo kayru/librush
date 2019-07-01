@@ -413,6 +413,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		[error release];
 
 		result.computePipeline = pipeline;
+		result.workGroupSize = desc.workGroupSize;
 	}
 	else
 	{
@@ -1339,9 +1340,11 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 
 	rc->applyState();
 
+	const auto& workGroupSize = g_device->m_techniques[m_pendingTechnique.get()].workGroupSize;
+
 	[rc->m_computeCommandEncoder
 		dispatchThreadgroups:MTLSizeMake(sizeX, sizeY, sizeZ)
-		threadsPerThreadgroup:MTLSizeMake(8, 8, 1)]; // TODO: get group thread count from reflection
+		threadsPerThreadgroup:MTLSizeMake(workGroupSize.x, workGroupSize.y, workGroupSize.z)];
 }
 
 void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
