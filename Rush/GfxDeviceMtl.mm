@@ -800,7 +800,7 @@ void BufferMTL::destroy()
 
 GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 {
-	const u32 bufferSize = alignCeiling(desc.count * desc.stride, 16);
+	const u32 bufferSize = desc.count * desc.stride;
 
 	BufferMTL res;
 	res.uniqueId = g_device->generateId();
@@ -854,10 +854,8 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 	BufferMTL& buffer = g_device->m_buffers[h];
 
-	const u32 bufferSize = alignCeiling(size, 16);
-
 	[buffer.native release]; // TODO: queue release maybe?
-	buffer.native = [g_metalDevice newBufferWithBytes:data length:bufferSize options:0];
+	buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
 
 	// TODO: re-bind buffer if necessary
 }
