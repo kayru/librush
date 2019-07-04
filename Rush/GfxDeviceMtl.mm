@@ -154,6 +154,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.debugOutput = false;
 	m_caps.debugMarkers = true;
 	m_caps.interopOpenCL = false;
+	m_caps.constantBufferAlignment = 256;
 
 	m_caps.apiName = "Metal";
 }
@@ -1371,11 +1372,14 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 
 	rc->applyState();
 	[rc->m_commandEncoder
-		drawIndexedPrimitives:rc->m_primitiveType
-		indexCount:indexCount
-		indexType:rc->m_indexType
-		indexBuffer:rc->m_indexBuffer
-		indexBufferOffset:firstIndex * rc->m_indexStride];
+	 drawIndexedPrimitives:rc->m_primitiveType
+	 indexCount:indexCount
+	 indexType:rc->m_indexType
+	 indexBuffer:rc->m_indexBuffer
+	 indexBufferOffset:firstIndex * rc->m_indexStride
+	 instanceCount:1
+	 baseVertex:baseVertex
+	 baseInstance:0];
 
 	g_device->m_stats.vertices += indexCount;
 	g_device->m_stats.drawCalls++;
