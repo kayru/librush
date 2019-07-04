@@ -44,6 +44,32 @@ void releaseResource(
 	Gfx_Release(g_device);
 }
 
+static MTLCompareFunction convertCompareFunc(GfxCompareFunc compareFunc)
+{
+	switch (compareFunc)
+	{
+		default:
+			Log::error("Unexpected compare function");
+		case GfxCompareFunc::Never:
+			return MTLCompareFunctionNever;
+		case GfxCompareFunc::Less:
+			return MTLCompareFunctionLess;
+		case GfxCompareFunc::Equal:
+			return MTLCompareFunctionEqual;
+		case GfxCompareFunc::LessEqual:
+			return MTLCompareFunctionLessEqual;
+		case GfxCompareFunc::Greater:
+			return MTLCompareFunctionGreater;
+		case GfxCompareFunc::NotEqual:
+			return MTLCompareFunctionNotEqual;
+		case GfxCompareFunc::GreaterEqual:
+			return MTLCompareFunctionGreaterEqual;
+		case GfxCompareFunc::Always:
+			return MTLCompareFunctionAlways;
+	}
+}
+
+
 static MTLPrimitiveTopologyClass convertPrimitiveTopology(GfxPrimitive primitiveType)
 {
 	switch (primitiveType)
@@ -696,6 +722,11 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 
 	samplerDescriptor.maxAnisotropy = (int)desc.anisotropy;
 
+	if (desc.compareEnable)
+	{
+		samplerDescriptor.compareFunction = convertCompareFunc(desc.compareFunc);
+	}
+
 	SamplerMTL result;
 	
 	result.uniqueId = g_device->generateId();
@@ -716,31 +747,6 @@ void Gfx_Release(GfxSampler h)
 void DepthStencilStateMTL::destroy()
 {
 	[native release];
-}
-
-static MTLCompareFunction convertCompareFunc(GfxCompareFunc compareFunc)
-{
-	switch (compareFunc)
-	{
-	default:
-		Log::error("Unexpected compare function");
-	case GfxCompareFunc::Never:
-		return MTLCompareFunctionNever;
-	case GfxCompareFunc::Less:
-		return MTLCompareFunctionLess;
-	case GfxCompareFunc::Equal:
-		return MTLCompareFunctionEqual;
-	case GfxCompareFunc::LessEqual:
-		return MTLCompareFunctionLessEqual;
-	case GfxCompareFunc::Greater:
-		return MTLCompareFunctionGreater;
-	case GfxCompareFunc::NotEqual:
-		return MTLCompareFunctionNotEqual;
-	case GfxCompareFunc::GreaterEqual:
-		return MTLCompareFunctionGreaterEqual;
-	case GfxCompareFunc::Always:
-		return MTLCompareFunctionAlways;
-	}
 }
 
 GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
