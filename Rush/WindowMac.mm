@@ -5,6 +5,15 @@
 
 using namespace Rush;
 
+@interface RushWindow: NSWindow
+{
+	@public WindowMac* parent;
+}
+@end
+
+@implementation RushWindow
+@end
+
 @interface WindowMacInternal : NSObject<NSWindowDelegate>
 {
 	uint32_t windowCount;
@@ -16,6 +25,7 @@ using namespace Rush;
 - (void)windowWillClose:(NSNotification*)notification;
 - (BOOL)windowShouldClose:(NSWindow*)window;
 - (void)windowDidResize:(NSNotification*)notification;
+- (void)windowDidEndLiveResize:(NSNotification*)notification;
 - (void)windowDidBecomeKey:(NSNotification *)notification;
 - (void)windowDidResignKey:(NSNotification *)notification;
 
@@ -79,6 +89,15 @@ using namespace Rush;
 	RUSH_UNUSED(notification);
 }
 
+- (void)windowDidEndLiveResize:(NSNotification*)notification
+{
+	RushWindow* window = notification.object;
+	NSView* contentView = [notification.object contentView];
+	CALayer* layer = [contentView layer];
+	CGSize frame = [layer frame].size;
+	window->parent->processResize(frame.width, frame.height);
+}
+
 - (void)windowDidBecomeKey:(NSNotification*)notification
 {
     RUSH_UNUSED(notification);
@@ -124,13 +143,14 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	const float centerY = (screenRect.size.height - (float)desc.height)*0.5f;
 	NSRect rect = NSMakeRect(centerX, centerY, desc.width, desc.height);
 
-	NSWindow* window = [[NSWindow alloc]
+	RushWindow* window = [[RushWindow alloc]
 		initWithContentRect:rect
 		styleMask:styleMask
 		backing:NSBackingStoreBuffered
 		defer:YES
 	];
 	m_nativeWindow = window;
+	window->parent = this;
 
 	NSString* appName = [[NSProcessInfo processInfo] processName];
 	[window setTitle:appName];
@@ -273,6 +293,19 @@ static Key translateKeyMac(const NSEvent* event)
 		case NSF12FunctionKey: 				return Key_F12;
 		default:						return Key_Unknown;
 	};
+}
+
+void WindowMac::processResize(float newWidth, float newHeight)
+{
+	Tuple2i pendingSize;
+	pendingSize.x = int(newWidth);
+	pendingSize.y = int(newHeight);
+
+	if (m_size != pendingSize)
+	{
+		m_size = pendingSize;
+		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
+	}
 }
 
 bool WindowMac::processEvent(NSEvent* event)

@@ -23,7 +23,7 @@ public:
 	virtual void	setPosition(const Tuple2i& position) override;
 
 	bool processEvent(NSEvent* event);
-
+	void processResize(float newWidth, float newHeight);
 private:
 
 	NSWindow* m_nativeWindow = nullptr;

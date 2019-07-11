@@ -1,9 +1,11 @@
 #pragma once
 
 #include "GfxDevice.h"
-#include "UtilResourcePool.h"
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
+
+#include "UtilResourcePool.h"
+#include "Window.h"
 
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>
@@ -109,6 +111,9 @@ public:
 
 	u32 generateId();
 
+	void beginFrame();
+	void createDefaultDepthBuffer(u32 width, u32 height);
+
 	id<MTLDevice> m_metalDevice = nil;
 	id<MTLCommandQueue> m_commandQueue = nil;
 	CAMetalLayer* m_metalLayer = nil;
@@ -127,6 +132,9 @@ public:
 
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
+
+	Window*             m_window = nullptr;
+	WindowEventListener m_resizeEvents;
 
 	GfxCapability m_caps;
 	GfxStats m_stats;

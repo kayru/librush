@@ -110,6 +110,12 @@ static MTLPrimitiveType convertPrimitiveType(GfxPrimitive primitiveType)
 
 GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 {
+	m_window = window;
+	m_window->retain();
+
+	m_resizeEvents.mask = WindowEventMask_Resize;
+	m_resizeEvents.setOwner(window);
+
 	g_device = this;
 	m_refs = 1;
 
@@ -130,14 +136,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_blendStates[InvalidResourceHandle()].desc = GfxBlendStateDesc::makeOpaque();
 
-	GfxTextureDesc defaultDepthBufferDesc;
-	defaultDepthBufferDesc.width = cfg.backBufferWidth;
-	defaultDepthBufferDesc.height = cfg.backBufferHeight;
-	defaultDepthBufferDesc.depth = 1;
-	defaultDepthBufferDesc.mips = 1;
-	defaultDepthBufferDesc.format = GfxFormat_D32_Float;
-	defaultDepthBufferDesc.usage = GfxUsageFlags::DepthStencil;
-	m_defaultDepthBuffer.retain(Gfx_CreateTexture(defaultDepthBufferDesc));
+	createDefaultDepthBuffer(cfg.backBufferWidth, cfg.backBufferHeight);
 
 	// init caps
 
@@ -166,6 +165,11 @@ GfxDevice::~GfxDevice()
 	[m_commandBuffer release];
 	[m_commandQueue release];
 	[m_metalDevice release];
+
+	m_resizeEvents.setOwner(nullptr);
+
+	m_window->release();
+	m_window = nullptr;
 }
 
 u32 GfxDevice::generateId()
@@ -194,18 +198,49 @@ void Gfx_Release(GfxDevice* dev)
 	g_device = nullptr;
 }
 
+void GfxDevice::createDefaultDepthBuffer(u32 width, u32 height)
+{
+	GfxTextureDesc defaultDepthBufferDesc;
+	defaultDepthBufferDesc.width = width;
+	defaultDepthBufferDesc.height = height;
+	defaultDepthBufferDesc.depth = 1;
+	defaultDepthBufferDesc.mips = 1;
+	defaultDepthBufferDesc.format = GfxFormat_D32_Float;
+	defaultDepthBufferDesc.usage = GfxUsageFlags::DepthStencil;
+	m_defaultDepthBuffer.retain(Gfx_CreateTexture(defaultDepthBufferDesc));
+}
+
+void GfxDevice::beginFrame()
+{
+	if (!m_resizeEvents.empty())
+	{
+		createDefaultDepthBuffer(
+			m_window->getFramebufferWidth(),
+			m_window->getFramebufferHeight());
+
+		CGSize nextDrawableSize = { 
+			(CGFloat) m_window->getFramebufferWidth(), 
+			(CGFloat) m_window->getFramebufferHeight() };
+		m_metalLayer.drawableSize = nextDrawableSize;
+
+		m_resizeEvents.clear();
+	}
+
+	m_drawable = [m_metalLayer nextDrawable];
+	[m_drawable retain];
+
+	m_backBufferTexture = [m_drawable texture];
+	[m_backBufferTexture retain];
+
+	m_backBufferPixelFormat = [m_metalLayer pixelFormat];
+
+	m_commandBuffer = [m_commandQueue commandBuffer];
+	[m_commandBuffer retain];
+}
+
 void Gfx_BeginFrame()
 {
-	g_device->m_drawable = [g_device->m_metalLayer nextDrawable];
-	[g_device->m_drawable retain];
-
-	g_device->m_backBufferTexture = [g_device->m_drawable texture];
-	[g_device->m_backBufferTexture retain];
-
-	g_device->m_backBufferPixelFormat = [g_device->m_metalLayer pixelFormat];
-
-	g_device->m_commandBuffer = [g_device->m_commandQueue commandBuffer];
-	[g_device->m_commandBuffer retain];
+	g_device->beginFrame();
 }
 
 void Gfx_EndFrame()
