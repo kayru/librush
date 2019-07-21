@@ -716,6 +716,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		physicalDeviceProps2Next = &m_nvMeshShaderProps;
 	}
 
+	enableDeviceExtension(VK_EXT_SHADER_SUBGROUP_BALLOT_EXTENSION_NAME);
+	enableDeviceExtension(VK_EXT_SHADER_SUBGROUP_VOTE_EXTENSION_NAME);
+
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
 	subgroupProperties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
 	subgroupProperties.pNext                              = physicalDeviceProps2Next;
