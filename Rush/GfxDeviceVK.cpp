@@ -4424,7 +4424,7 @@ void Gfx_vkFlushMappedBuffer(GfxBuffer h)
 	vkInvalidateMappedMemoryRanges(g_vulkanDevice, 1, &memoryRange);
 }
 
-GfxMappedBuffer Gfx_MapBuffer(GfxBuffer vb, u32 offset, u32 size)
+GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 {
 	const auto& desc = g_device->m_buffers[vb].desc;
 
