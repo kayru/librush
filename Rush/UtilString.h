@@ -78,7 +78,7 @@ private:
 		{
 			m_length = inLength;
 			m_data = new char[inLength + 1];
-			memcpy(&m_data, inData, inLength + 1);
+			memcpy(m_data, inData, inLength + 1);
 		}
 		else
 		{
