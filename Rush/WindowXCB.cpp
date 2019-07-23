@@ -24,6 +24,7 @@ namespace
 
 WindowXCB::WindowXCB(const WindowDesc& desc)
 : Window(desc)
+, m_pendingSize(m_size)
 {
 	if (g_xcbConnectionRefCount == 0)
 	{
@@ -82,7 +83,7 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 		XCB_EVENT_MASK_EXPOSURE |
 		XCB_EVENT_MASK_VISIBILITY_CHANGE |
 		XCB_EVENT_MASK_STRUCTURE_NOTIFY |
-		XCB_EVENT_MASK_RESIZE_REDIRECT |
+		//XCB_EVENT_MASK_RESIZE_REDIRECT |
 		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
 		XCB_EVENT_MASK_FOCUS_CHANGE |
@@ -93,17 +94,35 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 	xcb_create_window(g_xcbConnection, XCB_COPY_FROM_PARENT, m_nativeHandle, g_xcbScreen->root, 0, 0, u16(desc.width), u16(desc.height),
 						0, XCB_WINDOW_CLASS_INPUT_OUTPUT, g_xcbScreen->root_visual, valueMask, valueList);
 
+	{
+		xcb_intern_atom_cookie_t protocolCookie = xcb_intern_atom_unchecked(g_xcbConnection, 1, 12, "WM_PROTOCOLS");
+		xcb_intern_atom_reply_t* protocolReply = xcb_intern_atom_reply(g_xcbConnection, protocolCookie, 0);
+		xcb_intern_atom_cookie_t closeCookie = xcb_intern_atom_unchecked(g_xcbConnection, 0, 16, "WM_DELETE_WINDOW");
+
+		m_closeReply = xcb_intern_atom_reply(g_xcbConnection, closeCookie, 0);
+		xcb_change_property(
+			g_xcbConnection,
+			XCB_PROP_MODE_REPLACE,
+			m_nativeHandle,
+			protocolReply->atom,
+			4, 32, 1, &(m_closeReply->atom));
+		free(protocolReply);
+	}
+
 	xcb_map_window(g_xcbConnection, m_nativeHandle);
 
 	//const uint32_t coords[] = {100, 100}; // TODO: place in the center of the screen
 	//xcb_configure_window(g_xcbConnection, m_nativeHandle, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
 
 	xcb_flush(g_xcbConnection);
+
+	setCaption(desc.caption);
 }
 
 WindowXCB::~WindowXCB()
 {
 	xcb_destroy_window(g_xcbConnection, m_nativeHandle);
+	free(m_closeReply);
 
 	RUSH_ASSERT(g_xcbConnectionRefCount != 0);
 	if (--g_xcbConnectionRefCount == 0)
@@ -126,7 +145,15 @@ void WindowXCB::setCaption(const char* str)
 
 	m_caption = str;
 
-	RUSH_LOG_FATAL("%s is not implemented", __PRETTY_FUNCTION__); // TODO
+	xcb_change_property(
+		g_xcbConnection,
+		XCB_PROP_MODE_REPLACE,
+		m_nativeHandle,
+		XCB_ATOM_WM_NAME,
+		XCB_ATOM_STRING,
+		8, // format
+		strlen(m_caption.c_str()),
+		m_caption.c_str());
 }
 
 void WindowXCB::setSize(const Tuple2i& size)
@@ -255,10 +282,31 @@ void WindowXCB::pollEvents()
 		const u8 eventCode = xcbEvent->response_type & 0x7f;
 		switch (eventCode)
 		{
+			case XCB_EXPOSE:
+			{
+				break;
+			}
+			case XCB_CLIENT_MESSAGE:
+			{
+				if( (*(xcb_client_message_event_t*)xcbEvent).data.data32[0] == (*m_closeReply).atom )
+				{
+					close();
+				}
+				break;
+			}
 			case XCB_CONFIGURE_NOTIFY:
 			{
 				const xcb_configure_notify_event_t* event = (const xcb_configure_notify_event_t *)xcbEvent;
-				RUSH_UNUSED(event);
+				if (event->width > 0 && event->height > 0)
+				{
+					m_pendingSize.x = event->width;
+					m_pendingSize.y = event->height;
+					if (m_size != m_pendingSize)
+					{
+						m_size = m_pendingSize;
+						broadcast(WindowEvent::Resize(m_size.x, m_size.y));
+					}
+				}
 				break;
 			}
 			case XCB_MOTION_NOTIFY:

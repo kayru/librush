@@ -10,7 +10,7 @@
 namespace Rush
 {
 
-class WindowXCB : public Window
+class WindowXCB final : public Window
 {
 
 public:
@@ -25,8 +25,13 @@ public:
 	virtual void  pollEvents() override;
 
 private:
+
+	void setCaptionInternal(const char* str);
+
 	xcb_window_t m_nativeHandle = 0;
 	String m_caption;
+	Tuple2i m_pendingSize;
+	xcb_intern_atom_reply_t* m_closeReply = nullptr;
 };
 }
 
