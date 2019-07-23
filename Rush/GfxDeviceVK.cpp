@@ -5329,8 +5329,8 @@ DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSe
 }
 
 DescriptorPoolVK::DescriptorPoolVK(DescriptorPoolVK&& other)
-	: m_descriptorPool(other.m_descriptorPool)
-	, m_vulkanDevice(other.m_vulkanDevice)
+	: m_vulkanDevice(other.m_vulkanDevice)
+	, m_descriptorPool(other.m_descriptorPool)
 {
 	other.m_descriptorPool = VK_NULL_HANDLE;
 }

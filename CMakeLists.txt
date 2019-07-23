@@ -12,11 +12,7 @@ set_property(CACHE RUSH_RENDER_API PROPERTY STRINGS
 	MTL
 )
 
-add_library(Rush STATIC)
-
-# Add source files
-
-target_sources(Rush PRIVATE
+add_library(Rush STATIC
 	Rush/GfxBitmapFont.cpp
 	Rush/GfxBitmapFont.h
 	Rush/GfxCommon.cpp
