@@ -2650,7 +2650,9 @@ void GfxContext::applyState()
 	}
 
 	vkUpdateDescriptorSetWithTemplate(g_vulkanDevice, m_currentDescriptorSet, technique.updateTemplate, descriptorInfos);
-	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout, 0, 1, &m_currentDescriptorSet, 0, nullptr);
+	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout, 0,
+		1, &m_currentDescriptorSet,
+		technique.constantBufferCount, m_pending.constantBufferOffsets);
 
 #else // USE_DESCRIPTOR_UPDATE_TEMPLATE
 
