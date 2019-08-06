@@ -59,7 +59,6 @@ struct TechniqueVK : GfxRefCount
 	GfxRef<GfxMeshShader>                         ms;
 	VkDescriptorSetLayout                         descriptorSetLayout = VK_NULL_HANDLE;
 	VkPipelineLayout                              pipelineLayout      = VK_NULL_HANDLE;
-	VkDescriptorUpdateTemplate                    updateTemplate      = VK_NULL_HANDLE;
 
 	VkShaderStageFlags pushConstantStageFlags = VkShaderStageFlags(0);
 	u32                pushConstantsSize      = 0;
