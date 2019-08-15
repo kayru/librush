@@ -1078,6 +1078,7 @@ GfxDevice::~GfxDevice()
 	m_textures.reset();
 	m_blendStates.reset();
 	m_samplers.reset();
+	m_descriptorSets.reset();
 	
 	for (auto& it : m_pipelines)
 	{
@@ -3310,6 +3311,74 @@ void Gfx_Retain(GfxMeshShader h)
 void Gfx_Release(GfxMeshShader h)
 {
 	releaseResource(g_device->m_shaders, h);
+}
+
+// descriptor set
+
+GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
+{
+	DescriptorSetVK res;
+
+	res.id = g_device->generateId();
+	res.desc = desc;
+
+	return retainResource(g_device->m_descriptorSets, res);
+}
+
+void Gfx_Retain(GfxDescriptorSet h)
+{
+	g_device->m_descriptorSets[h].addReference();
+}
+
+void Gfx_Release(GfxDescriptorSet h)
+{
+	releaseResource(g_device->m_descriptorSets, h);
+}
+
+void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
+{
+
+}
+
+void Gfx_SetConstantBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h, u32 offset)
+{
+	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
+	ds.constantBufferOffsets[idx] = offset;
+	ds.constantBuffers[idx] = h;
+	ds.isDirty = true;
+}
+
+void Gfx_SetTexture(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
+{
+	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
+	ds.textures[idx] = h;
+	ds.isDirty = true;
+}
+
+void Gfx_SetSampler(GfxDescriptorSetArg d, u32 idx, GfxSamplerArg h)
+{
+	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
+	ds.samplers[idx] = h;
+	ds.isDirty = true;
+}
+
+void Gfx_SetStorageImage(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
+{
+	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
+	ds.storageImages[idx] = h;
+	ds.isDirty = true;
+}
+
+void Gfx_SetStorageBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h)
+{
+	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
+	ds.storageBuffers[idx] = h;
+	ds.isDirty = true;
+}
+
+void DescriptorSetVK::destroy()
+{
+
 }
 
 // technique

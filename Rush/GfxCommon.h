@@ -68,6 +68,7 @@
 #define RUSH_RENDER_SUPPORT_IMAGE_BARRIERS
 #define RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 #define RUSH_RENDER_SUPPORT_MESH_SHADER
+#define RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 #else // RUSH_RENDER_API_EXTERNAL
 #define RUSH_RENDER_API_NAME "Unknown"
 #endif
@@ -98,6 +99,7 @@ struct GfxBlendStateDesc;
 struct GfxTechniqueDesc;
 struct GfxDepthStencilDesc;
 struct GfxRasterizerDesc;
+struct GfxDescriptorSetDesc;
 
 typedef ResourceHandle<GfxVertexFormatDesc>   GfxVertexFormat;
 typedef ResourceHandle<GfxVertexShaderDesc>   GfxVertexShader;
@@ -112,6 +114,7 @@ typedef ResourceHandle<GfxBlendStateDesc>     GfxBlendState;
 typedef ResourceHandle<GfxDepthStencilDesc>   GfxDepthStencilState;
 typedef ResourceHandle<GfxRasterizerDesc>     GfxRasterizerState;
 typedef ResourceHandle<GfxTechniqueDesc>      GfxTechnique;
+typedef ResourceHandle<GfxDescriptorSetDesc>  GfxDescriptorSet;
 
 struct GfxRefCount
 {
@@ -272,6 +275,7 @@ typedef GfxArg<GfxBlendState>         GfxBlendStateArg;
 typedef GfxArg<GfxDepthStencilState>  GfxDepthStencilStateArg;
 typedef GfxArg<GfxRasterizerState>    GfxRasterizerStateArg;
 typedef GfxArg<GfxTechnique>          GfxTechniqueArg;
+typedef GfxArg<GfxDescriptorSet>      GfxDescriptorSetArg;
 
 enum class GfxContextType : u8
 {
@@ -824,17 +828,35 @@ struct GfxShaderSource : public DynamicArray<char>
 	const char*         entry = "main";
 };
 
-struct GfxShaderBindingDesc
+struct GfxDescriptorSetDesc
+{
+	u8 constantBuffers = 0;
+	u8 samplers = 0;
+	u8 textures = 0;
+	u8 rwImages = 0;
+	u8 rwBuffers = 0;
+	u8 rwTypedBuffers = 0;
+
+	bool isEmpty() const
+	{
+		return constantBuffers == 0
+			&& samplers == 0
+			&& textures == 0
+			&& rwImages == 0
+			&& rwBuffers == 0
+			&& rwTypedBuffers == 0;
+	}
+};
+
+struct GfxShaderBindingDesc : GfxDescriptorSetDesc
 {
 	// Shader resources must be specified in the same order as members of this struct
 	GfxStageFlags pushConstantStageFlags = GfxStageFlags::None;
 	u8            pushConstants = 0;
-	u8            constantBuffers = 0;
-	u8            samplers = 0;
-	u8            textures = 0;
-	u8            rwImages = 0;
-	u8            rwBuffers = 0;
-	u8            rwTypedBuffers = 0;
+
+	static constexpr u32 MaxDescriptorSets = 4;
+	bool useDefaultDescriptorSet = true; // if 'true', then descriptor set 0 is reserved
+	GfxDescriptorSetDesc descriptorSets[MaxDescriptorSets] = {};
 };
 
 struct GfxSpecializationConstant

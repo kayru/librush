@@ -224,6 +224,18 @@ void Gfx_Release(GfxDepthStencilState h);
 void Gfx_Release(GfxRasterizerState h);
 void Gfx_Release(GfxBuffer h);
 
+#ifdef RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
+GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc);
+void Gfx_Retain(GfxDescriptorSet h);
+void Gfx_Release(GfxDescriptorSet h);
+void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h);
+void Gfx_SetConstantBuffer(GfxDescriptorSetArg d, u32 index, GfxBufferArg h, u32 offset = 0);
+void Gfx_SetTexture(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h);
+void Gfx_SetSampler(GfxDescriptorSetArg d, u32 idx, GfxSamplerArg h);
+void Gfx_SetStorageImage(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h);
+void Gfx_SetStorageBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h);
+#endif // RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
+
 const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTextureArg h);
 GfxTexture             Gfx_GetBackBufferColorTexture();
 GfxTexture             Gfx_GetBackBufferDepthTexture();

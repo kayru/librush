@@ -166,6 +166,22 @@ struct SamplerVK : GfxRefCount
 	void destroy();
 };
 
+struct DescriptorSetVK : GfxRefCount
+{
+	u32                      id = 0;
+	GfxDescriptorSetDesc     desc;
+	DynamicArray<u32>        constantBufferOffsets;
+	DynamicArray<GfxBuffer>  constantBuffers;
+	DynamicArray<GfxTexture> textures;
+	DynamicArray<GfxSampler> samplers;
+	DynamicArray<GfxTexture> storageImages;
+	DynamicArray<GfxBuffer>  storageBuffers;
+
+	bool isDirty = false;
+
+	void destroy();
+};
+
 struct PipelineInfoVK
 {
 	enum
@@ -442,6 +458,7 @@ public:
 	ResourcePool<TextureVK, GfxTexture>                     m_textures;
 	ResourcePool<BlendStateVK, GfxBlendState>               m_blendStates;
 	ResourcePool<SamplerVK, GfxSampler>                     m_samplers;
+	ResourcePool<DescriptorSetVK, GfxDescriptorSet>         m_descriptorSets;
 
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
