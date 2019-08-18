@@ -48,6 +48,8 @@ struct TechniqueMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 
+	GfxTechniqueDesc desc;
+
 	GfxRef<GfxVertexFormat> vf;
 	GfxRef<GfxVertexShader> vs;
 	GfxRef<GfxPixelShader> ps;
@@ -59,6 +61,7 @@ struct TechniqueMTL : GfxRefCount
 	u32 sampledImageOffset = 0;
 	u32 storageImageOffset = 0;
 	u32 storageBufferOffset = 0;
+	u32 descriptorSetCount = 0;
 
 	Tuple3<u16> workGroupSize = {};
 	
@@ -102,6 +105,27 @@ struct SamplerMTL : GfxRefCount
 	void destroy();
 };
 
+struct DescriptorSetMTL : GfxRefCount
+{
+	u32                      uniqueId = 0;
+	GfxDescriptorSetDesc     desc;
+	DynamicArray<u32>        constantBufferOffsets;
+	DynamicArray<GfxBuffer>  constantBuffers;
+	DynamicArray<GfxTexture> textures;
+	DynamicArray<GfxSampler> samplers;
+	DynamicArray<GfxTexture> storageImages;
+	DynamicArray<GfxBuffer>  storageBuffers;
+
+	bool isDirty = false;
+
+	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc
+	id<MTLBuffer> argBuffer = nil;
+	u32 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
+	u32 argBufferSize = 0;
+
+	void destroy();
+};
+
 class GfxDevice : public GfxRefCount
 {
 public:
@@ -129,6 +153,7 @@ public:
 	ResourcePool<TextureMTL, GfxTexture> m_textures;
 	ResourcePool<BlendStateMTL, GfxBlendState> m_blendStates;
 	ResourcePool<SamplerMTL, GfxSampler> m_samplers;
+	ResourcePool<DescriptorSetMTL, GfxDescriptorSet> m_descriptorSets;
 
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
@@ -161,6 +186,7 @@ public:
 		MaxConstantBuffers = 4,
 		MaxStorageBuffers = 4,
 		MaxSamplers = 4,
+		MaxDescriptorSets = 4,
 	};
 
 	GfxContext();
@@ -182,6 +208,7 @@ public:
 		DirtyStateFlag_ConstantBuffer = 1 << 9,
 		DirtyStateFlag_StorageImage = 1 << 10,
 		DirtyStateFlag_StorageBuffer = 1 << 11,
+		DirtyStateFlag_DescriptorSet = 1 << 12,
 
 		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler | DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer,
 
@@ -204,6 +231,7 @@ public:
 	GfxRef<GfxTexture> m_sampledImages[u32(GfxStage::count)][MaxSampledImages];
 	GfxRef<GfxTexture> m_storageImages[MaxStorageImages];
 	GfxRef<GfxBuffer> m_storageBuffers[MaxStorageBuffers];
+	GfxRef<GfxDescriptorSet> m_descriptorSets[MaxDescriptorSets];
 	GfxPassDesc m_passDesc;
 
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;

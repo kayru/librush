@@ -465,6 +465,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	TechniqueMTL result;
 
 	result.uniqueId = g_device->generateId();
+	result.desc = desc;
 
 	if (desc.cs.valid())
 	{
@@ -500,6 +501,14 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	result.storageBufferOffset = offset;
 	offset += desc.bindings.rwBuffers;
+
+	for(u32 i=0; i<GfxShaderBindingDesc::MaxDescriptorSets; ++i)
+	{
+		if(!desc.bindings.descriptorSets[i].isEmpty())
+		{
+			result.descriptorSetCount = i+1;
+		}
+	}
 
 	return GfxDevice::makeOwn(retainResource(g_device->m_techniques, result));
 }
@@ -1055,7 +1064,7 @@ void GfxContext::applyState()
 		if (m_pendingRasterizerState.valid())
 		{
 			const auto& desc = g_device->m_rasterizerStates[m_pendingRasterizerState.get()].desc;
-			MTLCullMode cullMode =  desc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
+			MTLCullMode cullMode = desc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
 			[m_commandEncoder setCullMode:cullMode];
 			[m_commandEncoder setFrontFacingWinding:desc.cullMode == GfxCullMode::CCW ? MTLWindingCounterClockwise : MTLWindingClockwise];
 			[m_commandEncoder setTriangleFillMode:desc.fillMode == GfxFillMode::Solid ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
@@ -1075,6 +1084,7 @@ void GfxContext::applyState()
 				u32 slot = technique.constantBufferOffset + i;
 				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
 				size_t offset = m_constantBufferOffsets[i];
+				// #todo: set buffers based on access flags
 				[m_commandEncoder setVertexBuffer:resource offset:offset atIndex:slot];
 				[m_commandEncoder setFragmentBuffer:resource offset:offset atIndex:slot];
 
@@ -1098,6 +1108,27 @@ void GfxContext::applyState()
 				u32 slot = technique.samplerOffset + i;
 				id resource = g_device->m_samplers[m_samplers[u32(GfxStage::Pixel)][i].get()].native;
 				[m_commandEncoder setFragmentSamplerState:resource atIndex:slot];
+			}
+		}
+
+		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
+		{
+			u32 firstDescriptorSet = technique.desc.bindings.useDefaultDescriptorSet ? 1 : 0;
+			for (u32 i=firstDescriptorSet; i<technique.descriptorSetCount; ++i)
+			{
+				DescriptorSetMTL& ds = g_device->m_descriptorSets[m_descriptorSets[i].get()];
+				for (u64 j=0; j<ds.constantBuffers.size(); ++j)
+				{
+					[m_commandEncoder useResource:g_device->m_buffers[ds.constantBuffers[j]].native  usage:MTLResourceUsageRead];
+				}
+				for (u64 j=0; j<ds.textures.size(); ++j)
+				{
+					[m_commandEncoder useResource:g_device->m_textures[ds.textures[j]].native  usage:MTLResourceUsageSample];
+				}
+
+				// #todo: set buffers based on access flags
+				[m_commandEncoder setVertexBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
+				[m_commandEncoder setFragmentBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
 			}
 		}
 	}
@@ -1150,6 +1181,16 @@ void GfxContext::applyState()
 			id<MTLBuffer> buffer = g_device->m_buffers[m_storageBuffers[i].get()].native;
 			u32 slot = technique.storageBufferOffset + i;
 			[m_computeCommandEncoder setBuffer:buffer offset:0 atIndex:slot];
+		}
+
+		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
+		{
+			u32 firstDescriptorSet = technique.desc.bindings.useDefaultDescriptorSet ? 1 : 0;
+			for (u32 i=firstDescriptorSet; i<technique.descriptorSetCount; ++i)
+			{
+				DescriptorSetMTL& ds = g_device->m_descriptorSets[m_descriptorSets[i].get()];
+				[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
+			}
 		}
 	}
 
@@ -1517,6 +1558,180 @@ void Gfx_Retain(GfxRasterizerState h)
 void Gfx_Retain(GfxBuffer h)
 {
 	g_device->m_buffers[h].addReference();
+}
+
+// Descriptor sets
+
+GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
+{
+	DescriptorSetMTL res;
+
+	res.uniqueId = g_device->generateId();
+	res.desc = desc;
+
+	u32 argumentIndex = 0;
+
+	NSMutableArray<MTLArgumentDescriptor *>* descriptors = [NSMutableArray<MTLArgumentDescriptor *> new];
+	for(u32 i=0; i<desc.constantBuffers; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypePointer];
+		[descriptor setIndex: argumentIndex];
+		[descriptor setAccess: MTLArgumentAccessReadOnly];
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+	res.constantBuffers.resize(desc.constantBuffers);
+	res.constantBufferOffsets.resize(desc.constantBuffers);
+
+	for(u32 i=0; i<desc.samplers; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypeSampler];
+		[descriptor setIndex: argumentIndex];
+		[descriptor setAccess: MTLArgumentAccessReadOnly];
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+	res.samplers.resize(desc.samplers);
+
+	for(u32 i=0; i<desc.textures; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypeTexture];
+		[descriptor setIndex: argumentIndex];
+		[descriptor setAccess: MTLArgumentAccessReadOnly];
+		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+	res.textures.resize(desc.textures);
+
+	for(u32 i=0; i<desc.rwImages; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypeTexture];
+		[descriptor setIndex: argumentIndex];
+		[descriptor setAccess: MTLArgumentAccessReadWrite];
+		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+	res.storageImages.resize(desc.rwImages);
+
+	for(u32 i=0; i<desc.rwBuffers; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypePointer];
+		[descriptor setAccess: MTLArgumentAccessReadWrite];
+		[descriptor setIndex: argumentIndex];
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+
+	for(u32 i=0; i<desc.rwTypedBuffers; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypePointer];
+		[descriptor setAccess: MTLArgumentAccessReadWrite];
+		[descriptor setIndex: argumentIndex];
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+
+	res.storageBuffers.resize(desc.rwBuffers + desc.rwTypedBuffers);
+
+	res.encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
+	res.argBufferSize = [res.encoder encodedLength];
+	res.argBuffer = [g_metalDevice newBufferWithLength:res.argBufferSize options:0];
+
+	[res.encoder setArgumentBuffer:res.argBuffer offset:0];
+
+	for(id obj in descriptors)
+	{
+		[obj release];
+	}
+	[descriptors release];
+
+	return GfxDevice::makeOwn(retainResource(g_device->m_descriptorSets, res));
+}
+
+void Gfx_Retain(GfxDescriptorSet h)
+{
+	g_device->m_descriptorSets[h].addReference();
+}
+
+void Gfx_Release(GfxDescriptorSet h)
+{
+	releaseResource(g_device->m_descriptorSets, h);
+}
+
+void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
+{
+	rc->m_descriptorSets[index].retain(h);
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_DescriptorSet;
+}
+
+void Gfx_SetConstantBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h, u32 offset)
+{
+	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
+	ds.constantBufferOffsets[idx] = offset;
+	ds.constantBuffers[idx] = h;
+
+	BufferMTL& buf = g_device->m_buffers[h];
+	[ds.encoder setBuffer:buf.native offset:offset atIndex:idx];
+
+	ds.isDirty = true;
+}
+
+void Gfx_SetTexture(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
+{
+	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
+	ds.textures[idx] = h;
+	u32 idxOffset = ds.desc.constantBuffers + ds.desc.samplers;
+	TextureMTL& tex = g_device->m_textures[h];
+	RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
+	[ds.encoder setTexture:tex.native atIndex:idxOffset+idx];
+
+	ds.isDirty = true;
+}
+
+void Gfx_SetSampler(GfxDescriptorSetArg d, u32 idx, GfxSamplerArg h)
+{
+	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
+	ds.samplers[idx] = h;
+
+	u32 idxOffset = ds.desc.constantBuffers;
+	SamplerMTL& smp = g_device->m_samplers[h];
+	[ds.encoder setSamplerState:smp.native atIndex:idxOffset + idx];
+
+	ds.isDirty = true;
+}
+
+void Gfx_SetStorageImage(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
+{
+	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
+	TextureMTL& tex = g_device->m_textures[h];
+	RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
+	ds.storageImages[idx] = h;
+	ds.isDirty = true;
+
+	RUSH_LOG_FATAL("Not implemented");
+}
+
+void Gfx_SetStorageBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h)
+{
+	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
+	ds.storageBuffers[idx] = h;
+	ds.isDirty = true;
+
+	RUSH_LOG_FATAL("Not implemented");
+}
+
+void DescriptorSetMTL::destroy()
+{
+	[encoder release];
+	[argBuffer release];
 }
 
 }
