@@ -152,6 +152,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.constantBufferAlignment = 256;
 	m_caps.pushConstants = false;
 	m_caps.instancing = true;
+	m_caps.drawIndirect = true;
 
 	m_caps.apiName = "Metal";
 }
@@ -1453,7 +1454,24 @@ void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u3
 
 void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount)
 {
-	Log::fatal("Gfx_DrawIndexedIndirect is not implemented");
+	RUSH_ASSERT(rc->m_indexBuffer);
+
+	BufferMTL& buf = g_device->m_buffers[argsBuffer];
+	rc->applyState();
+
+	// TODO: perhaps could use indirect command buffers to emulate multi-draw-indirect
+	for (u32 i=0; i<drawCount; ++i)
+	{
+		[rc->m_commandEncoder
+		 drawIndexedPrimitives:rc->m_primitiveType
+		 indexType:rc->m_indexType
+		 indexBuffer:rc->m_indexBuffer
+		 indexBufferOffset:0
+		 indirectBuffer:buf.native
+		 indirectBufferOffset:argsBufferOffset + sizeof(GfxDrawIndexedArg) * i];
+	}
+
+	g_device->m_stats.drawCalls++;
 }
 
 void Gfx_PushMarker(GfxContext* rc, const char* marker)
