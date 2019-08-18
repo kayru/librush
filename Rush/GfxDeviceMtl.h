@@ -48,6 +48,8 @@ struct TechniqueMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 
+	GfxTechniqueDesc desc;
+
 	GfxRef<GfxVertexFormat> vf;
 	GfxRef<GfxVertexShader> vs;
 	GfxRef<GfxPixelShader> ps;
