@@ -937,9 +937,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// Done!
 
-	m_caps.looseConstants  = false;
-	m_caps.constantBuffers = true;
-
 	if (cfg.preferredCoordinateSystem == GfxConfig::PreferredCoordinateSystem_Direct3D &&
 	    (m_supportedExtensions.AMD_negative_viewport_height || m_supportedExtensions.KHR_maintenance1))
 	{
@@ -959,6 +956,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.instancing       = true;
 	m_caps.drawIndirect     = true;
 	m_caps.dispatchIndirect = true;
+	m_caps.pushConstants    = true;
 	m_caps.shaderInt16      = !!enabledDeviceFeatures.shaderInt16;
 	m_caps.shaderInt64      = !!enabledDeviceFeatures.shaderInt64;
 	m_caps.asyncCompute     = m_computeQueueIndex != invalidIndex;

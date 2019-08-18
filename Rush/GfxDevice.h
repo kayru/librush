@@ -77,11 +77,8 @@ struct GfxConfig
 struct GfxCapability
 {
 	const char* apiName              = nullptr;
-	bool        looseConstants       = false;
-	bool        constantBuffers      = false;
 	bool        debugOutput          = false;
 	bool        debugMarkers         = false;
-	bool        interopOpenCL        = false;
 	bool        compute              = false;
 	bool        instancing           = false;
 	bool        drawIndirect         = false;
@@ -91,6 +88,7 @@ struct GfxCapability
 	bool        shaderWaveIntrinsics = false;
 	bool        asyncCompute         = false;
 	bool        sampleLocations      = false;
+	bool        pushConstants        = false;
 
 	bool explicitVertexParameterAMD  = false;
 

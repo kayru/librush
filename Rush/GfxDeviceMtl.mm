@@ -140,9 +140,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// init caps
 
-	m_caps.looseConstants = false;
-	m_caps.constantBuffers = true;
-
 	m_caps.deviceTopLeft = Vec2(-1.0f, 1.0f);
 	m_caps.textureTopLeft = Vec2(0.0f, 0.0f);
 	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_MSL;
@@ -152,8 +149,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.compute = true;
 	m_caps.debugOutput = false;
 	m_caps.debugMarkers = true;
-	m_caps.interopOpenCL = false;
 	m_caps.constantBufferAlignment = 256;
+	m_caps.pushConstants = false;
+	m_caps.instancing = true;
+	m_caps.drawIndirect = true;
 
 	m_caps.apiName = "Metal";
 }
@@ -274,9 +273,11 @@ void Gfx_Present()
 
 void Gfx_SetPresentInterval(u32 interval)
 {
-	if (interval != 1)
+	static bool warningReported = false;
+	if (interval != 1 && !warningReported)
 	{
-		Log::error("Not implemented");
+		Log::warning("Present interval != 1 is not implemented");
+		warningReported = true;
 	}
 }
 
@@ -982,6 +983,7 @@ void GfxContext::applyState()
 	// TODO: cache pipelines
 
 	const auto& technique = g_device->m_techniques[m_pendingTechnique.get()];
+	const auto& bindings = technique.desc.bindings;
 
 	if ((m_dirtyState & DirtyStateFlag_Pipeline) && technique.computePipeline)
 	{
@@ -1079,7 +1081,7 @@ void GfxContext::applyState()
 	{
 		if (m_dirtyState & DirtyStateFlag_ConstantBuffer)
 		{
-			for (u32 i=0; i<GfxContext::MaxConstantBuffers; ++i)
+			for (u32 i=0; i<bindings.constantBuffers; ++i)
 			{
 				u32 slot = technique.constantBufferOffset + i;
 				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
@@ -1087,13 +1089,12 @@ void GfxContext::applyState()
 				// #todo: set buffers based on access flags
 				[m_commandEncoder setVertexBuffer:resource offset:offset atIndex:slot];
 				[m_commandEncoder setFragmentBuffer:resource offset:offset atIndex:slot];
-
 			}
 		}
 
 		if (m_dirtyState & DirtyStateFlag_Texture)
 		{
-			for (u32 i=0; i<GfxContext::MaxSampledImages; ++i)
+			for (u32 i=0; i<bindings.textures; ++i)
 			{
 				u32 slot = technique.sampledImageOffset + i;
 				id resource = g_device->m_textures[m_sampledImages[u32(GfxStage::Pixel)][i].get()].native;
@@ -1103,7 +1104,7 @@ void GfxContext::applyState()
 
 		if (m_dirtyState & DirtyStateFlag_Sampler)
 		{
-			for (u32 i=0; i<GfxContext::MaxSamplers; ++i)
+			for (u32 i=0; i<bindings.samplers; ++i)
 			{
 				u32 slot = technique.samplerOffset + i;
 				id resource = g_device->m_samplers[m_samplers[u32(GfxStage::Pixel)][i].get()].native;
@@ -1139,7 +1140,7 @@ void GfxContext::applyState()
 
 		if (m_dirtyState & DirtyStateFlag_ConstantBuffer)
 		{
-			for (u32 i=0; i<GfxContext::MaxConstantBuffers; ++i)
+			for (u32 i=0; i<bindings.constantBuffers; ++i)
 			{
 				u32 slot = technique.constantBufferOffset + i;
 				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
@@ -1149,7 +1150,7 @@ void GfxContext::applyState()
 
 		if (m_dirtyState & DirtyStateFlag_Texture)
 		{
-			for (u32 i=0; i<GfxContext::MaxSampledImages; ++i)
+			for (u32 i=0; i<bindings.textures; ++i)
 			{
 				u32 slot = technique.sampledImageOffset + i;
 				id resource = g_device->m_textures[m_sampledImages[stagIdx][i].get()].native;
@@ -1159,7 +1160,7 @@ void GfxContext::applyState()
 
 		if (m_dirtyState & DirtyStateFlag_Sampler)
 		{
-			for (u32 i=0; i<GfxContext::MaxSamplers; ++i)
+			for (u32 i=0; i<bindings.samplers; ++i)
 			{
 				u32 slot = technique.samplerOffset + i;
 				id resource = g_device->m_samplers[m_samplers[stagIdx][i].get()].native;
@@ -1167,20 +1168,24 @@ void GfxContext::applyState()
 			}
 		}
 
-		// TODO: use dirty flags
-		for (u32 i=0; i<GfxContext::MaxStorageImages; ++i)
+		if (m_dirtyState & DirtyStateFlag_StorageImage)
 		{
-			id<MTLTexture> texture = g_device->m_textures[m_storageImages[i].get()].native;
-			u32 slot = technique.storageImageOffset + i;
-			[m_computeCommandEncoder setTexture:texture atIndex:slot];
+			for (u32 i=0; i<bindings.rwImages; ++i)
+			{
+				id<MTLTexture> texture = g_device->m_textures[m_storageImages[i].get()].native;
+				u32 slot = technique.storageImageOffset + i;
+				[m_computeCommandEncoder setTexture:texture atIndex:slot];
+			}
 		}
 
-		// TODO: use dirty flags
-		for (u32 i=0; i<GfxContext::MaxStorageBuffers; ++i)
+		if (m_dirtyState & DirtyStateFlag_StorageBuffer)
 		{
-			id<MTLBuffer> buffer = g_device->m_buffers[m_storageBuffers[i].get()].native;
-			u32 slot = technique.storageBufferOffset + i;
-			[m_computeCommandEncoder setBuffer:buffer offset:0 atIndex:slot];
+			for (u32 i=0; i<bindings.rwBuffers; ++i)
+			{
+				id<MTLBuffer> buffer = g_device->m_buffers[m_storageBuffers[i].get()].native;
+				u32 slot = technique.storageBufferOffset + i;
+				[m_computeCommandEncoder setBuffer:buffer offset:0 atIndex:slot];
+			}
 		}
 
 		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
@@ -1192,6 +1197,8 @@ void GfxContext::applyState()
 				[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
 			}
 		}
+
+		// TODO: bind typed storage buffers
 	}
 
 	m_dirtyState = 0;
@@ -1456,6 +1463,54 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 	 baseInstance:0];
 
 	g_device->m_stats.vertices += indexCount;
+	g_device->m_stats.drawCalls++;
+}
+
+void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
+					 const void* pushConstants, u32 pushConstantsSize)
+{
+	Log::fatal("Gfx_DrawIndexed with push constants is not implemented");
+}
+
+void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
+							  u32 instanceCount, u32 instanceOffset)
+{
+	RUSH_ASSERT(rc->m_indexBuffer);
+
+	rc->applyState();
+	[rc->m_commandEncoder
+	 drawIndexedPrimitives:rc->m_primitiveType
+	 indexCount:indexCount
+	 indexType:rc->m_indexType
+	 indexBuffer:rc->m_indexBuffer
+	 indexBufferOffset:firstIndex * rc->m_indexStride
+	 instanceCount:instanceCount
+	 baseVertex:baseVertex
+	 baseInstance:instanceOffset];
+
+	g_device->m_stats.vertices += indexCount * instanceCount;
+	g_device->m_stats.drawCalls++;
+}
+
+void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount)
+{
+	RUSH_ASSERT(rc->m_indexBuffer);
+
+	BufferMTL& buf = g_device->m_buffers[argsBuffer];
+	rc->applyState();
+
+	// TODO: perhaps could use indirect command buffers to emulate multi-draw-indirect
+	for (u32 i=0; i<drawCount; ++i)
+	{
+		[rc->m_commandEncoder
+		 drawIndexedPrimitives:rc->m_primitiveType
+		 indexType:rc->m_indexType
+		 indexBuffer:rc->m_indexBuffer
+		 indexBufferOffset:0
+		 indirectBuffer:buf.native
+		 indirectBufferOffset:argsBufferOffset + sizeof(GfxDrawIndexedArg) * i];
+	}
+
 	g_device->m_stats.drawCalls++;
 }
 
