@@ -977,6 +977,22 @@ static MTLBlendFactor convertBlendParam(GfxBlendParam blendParam)
 	}
 }
 
+static void useResources(id commandEncoder, DescriptorSetMTL& ds)
+{
+	for (u64 j=0; j<ds.constantBuffers.size(); ++j)
+	{
+		[commandEncoder
+		 useResource:g_device->m_buffers[ds.constantBuffers[j]].native
+		 usage:MTLResourceUsageRead];
+	}
+
+	for (u64 j=0; j<ds.textures.size(); ++j)
+	{
+		[commandEncoder
+		 useResource:g_device->m_textures[ds.textures[j]].native
+		 usage:MTLResourceUsageSample];
+	}
+}
 
 void GfxContext::applyState()
 {
@@ -1118,14 +1134,7 @@ void GfxContext::applyState()
 			for (u32 i=firstDescriptorSet; i<technique.descriptorSetCount; ++i)
 			{
 				DescriptorSetMTL& ds = g_device->m_descriptorSets[m_descriptorSets[i].get()];
-				for (u64 j=0; j<ds.constantBuffers.size(); ++j)
-				{
-					[m_commandEncoder useResource:g_device->m_buffers[ds.constantBuffers[j]].native  usage:MTLResourceUsageRead];
-				}
-				for (u64 j=0; j<ds.textures.size(); ++j)
-				{
-					[m_commandEncoder useResource:g_device->m_textures[ds.textures[j]].native  usage:MTLResourceUsageSample];
-				}
+				useResources(m_commandEncoder, ds);
 
 				// #todo: set buffers based on access flags
 				[m_commandEncoder setVertexBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
@@ -1194,6 +1203,7 @@ void GfxContext::applyState()
 			for (u32 i=firstDescriptorSet; i<technique.descriptorSetCount; ++i)
 			{
 				DescriptorSetMTL& ds = g_device->m_descriptorSets[m_descriptorSets[i].get()];
+				useResources(m_computeCommandEncoder, ds);
 				[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
 			}
 		}
