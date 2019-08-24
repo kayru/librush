@@ -227,11 +227,12 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 void Gfx_Retain(GfxDescriptorSet h);
 void Gfx_Release(GfxDescriptorSet h);
 void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h);
-void Gfx_SetConstantBuffer(GfxDescriptorSetArg d, u32 index, GfxBufferArg h, u32 offset = 0);
-void Gfx_SetTexture(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h);
-void Gfx_SetSampler(GfxDescriptorSetArg d, u32 idx, GfxSamplerArg h);
-void Gfx_SetStorageImage(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h);
-void Gfx_SetStorageBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h);
+void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
+	const GfxBuffer* constantBuffers = nullptr,
+	const GfxSampler* samplers = nullptr,
+	const GfxTexture* textures = nullptr,
+	const GfxTexture* storageImages = nullptr,
+	const GfxBuffer* storageBuffers = nullptr);
 #endif // RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 
 const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTextureArg h);

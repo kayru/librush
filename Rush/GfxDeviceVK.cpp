@@ -479,10 +479,11 @@ static bool enableExtension(DynamicArray<const char*>& extensions,
 	return false;
 }
 
-inline void validateBufferUse(const BufferVK& buffer)
+inline void validateBufferUse(const BufferVK& buffer, bool allowTransientBuffers)
 {
 	if (!!(buffer.desc.flags & GfxBufferFlags::Transient))
 	{
+		RUSH_ASSERT(allowTransientBuffers);
 		RUSH_ASSERT_MSG(buffer.lastUpdateFrame == g_device->m_frameCount,
 		    "Trying to use stale buffer. Temporary buffers must be updated/filled and used on the same frame.");
 	}
@@ -1143,46 +1144,6 @@ GfxDevice::~GfxDevice()
 
 	vkDestroyInstance(m_vulkanInstance, nullptr);
 }
-
-union DescriptorInfo
-{
-	VkDescriptorBufferInfo buffer;
-	VkDescriptorImageInfo image;
-	VkBufferView bufferView;
-
-	DescriptorInfo() = default;
-
-	DescriptorInfo(VkBuffer inBuffer, VkDeviceSize inOffset, VkDeviceSize inRange)
-	{
-		buffer.buffer = inBuffer;
-		buffer.offset = inOffset;
-		buffer.range = inRange;
-	}
-
-	DescriptorInfo(VkImageView inImageView, VkImageLayout inImageLayout)
-	{
-		image.imageView = inImageView;
-		image.imageLayout = inImageLayout;
-		image.sampler = VK_NULL_HANDLE;
-	}
-
-	explicit DescriptorInfo(VkSampler inSampler)
-	{
-		image.imageView = VK_NULL_HANDLE;
-		image.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		image.sampler = inSampler;
-	}
-
-	explicit DescriptorInfo(VkBufferView inBufferView)
-	{
-		bufferView = inBufferView;
-	}
-
-	explicit DescriptorInfo(VkDescriptorBufferInfo inBuffer)
-	{
-		buffer = inBuffer;
-	}
-};
 
 VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 {
@@ -2442,6 +2403,205 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 	vkCmdResolveImage(m_commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, 1, &region);
 }
 
+static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSetDesc& desc,
+	bool useDynamicUniformBuffers, bool allowTransientBuffers,
+	const GfxBuffer* constantBuffers,
+	const GfxSampler* samplers,
+	const GfxTexture* textures,
+	const GfxTexture* storageImages,
+	const GfxBuffer* storageBuffers)
+{
+	const u32 maxWriteDescriptorSetCount = 3 + desc.rwImages + desc.rwBuffers + desc.rwTypedBuffers;
+
+	InlineDynamicArray<VkWriteDescriptorSet, 16> writeDescriptorSets(maxWriteDescriptorSetCount);
+
+	u32 writeDescriptorSetCount = 0;
+
+	// fill descriptors
+
+	u32 bindingIndex = 0;
+
+	InlineDynamicArray<VkDescriptorBufferInfo, 16> pendingConstantBufferInfo(desc.constantBuffers);
+
+	if (desc.constantBuffers)
+	{
+		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
+
+		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = nullptr;
+		writeDescriptorSet.dstSet = targetSet;
+		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorCount = desc.constantBuffers;
+		writeDescriptorSet.descriptorType = useDynamicUniformBuffers
+			? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+			: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writeDescriptorSet.pImageInfo = nullptr;
+		writeDescriptorSet.pBufferInfo = pendingConstantBufferInfo.m_data;
+		writeDescriptorSet.pTexelBufferView = nullptr;
+		bindingIndex += writeDescriptorSet.descriptorCount;
+
+		for (u32 i = 0; i < desc.constantBuffers; ++i)
+		{
+			RUSH_ASSERT(constantBuffers[i].valid());
+
+			BufferVK& buffer = g_device->m_buffers[constantBuffers[i]];
+			validateBufferUse(buffer, allowTransientBuffers);
+
+			VkDescriptorBufferInfo& bufferInfo = pendingConstantBufferInfo[i];
+
+			bufferInfo.buffer = buffer.info.buffer;
+			bufferInfo.offset = buffer.info.offset;
+			bufferInfo.range = buffer.desc.stride;
+		}
+	}
+
+	const u32 maxImageInfoCount = desc.samplers + desc.textures + desc.rwImages;
+
+	InlineDynamicArray<VkDescriptorImageInfo, 16> imageInfos(maxImageInfoCount);
+	u32                                           imageInfoCount = 0;
+
+	// Samplers
+
+	if (desc.samplers)
+	{
+		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
+		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = nullptr;
+		writeDescriptorSet.dstSet = targetSet;
+		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorCount = desc.samplers;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
+		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.pTexelBufferView = nullptr;
+		bindingIndex += writeDescriptorSet.descriptorCount;
+
+		for (u32 i = 0; i < desc.samplers; ++i)
+		{
+			RUSH_ASSERT(samplers[i].valid());
+			SamplerVK& sampler = g_device->m_samplers[samplers[i]];
+
+			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
+			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
+
+			imageInfo.sampler = sampler.native;
+			imageInfo.imageView = VK_NULL_HANDLE;
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		}
+	}
+
+	// Textures (sampled images)
+
+	if (desc.textures)
+	{
+		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
+		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = nullptr;
+		writeDescriptorSet.dstSet = targetSet;
+		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorCount = desc.textures;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
+		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.pTexelBufferView = nullptr;
+		bindingIndex += writeDescriptorSet.descriptorCount;
+
+		for (u32 i = 0; i < desc.textures; ++i)
+		{
+			RUSH_ASSERT(textures[i].valid());
+			TextureVK& texture = g_device->m_textures[textures[i]];
+
+			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
+			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
+
+			imageInfo.sampler = VK_NULL_HANDLE;
+			imageInfo.imageView = texture.imageView;
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
+	}
+
+	// RWTextures (storage images)
+
+	for (u32 i = 0; i < desc.rwImages; ++i)
+	{
+		RUSH_ASSERT(storageImages[i].valid());
+
+		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
+		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = nullptr;
+		writeDescriptorSet.dstSet = targetSet;
+		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
+		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.pTexelBufferView = nullptr;
+
+		TextureVK& texture = g_device->m_textures[storageImages[i]];
+
+		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
+		VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
+
+		imageInfo.sampler = VK_NULL_HANDLE;
+		imageInfo.imageView = texture.imageView;
+		imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+		bindingIndex += writeDescriptorSet.descriptorCount;
+	}
+
+	// RWBuffers (storage buffers)
+
+	for (u32 i = 0; i < u32(desc.rwBuffers) + u32(desc.rwTypedBuffers); ++i)
+	{
+		RUSH_ASSERT(storageBuffers[i].valid());
+		BufferVK& buffer = g_device->m_buffers[storageBuffers[i]];
+		validateBufferUse(buffer, allowTransientBuffers);
+
+		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
+		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = nullptr;
+		writeDescriptorSet.dstSet = targetSet;
+		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.dstArrayElement = 0;
+
+		if (i >= desc.rwBuffers)
+		{
+			RUSH_ASSERT(buffer.bufferView != VK_NULL_HANDLE);
+			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+			writeDescriptorSet.pImageInfo = nullptr;
+			writeDescriptorSet.pBufferInfo = nullptr;
+			writeDescriptorSet.pTexelBufferView = &buffer.bufferView;
+		}
+		else
+		{
+			RUSH_ASSERT(buffer.info.buffer != VK_NULL_HANDLE);
+			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			writeDescriptorSet.pImageInfo = nullptr;
+			writeDescriptorSet.pBufferInfo = &buffer.info;
+			writeDescriptorSet.pTexelBufferView = nullptr;
+		}
+
+		bindingIndex += writeDescriptorSet.descriptorCount;
+	}
+
+	vkUpdateDescriptorSets(g_vulkanDevice, writeDescriptorSetCount, writeDescriptorSets.m_data, 0, nullptr);
+}
+
 void GfxContext::applyState()
 {
 	if (m_dirtyState == 0)
@@ -2487,7 +2647,7 @@ void GfxContext::applyState()
 			RUSH_ASSERT(m_pending.vertexBuffer[i].valid());
 
 			BufferVK& buffer = g_device->m_buffers[m_pending.vertexBuffer[i]];
-			validateBufferUse(buffer);
+			validateBufferUse(buffer, true);
 
 			VkDeviceSize bufferOffset = buffer.info.offset;
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
@@ -2499,7 +2659,7 @@ void GfxContext::applyState()
 	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer))
 	{
 		BufferVK& buffer = g_device->m_buffers[m_pending.indexBuffer];
-		validateBufferUse(buffer);
+		validateBufferUse(buffer, true);
 
 		VkDeviceSize offset = buffer.info.offset;
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
@@ -2569,199 +2729,30 @@ void GfxContext::applyState()
 	m_currentDescriptorSet = technique.descriptorSetCache.back();
 	technique.descriptorSetCache.pop_back();
 
-	static const u32 maxWriteDescriptorSetCount = 3 + GfxContext::MaxStorageImages + GfxContext::MaxStorageBuffers;
-
-	VkWriteDescriptorSet writeDescriptorSets[maxWriteDescriptorSetCount];
-	u32                  writeDescriptorSetCount = 0;
-
-	// fill descriptors
-
-	u32 bindingIndex = 0;
-
-	VkDescriptorBufferInfo pendingConstantBufferInfo[MaxConstantBuffers];
-
-	if (technique.constantBufferCount)
+	for (u32 i = 0; i < technique.sampledImageCount; ++i)
 	{
-		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
-
-		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
-
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = m_currentDescriptorSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = technique.constantBufferCount;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		writeDescriptorSet.pImageInfo = nullptr;
-		writeDescriptorSet.pBufferInfo = pendingConstantBufferInfo;
-		writeDescriptorSet.pTexelBufferView = nullptr;
-		bindingIndex += writeDescriptorSet.descriptorCount;
-
-		for (u32 i = 0; i < technique.constantBufferCount; ++i)
-		{
-			RUSH_ASSERT(m_pending.constantBuffers[i].valid());
-
-			BufferVK& buffer = g_device->m_buffers[m_pending.constantBuffers[i]];
-			validateBufferUse(buffer);
-
-			VkDescriptorBufferInfo& bufferInfo = pendingConstantBufferInfo[i];
-
-			bufferInfo.buffer = buffer.info.buffer;
-			bufferInfo.offset = buffer.info.offset;
-			bufferInfo.range = buffer.desc.stride;
-		}
+		RUSH_ASSERT(m_pending.textures[i].valid());
+		TextureVK& texture = g_device->m_textures[m_pending.textures[i]];
+		VkImageSubresourceRange subresourceRange = { texture.aspectFlags, 0, texture.desc.mips, 0, 1 }; // TODO: track subresource states
+		texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
 	}
-
-	static const u32 maxImageInfoCount = GfxContext::MaxStorageImages + GfxContext::MaxTextures * 2;
-
-	VkDescriptorImageInfo imageInfos[maxImageInfoCount];
-	u32                   imageInfoCount = 0;
-
-	// Samplers
-
-	if (technique.samplerCount)
-	{
-		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
-		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
-
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = m_currentDescriptorSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = technique.samplerCount;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
-		writeDescriptorSet.pBufferInfo = nullptr;
-		writeDescriptorSet.pTexelBufferView = nullptr;
-		bindingIndex += writeDescriptorSet.descriptorCount;
-
-		for (u32 i = 0; i < technique.samplerCount; ++i)
-		{
-			RUSH_ASSERT(m_pending.samplers[i].valid());
-			SamplerVK& sampler = g_device->m_samplers[m_pending.samplers[i]];
-
-			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
-			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
-
-			imageInfo.sampler = sampler.native;
-			imageInfo.imageView = VK_NULL_HANDLE;
-			imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		}
-	}
-
-	// Textures (sampled images)
-
-	if (technique.sampledImageCount)
-	{
-		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
-		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
-
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = m_currentDescriptorSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = technique.sampledImageCount;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
-		writeDescriptorSet.pBufferInfo = nullptr;
-		writeDescriptorSet.pTexelBufferView = nullptr;
-		bindingIndex += writeDescriptorSet.descriptorCount;
-
-		for (u32 i = 0; i < technique.sampledImageCount; ++i)
-		{
-			RUSH_ASSERT(m_pending.textures[i].valid());
-			TextureVK& texture = g_device->m_textures[m_pending.textures[i]];
-
-			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
-			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
-
-			imageInfo.sampler = VK_NULL_HANDLE;
-			imageInfo.imageView = texture.imageView;
-			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-			// TODO: track subresource states
-			VkImageSubresourceRange subresourceRange = { texture.aspectFlags, 0, texture.desc.mips, 0, 1 };
-			texture.currentLayout = addImageBarrier(texture.image, imageInfo.imageLayout, texture.currentLayout, &subresourceRange);
-		}
-	}
-
-	// RWTextures (storage images)
 
 	for (u32 i = 0; i < technique.storageImageCount; ++i)
 	{
 		RUSH_ASSERT(m_pending.storageImages[i].valid());
-
-		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
-		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
-
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = m_currentDescriptorSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = 1;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
-		writeDescriptorSet.pBufferInfo = nullptr;
-		writeDescriptorSet.pTexelBufferView = nullptr;
-
 		TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
-
-		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
-		VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
-
-		imageInfo.sampler = VK_NULL_HANDLE;
-		imageInfo.imageView = texture.imageView;
-		imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-		texture.currentLayout = addImageBarrier(texture.image, imageInfo.imageLayout, texture.currentLayout, nullptr, true);
-
-		bindingIndex += writeDescriptorSet.descriptorCount;
+		texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
 	}
 
-	// RWBuffers (storage buffers)
+	updateDescriptorSet(m_currentDescriptorSet, technique.bindings, 
+		true, // use dynamic uniform buffers
+		true, // allow transient buffers
+		m_pending.constantBuffers,
+		m_pending.samplers,
+		m_pending.textures,
+		m_pending.storageImages,
+		m_pending.storageBuffers);
 
-	for (u32 i = 0; i < technique.storageBufferCount + technique.typedStorageBufferCount; ++i)
-	{
-		RUSH_ASSERT(m_pending.storageBuffers[i].valid());
-		BufferVK& buffer = g_device->m_buffers[m_pending.storageBuffers[i]];
-		validateBufferUse(buffer);
-
-
-		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
-		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
-
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = m_currentDescriptorSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.descriptorCount = 1;
-		writeDescriptorSet.dstArrayElement = 0;
-
-		if (i >= technique.storageBufferCount)
-		{
-			RUSH_ASSERT(buffer.bufferView != VK_NULL_HANDLE);
-			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-			writeDescriptorSet.pImageInfo = nullptr;
-			writeDescriptorSet.pBufferInfo = nullptr;
-			writeDescriptorSet.pTexelBufferView = &buffer.bufferView;
-		}
-		else
-		{
-			RUSH_ASSERT(buffer.info.buffer != VK_NULL_HANDLE);
-			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			writeDescriptorSet.pImageInfo = nullptr;
-			writeDescriptorSet.pBufferInfo = &buffer.info;
-			writeDescriptorSet.pTexelBufferView = nullptr;
-		}
-
-		bindingIndex += writeDescriptorSet.descriptorCount;
-	}
-
-	vkUpdateDescriptorSets(g_vulkanDevice, writeDescriptorSetCount, writeDescriptorSets, 0, nullptr);
 	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
 		0, 1, &m_currentDescriptorSet,
 		technique.constantBufferCount, m_pending.constantBufferOffsets);
@@ -3313,12 +3304,92 @@ void Gfx_Release(GfxMeshShader h)
 
 // descriptor set
 
+static VkDescriptorSetLayout createDescriptorSetLayout(const GfxDescriptorSetDesc& desc,
+	u32 resourceStageFlags,
+	bool useDynamicUniformBuffers)
+{
+	DynamicArray<VkDescriptorSetLayoutBinding> layoutBindings;
+	layoutBindings.reserve(desc.getResourceCount());
+
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {};
+	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+
+	u32 bindingSlot = 0;
+
+	for (u32 i = 0; i < desc.constantBuffers; ++i)
+	{
+		VkDescriptorSetLayoutBinding uniformBinding = {};
+		uniformBinding.binding = bindingSlot++;
+		uniformBinding.descriptorType = useDynamicUniformBuffers
+			? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+			: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformBinding.descriptorCount = 1;
+		uniformBinding.stageFlags = resourceStageFlags;
+		layoutBindings.push_back(uniformBinding);
+	}
+
+	for (u32 i = 0; i < desc.samplers; ++i)
+	{
+		VkDescriptorSetLayoutBinding samplerBinding = {};
+		samplerBinding.binding = bindingSlot++;
+		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+		samplerBinding.descriptorCount = 1;
+		samplerBinding.stageFlags = resourceStageFlags;
+		layoutBindings.push_back(samplerBinding);
+	}
+
+	for (u32 i = 0; i < desc.textures; ++i)
+	{
+		VkDescriptorSetLayoutBinding imageBinding = {};
+		imageBinding.binding = bindingSlot++;
+		imageBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		imageBinding.descriptorCount = 1;
+		imageBinding.stageFlags = resourceStageFlags;
+		layoutBindings.push_back(imageBinding);
+	}
+
+	for (u32 i = 0; i < desc.rwImages; ++i)
+	{
+		VkDescriptorSetLayoutBinding imageBinding = {};
+		imageBinding.binding = bindingSlot++;
+		imageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		imageBinding.descriptorCount = 1;
+		imageBinding.stageFlags = resourceStageFlags;
+		layoutBindings.push_back(imageBinding);
+	}
+
+	for (u32 i = 0; i < u32(desc.rwBuffers) + desc.rwTypedBuffers; ++i)
+	{
+		const bool isTyped = i >= desc.rwBuffers;
+
+		VkDescriptorSetLayoutBinding bufferBinding = {};
+		bufferBinding.binding = bindingSlot++;
+		bufferBinding.descriptorType = isTyped ? VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		bufferBinding.descriptorCount = 1;
+		bufferBinding.stageFlags = resourceStageFlags;
+		layoutBindings.push_back(bufferBinding);
+	}
+
+	RUSH_ASSERT(bindingSlot == layoutBindings.size());
+	RUSH_ASSERT(bindingSlot == desc.getResourceCount());
+
+	descriptorSetLayoutCreateInfo.bindingCount = (u32)layoutBindings.size();
+	descriptorSetLayoutCreateInfo.pBindings = layoutBindings.data();
+
+	VkDescriptorSetLayout res = VK_NULL_HANDLE;
+	V(vkCreateDescriptorSetLayout(g_vulkanDevice, &descriptorSetLayoutCreateInfo, nullptr, &res));
+	return res;
+}
+
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
 {
 	DescriptorSetVK res;
 
 	res.id = g_device->generateId();
 	res.desc = desc;
+
+	// TODO: cache set layouts
+	res.layout = createDescriptorSetLayout(desc, convertStageFlags(desc.stageFlags), false);
 
 	return retainResource(g_device->m_descriptorSets, res);
 }
@@ -3335,48 +3406,47 @@ void Gfx_Release(GfxDescriptorSet h)
 
 void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 {
-
+	rc->m_pending.descriptorSets[index] = h;
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
-void Gfx_SetConstantBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h, u32 offset)
+void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
+	const GfxBuffer* constantBuffers,
+	const GfxSampler* samplers,
+	const GfxTexture* textures,
+	const GfxTexture* storageImages,
+	const GfxBuffer* storageBuffers)
 {
 	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
-	ds.constantBufferOffsets[idx] = offset;
-	ds.constantBuffers[idx] = h;
-	ds.isDirty = true;
-}
+	RUSH_ASSERT(ds.native == VK_NULL_HANDLE); // descriptor set renaming is not implemented
+	if (ds.native)
+	{
+		// todo: enqueue release of current allocated vk descriptor set
+	}
 
-void Gfx_SetTexture(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
-{
-	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
-	ds.textures[idx] = h;
-	ds.isDirty = true;
-}
+	// todo: allocate persistent descriptor set
 
-void Gfx_SetSampler(GfxDescriptorSetArg d, u32 idx, GfxSamplerArg h)
-{
-	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
-	ds.samplers[idx] = h;
-	ds.isDirty = true;
-}
-
-void Gfx_SetStorageImage(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
-{
-	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
-	ds.storageImages[idx] = h;
-	ds.isDirty = true;
-}
-
-void Gfx_SetStorageBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h)
-{
-	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
-	ds.storageBuffers[idx] = h;
-	ds.isDirty = true;
+	updateDescriptorSet(ds.native, ds.desc,
+		false, // useDynamicUniformBuffers
+		false, // allowTransientBuffers
+		constantBuffers,
+		samplers,
+		textures,
+		storageImages,
+		storageBuffers);
 }
 
 void DescriptorSetVK::destroy()
 {
+	if (layout)
+	{
+		vkDestroyDescriptorSetLayout(g_vulkanDevice, layout, nullptr);
+	}
 
+	if (native)
+	{
+		// TODO: release this set back to the pool
+	}
 }
 
 // technique
@@ -3514,11 +3584,6 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		}
 	}
 
-	DynamicArray<VkDescriptorSetLayoutBinding> layoutBindings;
-
-	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
-	    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-
 	res.bindings = desc.bindings;
 
 	res.pushConstantStageFlags  = convertStageFlags(desc.bindings.pushConstantStageFlags);
@@ -3543,67 +3608,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	if (desc.ps.valid())
 		resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	static constexpr u32 descriptorSize = u32(sizeof(DescriptorInfo));
-	u32 bindingSlot = 0;
-
-	for (u32 i = 0; i < res.constantBufferCount; ++i)
-	{
-		VkDescriptorSetLayoutBinding uniformBinding = {};
-		uniformBinding.binding                      = bindingSlot++;
-		uniformBinding.descriptorType               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		uniformBinding.descriptorCount              = 1;
-		uniformBinding.stageFlags                   = resourceStageFlags;
-		layoutBindings.push_back(uniformBinding);
-	}
-
-	for (u32 i = 0; i < res.samplerCount; ++i)
-	{
-		VkDescriptorSetLayoutBinding samplerBinding = {};
-		samplerBinding.binding = bindingSlot++;
-		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-		samplerBinding.descriptorCount = 1;
-		samplerBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(samplerBinding);
-	}
-
-	for (u32 i = 0; i < res.sampledImageCount; ++i)
-	{
-		VkDescriptorSetLayoutBinding imageBinding = {};
-		imageBinding.binding = bindingSlot++;
-		imageBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		imageBinding.descriptorCount = 1;
-		imageBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(imageBinding);
-	}
-
-	for (u32 i = 0; i < res.storageImageCount; ++i)
-	{
-		VkDescriptorSetLayoutBinding imageBinding = {};
-		imageBinding.binding = bindingSlot++;
-		imageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		imageBinding.descriptorCount = 1;
-		imageBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(imageBinding);
-	}
-
-	for (u32 i = 0; i < res.storageBufferCount + res.typedStorageBufferCount; ++i)
-	{
-		const bool isTyped = i >= res.storageBufferCount;
-
-		VkDescriptorSetLayoutBinding bufferBinding = {};
-		bufferBinding.binding         = bindingSlot++;
-		bufferBinding.descriptorType  = isTyped ? VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		bufferBinding.descriptorCount = 1;
-		bufferBinding.stageFlags      = resourceStageFlags;
-		layoutBindings.push_back(bufferBinding);
-	}
-
-	res.totalDescriptorCount = bindingSlot;
-
-	descriptorSetLayoutCreateInfo.bindingCount = (u32)layoutBindings.size();
-	descriptorSetLayoutCreateInfo.pBindings    = layoutBindings.data();
-
-	V(vkCreateDescriptorSetLayout(g_vulkanDevice, &descriptorSetLayoutCreateInfo, nullptr, &res.descriptorSetLayout));
+	res.totalDescriptorCount = desc.bindings.getResourceCount();
+	res.descriptorSetLayout = createDescriptorSetLayout(desc.bindings, resourceStageFlags, true);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
 	pipelineLayoutCreateInfo.setLayoutCount             = 1;
@@ -3620,10 +3626,6 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	}
 
 	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, nullptr, &res.pipelineLayout));
-
-	// Create descriptor update template
-
-	const VkPipelineBindPoint bindPoint = res.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 	// Done
 
@@ -4285,7 +4287,7 @@ void Gfx_vkFlushBarriers(GfxContext* ctx) { ctx->flushBarriers(); }
 void Gfx_vkFillBuffer(GfxContext* ctx, GfxBuffer h, u32 value)
 {
 	auto& buffer = g_device->m_buffers[h];
-	validateBufferUse(buffer);
+	validateBufferUse(buffer, true);
 
 	vkCmdFillBuffer(ctx->m_commandBuffer, buffer.info.buffer, buffer.info.offset, buffer.info.range, value);
 }

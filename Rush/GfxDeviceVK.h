@@ -170,14 +170,8 @@ struct DescriptorSetVK : GfxRefCount
 {
 	u32                      id = 0;
 	GfxDescriptorSetDesc     desc;
-	DynamicArray<u32>        constantBufferOffsets;
-	DynamicArray<GfxBuffer>  constantBuffers;
-	DynamicArray<GfxTexture> textures;
-	DynamicArray<GfxSampler> samplers;
-	DynamicArray<GfxTexture> storageImages;
-	DynamicArray<GfxBuffer>  storageBuffers;
-
-	bool isDirty = false;
+	VkDescriptorSetLayout    layout = VK_NULL_HANDLE;
+	VkDescriptorSet          native = VK_NULL_HANDLE;
 
 	void destroy();
 };
@@ -566,6 +560,9 @@ struct ClearParamsVK
 class GfxContext : public GfxRefCount
 {
 public:
+
+	RUSH_DISALLOW_COPY_AND_ASSIGN(GfxContext)
+
 	enum
 	{
 		MaxTextures        = 16,
@@ -573,6 +570,7 @@ public:
 		MaxVertexStreams   = PipelineInfoVK::MaxVertexStreams,
 		MaxConstantBuffers = 4,
 		MaxStorageBuffers  = 6,
+		MaxDescriptorSets  = 4,
 	};
 
 	GfxContext(GfxContextType contextType = GfxContextType::Graphics);
@@ -621,6 +619,7 @@ public:
 		DirtyStateFlag_StorageImage           = 1 << 10,
 		DirtyStateFlag_StorageBuffer          = 1 << 11,
 		DirtyStateFlag_ConstantBufferOffset   = 1 << 12,
+		DirtyStateFlag_DescriptorSet          = 1 << 13,
 
 		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler |
 		                             DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer | DirtyStateFlag_ConstantBufferOffset,
@@ -646,6 +645,7 @@ public:
 		GfxRasterizerState   rasterizerState;
 		u32                  constantBufferOffsets[MaxConstantBuffers] = {};
 		u32                  vertexBufferStride[MaxVertexStreams]      = {};
+		GfxDescriptorSet     descriptorSets[MaxDescriptorSets] = {};
 	} m_pending;
 
 	VkPipeline m_activePipeline = VK_NULL_HANDLE;

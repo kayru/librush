@@ -463,6 +463,9 @@ enum class GfxStageFlags : u8
 	Hull     = 1 << (u32)GfxStage::Hull,
 	Domain   = 1 << (u32)GfxStage::Domain,
 	Compute  = 1 << (u32)GfxStage::Compute,
+
+	VertexPixel = Vertex | Pixel,
+	All = GfxStageFlags(~u8(0)),
 };
 
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxStageFlags, u8);
@@ -837,15 +840,31 @@ struct GfxDescriptorSetDesc
 	u8 rwImages = 0;
 	u8 rwBuffers = 0;
 	u8 rwTypedBuffers = 0;
+	GfxStageFlags stageFlags = GfxStageFlags::All;
+
+	u32 getResourceCount() const
+	{
+		return constantBuffers
+			+ samplers
+			+ textures
+			+ rwImages
+			+ rwBuffers
+			+ rwTypedBuffers;
+	}
 
 	bool isEmpty() const
 	{
-		return constantBuffers == 0
-			&& samplers == 0
-			&& textures == 0
-			&& rwImages == 0
-			&& rwBuffers == 0
-			&& rwTypedBuffers == 0;
+		return getResourceCount() == 0;
+	}
+
+	bool operator == (const GfxDescriptorSetDesc& other) const
+	{
+		return !memcmp(this, &other, sizeof(*this));
+	}
+
+	bool operator != (const GfxDescriptorSetDesc& other) const
+	{
+		return !(*this == other);
 	}
 };
 
