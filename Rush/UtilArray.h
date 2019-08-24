@@ -213,4 +213,44 @@ struct StaticArray
 	T      data[CAPACITY];
 	size_t currentSize;
 };
+
+template <typename T, size_t N>
+struct alignas(alignof(T)) InlineDynamicArray
+{
+	RUSH_DISALLOW_COPY_AND_ASSIGN(InlineDynamicArray)
+
+	u8 m_inlineData[sizeof(T) * N];
+	T * m_data = nullptr;
+	u32 m_count = 0;
+
+	InlineDynamicArray(u32 count)
+		: m_data(reinterpret_cast<T*>(m_inlineData))
+		, m_count(count)
+	{
+		if (m_count > N)
+		{
+			m_data = new T[m_count];
+		}
+		else
+		{
+			Buffer<T>::constructRange(m_data, m_data + m_count);
+		}
+	}
+
+	~InlineDynamicArray()
+	{
+		if ((void*)m_data == (void*)m_inlineData)
+		{
+			Buffer<T>::destructRange(m_data, m_data + m_count);
+		}
+		else
+		{
+			delete[] m_data;
+		}
+	}
+
+	T&       operator[](size_t i) { return m_data[i]; }
+	const T& operator[](size_t i) const { return m_data[i]; }
+};
+
 }
