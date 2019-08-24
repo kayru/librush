@@ -1011,7 +1011,7 @@ static void extendDescriptorPool(GfxDevice::FrameData* frameData)
 		// TODO: create separate pools based on different descriptor set layouts to save on descriptor memory
 		const u32 maxSets = 1024;
 		DescriptorPoolVK::DescriptorsPerSetDesc desc;
-		desc.uniformBuffers = GfxContext::MaxConstantBuffers;
+		desc.dynamicUniformBuffers = GfxContext::MaxConstantBuffers;
 		desc.samplers = GfxContext::MaxTextures / 2;
 		desc.sampledImages = GfxContext::MaxTextures;
 		desc.storageImages = GfxContext::MaxStorageImages;
@@ -1079,6 +1079,11 @@ GfxDevice::~GfxDevice()
 	m_samplers.reset();
 	m_descriptorSets.reset();
 	
+	for (auto& it : m_descriptorSetLayouts)
+	{
+		vkDestroyDescriptorSetLayout(m_vulkanDevice, it.second, nullptr);
+	}
+
 	for (auto& it : m_pipelines)
 	{
 		vkDestroyPipeline(m_vulkanDevice, it.second, nullptr);
@@ -1848,6 +1853,11 @@ void GfxDevice::enqueueDestroyBufferView(VkBufferView object)
 void GfxDevice::enqueueDestroyContext(GfxContext* object)
 {
 	m_currentFrame->destructionQueue.contexts.push_back(object);
+}
+
+void GfxDevice::enqueueDestroyDescriptorPool(DescriptorPoolVK* object)
+{
+	m_currentFrame->destructionQueue.descriptorPools.push_back(object);
 }
 
 void GfxDevice::enqueueDestroySampler(VkSampler object) { m_currentFrame->destructionQueue.samplers.push_back(object); }
@@ -2668,8 +2678,37 @@ void GfxContext::applyState()
 		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
 
+	if (m_dirtyState & DirtyStateFlag_DescriptorSet)
+	{
+		const u32 firstDescriptorSet = technique.bindings.useDefaultDescriptorSet ? 1 : 0;
+		u32 descriptorSetCount = 0;
+		static_assert(MaxDescriptorSets == GfxShaderBindingDesc::MaxDescriptorSets, "");
+		VkDescriptorSet descriptorSets[MaxDescriptorSets];
+		for (u32 i = firstDescriptorSet; i < MaxDescriptorSets; ++i)
+		{
+			if (technique.bindings.descriptorSets[i].isEmpty()) break;
+
+			RUSH_ASSERT(m_pending.descriptorSets[i].valid());
+			DescriptorSetVK& ds = g_device->m_descriptorSets[m_pending.descriptorSets[i]];
+			descriptorSets[i] = ds.native;
+			descriptorSetCount++;
+		}
+
+		if (descriptorSetCount)
+		{
+			vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
+				firstDescriptorSet, descriptorSetCount, &descriptorSets[firstDescriptorSet],
+				0, nullptr);
+		}
+
+		m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
+	}
+
 	if (m_dirtyState == DirtyStateFlag_ConstantBufferOffset)
 	{
+		RUSH_ASSERT_MSG(technique.bindings.useDefaultDescriptorSet,
+			"Constant buffer offsets only implemented for default descriptor set");
+
 		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
 			0, 1, &m_currentDescriptorSet,
 			technique.constantBufferCount, m_pending.constantBufferOffsets);
@@ -2681,8 +2720,11 @@ void GfxContext::applyState()
 
 	if (m_dirtyState == 0)
 	{
+		// Early out if descriptors in the default set haven't changed
 		return;
 	}
+
+	// Update and bind default descriptor set
 
 	// allocate descriptor set
 	// assume the technique will be used many times and there will be a benefit from batching the allocations
@@ -3304,10 +3346,21 @@ void Gfx_Release(GfxMeshShader h)
 
 // descriptor set
 
-static VkDescriptorSetLayout createDescriptorSetLayout(const GfxDescriptorSetDesc& desc,
+VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(const GfxDescriptorSetDesc& desc,
 	u32 resourceStageFlags,
 	bool useDynamicUniformBuffers)
 {
+	DescriptorSetLayoutKey key;
+	key.desc = desc;
+	key.resourceStageFlags = resourceStageFlags;
+	key.useDynamicUniformBuffers = useDynamicUniformBuffers;
+
+	auto existing = m_descriptorSetLayouts.find(key);
+	if (existing != m_descriptorSetLayouts.end())
+	{
+		return existing->second;
+	}
+
 	DynamicArray<VkDescriptorSetLayoutBinding> layoutBindings;
 	layoutBindings.reserve(desc.getResourceCount());
 
@@ -3378,18 +3431,32 @@ static VkDescriptorSetLayout createDescriptorSetLayout(const GfxDescriptorSetDes
 
 	VkDescriptorSetLayout res = VK_NULL_HANDLE;
 	V(vkCreateDescriptorSetLayout(g_vulkanDevice, &descriptorSetLayoutCreateInfo, nullptr, &res));
+
+	m_descriptorSetLayouts.insert(std::make_pair(key, res));
+
 	return res;
 }
 
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
 {
+	RUSH_ASSERT(!desc.isEmpty());
+
 	DescriptorSetVK res;
 
 	res.id = g_device->generateId();
 	res.desc = desc;
 
-	// TODO: cache set layouts
-	res.layout = createDescriptorSetLayout(desc, convertStageFlags(desc.stageFlags), false);
+	res.layout = g_device->createDescriptorSetLayout(desc, convertStageFlags(desc.stageFlags), false);
+
+	// TODO: cache pools and reuse them for different sets
+	DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
+	poolDesc.staticUniformBuffers = desc.constantBuffers;
+	poolDesc.sampledImages = desc.textures;
+	poolDesc.samplers = desc.samplers;
+	poolDesc.storageImages = desc.rwImages;
+	poolDesc.storageBuffers = desc.rwBuffers;
+	poolDesc.storageTexelBuffers = desc.rwTypedBuffers;
+	res.pool = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
 
 	return retainResource(g_device->m_descriptorSets, res);
 }
@@ -3418,13 +3485,30 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxBuffer* storageBuffers)
 {
 	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
-	RUSH_ASSERT(ds.native == VK_NULL_HANDLE); // descriptor set renaming is not implemented
 	if (ds.native)
 	{
-		// todo: enqueue release of current allocated vk descriptor set
+		g_device->enqueueDestroyDescriptorPool(ds.pool);
+		const auto& desc = ds.desc;
+
+		DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
+		poolDesc.staticUniformBuffers = desc.constantBuffers;
+		poolDesc.sampledImages = desc.textures;
+		poolDesc.samplers = desc.samplers;
+		poolDesc.storageImages = desc.rwImages;
+		poolDesc.storageBuffers = desc.rwBuffers;
+		poolDesc.storageTexelBuffers = desc.rwTypedBuffers;
+		ds.pool = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
 	}
 
-	// todo: allocate persistent descriptor set
+	VkDescriptorSetAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.pSetLayouts = &ds.layout;
+	allocInfo.descriptorPool = ds.pool->m_descriptorPool;
+	VkResult allocResult = vkAllocateDescriptorSets(
+		ds.pool->m_vulkanDevice, 
+		&allocInfo, 
+		&ds.native);
+	RUSH_ASSERT(allocResult == VK_SUCCESS);
 
 	updateDescriptorSet(ds.native, ds.desc,
 		false, // useDynamicUniformBuffers
@@ -3438,14 +3522,10 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 
 void DescriptorSetVK::destroy()
 {
-	if (layout)
+	if (pool)
 	{
-		vkDestroyDescriptorSetLayout(g_vulkanDevice, layout, nullptr);
-	}
-
-	if (native)
-	{
-		// TODO: release this set back to the pool
+		g_device->enqueueDestroyDescriptorPool(pool);
+		pool = nullptr;
 	}
 }
 
@@ -3608,12 +3688,25 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	if (desc.ps.valid())
 		resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	res.totalDescriptorCount = desc.bindings.getResourceCount();
-	res.descriptorSetLayout = createDescriptorSetLayout(desc.bindings, resourceStageFlags, true);
+	RUSH_ASSERT_MSG(desc.bindings.useDefaultDescriptorSet,
+		"Pipelines without default descriptor set are not implemented");
+
+	StaticArray<VkDescriptorSetLayout, desc.bindings.MaxDescriptorSets> setLayouts;
+
+	res.descriptorSetLayout = g_device->createDescriptorSetLayout(desc.bindings, resourceStageFlags, true);
+	setLayouts.pushBack(res.descriptorSetLayout);
+
+	for (u32 i = 1; i < desc.bindings.MaxDescriptorSets; ++i)
+	{
+		if (desc.bindings.descriptorSets[i].isEmpty()) break;
+		u32 setStageFlags = convertStageFlags(desc.bindings.descriptorSets[i].stageFlags);
+		VkDescriptorSetLayout layout = g_device->createDescriptorSetLayout(desc.bindings.descriptorSets[i], setStageFlags, false);
+		setLayouts.pushBack(layout);
+	}
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-	pipelineLayoutCreateInfo.setLayoutCount             = 1;
-	pipelineLayoutCreateInfo.pSetLayouts                = &res.descriptorSetLayout;
+	pipelineLayoutCreateInfo.setLayoutCount             = u32(setLayouts.currentSize);
+	pipelineLayoutCreateInfo.pSetLayouts                = setLayouts.data;
 
 	VkPushConstantRange pushConstantRange;
 	if (res.pushConstantsSize)
@@ -3652,7 +3745,6 @@ void TechniqueVK::destroy()
 	delete[] waveLimits;
 
 	// TODO: queue-up destruction
-	vkDestroyDescriptorSetLayout(g_vulkanDevice, descriptorSetLayout, nullptr);
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, nullptr);
 }
 
@@ -5181,6 +5273,12 @@ void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 		g_device->m_freeContexts[u32(p->m_type)].push_back(p);
 	}
 	contexts.clear();
+
+	for (DescriptorPoolVK* p : descriptorPools)
+	{
+		delete p;
+	}
+	descriptorPools.clear();
 }
 
 const char* toString(VkResult value)
@@ -5225,17 +5323,19 @@ DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSe
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.maxSets = maxSets;
 
-	VkDescriptorPoolSize poolSizes[] = {
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, desc.uniformBuffers * maxSets},
-		{VK_DESCRIPTOR_TYPE_SAMPLER, desc.samplers * maxSets},
-		{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, desc.sampledImages * maxSets},
-		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, desc.storageImages * maxSets},
-		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, desc.storageBuffers * maxSets},
-		{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, desc.storageTexelBuffers * maxSets},
-		{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, desc.accelerationStructures * maxSets},
-	};
-	descriptorPoolCreateInfo.poolSizeCount = RUSH_COUNTOF(poolSizes);
-	descriptorPoolCreateInfo.pPoolSizes = poolSizes;
+	StaticArray<VkDescriptorPoolSize, 16> poolSizes;
+
+	if (desc.staticUniformBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, desc.staticUniformBuffers * maxSets});
+	if (desc.dynamicUniformBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, desc.dynamicUniformBuffers * maxSets});
+	if (desc.samplers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_SAMPLER, desc.samplers * maxSets});
+	if (desc.sampledImages) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, desc.sampledImages * maxSets});
+	if (desc.storageImages) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, desc.storageImages * maxSets});
+	if (desc.storageBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, desc.storageBuffers * maxSets});
+	if (desc.storageTexelBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, desc.storageTexelBuffers * maxSets});
+	if (desc.accelerationStructures) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, desc.accelerationStructures * maxSets});
+
+	descriptorPoolCreateInfo.poolSizeCount = u32(poolSizes.currentSize);
+	descriptorPoolCreateInfo.pPoolSizes = poolSizes.data;
 
 	V(vkCreateDescriptorPool(vulkanDevice, &descriptorPoolCreateInfo, nullptr, &m_descriptorPool));
 }

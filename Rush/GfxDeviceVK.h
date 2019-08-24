@@ -6,6 +6,7 @@
 
 #include "Window.h"
 #include "UtilArray.h"
+#include "UtilHash.h"
 
 #include <unordered_map>
 
@@ -15,6 +16,7 @@ namespace Rush
 {
 
 struct VkPipelineShaderStageCreateInfoWaveLimitAMD;
+struct DescriptorPoolVK;
 
 union MemoryTraitsVK {
 	struct
@@ -69,7 +71,6 @@ struct TechniqueVK : GfxRefCount
 	u32 storageImageCount       = 0;
 	u32 storageBufferCount      = 0;
 	u32 typedStorageBufferCount = 0; // last N storage buffers are typed
-	u32 totalDescriptorCount    = 0;
 
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
@@ -172,6 +173,7 @@ struct DescriptorSetVK : GfxRefCount
 	GfxDescriptorSetDesc     desc;
 	VkDescriptorSetLayout    layout = VK_NULL_HANDLE;
 	VkDescriptorSet          native = VK_NULL_HANDLE;
+	DescriptorPoolVK*        pool = nullptr;
 
 	void destroy();
 };
@@ -232,13 +234,14 @@ struct DescriptorPoolVK
 
 	struct DescriptorsPerSetDesc
 	{
-		u16 uniformBuffers;
-		u16 samplers;
-		u16 sampledImages;
-		u16 storageImages;
-		u16 storageBuffers;
-		u16 storageTexelBuffers;
-		u16 accelerationStructures;
+		u16 staticUniformBuffers = 0;
+		u16 dynamicUniformBuffers = 0;
+		u16 samplers = 0;
+		u16 sampledImages = 0;
+		u16 storageImages = 0;
+		u16 storageBuffers = 0;
+		u16 storageTexelBuffers = 0;
+		u16 accelerationStructures = 0;
 	};
 
 	DescriptorPoolVK() = default;
@@ -260,6 +263,11 @@ public:
 	VkPipeline    createPipeline(const PipelineInfoVK& info);
 	VkRenderPass  createRenderPass(const GfxPassDesc& desc);
 	VkFramebuffer createFrameBuffer(const GfxPassDesc& desc, VkRenderPass renderPass);
+
+	VkDescriptorSetLayout createDescriptorSetLayout(const GfxDescriptorSetDesc& desc,
+		u32 resourceStageFlags,
+		bool useDynamicUniformBuffers);
+
 	void          createSwapChain();
 
 	void beginFrame();
@@ -276,6 +284,7 @@ public:
 	void enqueueDestroyBufferView(VkBufferView object);
 	void enqueueDestroySampler(VkSampler object);
 	void enqueueDestroyContext(GfxContext* object);
+	void enqueueDestroyDescriptorPool(DescriptorPoolVK* object);
 
 	u32 generateId();
 
@@ -380,6 +389,28 @@ public:
 		};
 	};
 
+	struct DescriptorSetLayoutKey
+	{
+		GfxDescriptorSetDesc desc;
+		u32 resourceStageFlags = 0;
+		bool useDynamicUniformBuffers = 0;
+
+		bool operator==(const DescriptorSetLayoutKey& other) const
+		{
+			return desc == other.desc
+				&& resourceStageFlags == other.resourceStageFlags
+				&& useDynamicUniformBuffers == other.useDynamicUniformBuffers;
+		}
+
+		struct Hash
+		{
+			size_t operator()(const DescriptorSetLayoutKey& k) const
+			{
+				return size_t(hashFnv1a64(&k.desc, sizeof(k.desc)));
+			}
+		};
+	};
+
 	GfxCapability m_caps;
 
 	VkDebugReportCallbackEXT         m_debugReportCallbackExt;
@@ -412,6 +443,7 @@ public:
 	std::unordered_map<PipelineKey, VkPipeline, PipelineKey::Hash>          m_pipelines;
 	std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKey::Hash>    m_renderPasses;
 	std::unordered_map<FrameBufferKey, VkFramebuffer, FrameBufferKey::Hash> m_frameBuffers;
+	std::unordered_map<DescriptorSetLayoutKey, VkDescriptorSetLayout, DescriptorSetLayoutKey::Hash> m_descriptorSetLayouts;
 
 	DynamicArray<VkPhysicalDevice>        m_physicalDevices;
 	DynamicArray<VkQueueFamilyProperties> m_queueProps;
@@ -459,13 +491,14 @@ public:
 
 	struct DestructionQueue
 	{
-		DynamicArray<VkDeviceMemory> memory;
-		DynamicArray<VkBuffer>       buffers;
-		DynamicArray<VkImage>        images;
-		DynamicArray<VkImageView>    imageViews;
-		DynamicArray<VkBufferView>   bufferViews;
-		DynamicArray<GfxContext*>    contexts;
-		DynamicArray<VkSampler>      samplers;
+		DynamicArray<VkDeviceMemory>    memory;
+		DynamicArray<VkBuffer>          buffers;
+		DynamicArray<VkImage>           images;
+		DynamicArray<VkImageView>       imageViews;
+		DynamicArray<VkBufferView>      bufferViews;
+		DynamicArray<GfxContext*>       contexts;
+		DynamicArray<VkSampler>         samplers;
+		DynamicArray<DescriptorPoolVK*> descriptorPools;
 
 		void flush(VkDevice vulkanDevice);
 	};
