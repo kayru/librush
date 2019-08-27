@@ -2678,27 +2678,19 @@ void GfxContext::applyState()
 		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
 
+	VkDescriptorSet descriptorSets[MaxDescriptorSets];
+	u32 descriptorSetMask = 0;
+
 	if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 	{
 		const u32 firstDescriptorSet = technique.bindings.useDefaultDescriptorSet ? 1 : 0;
-		u32 descriptorSetCount = 0;
 		static_assert(MaxDescriptorSets == GfxShaderBindingDesc::MaxDescriptorSets, "");
-		VkDescriptorSet descriptorSets[MaxDescriptorSets];
-		for (u32 i = firstDescriptorSet; i < MaxDescriptorSets; ++i)
+		for (u32 i = firstDescriptorSet; i < technique.descriptorSetCount; ++i)
 		{
-			if (technique.bindings.descriptorSets[i].isEmpty()) break;
-
 			RUSH_ASSERT(m_pending.descriptorSets[i].valid());
 			DescriptorSetVK& ds = g_device->m_descriptorSets[m_pending.descriptorSets[i]];
+			descriptorSetMask |= 1 << i;
 			descriptorSets[i] = ds.native;
-			descriptorSetCount++;
-		}
-
-		if (descriptorSetCount)
-		{
-			vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
-				firstDescriptorSet, descriptorSetCount, &descriptorSets[firstDescriptorSet],
-				0, nullptr);
 		}
 
 		m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
@@ -2708,96 +2700,97 @@ void GfxContext::applyState()
 	{
 		RUSH_ASSERT_MSG(technique.bindings.useDefaultDescriptorSet,
 			"Constant buffer offsets only implemented for default descriptor set");
-
-		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
-			0, 1, &m_currentDescriptorSet,
-			technique.constantBufferCount, m_pending.constantBufferOffsets);
-
+		descriptorSets[0] = m_currentDescriptorSet;
+		descriptorSetMask |= 1;
 		m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
-
-		return;
 	}
 
-	if (m_dirtyState == 0)
+	if (m_dirtyState & DirtyStateFlag_Descriptors)
 	{
-		// Early out if descriptors in the default set haven't changed
-		return;
-	}
+		// Update default descriptor set
 
-	// Update and bind default descriptor set
+		// allocate descriptor set
+		// assume the technique will be used many times and there will be a benefit from batching the allocations
+		// todo: cache descriptors by descriptor set layout, not simply by technique
 
-	// allocate descriptor set
-	// assume the technique will be used many times and there will be a benefit from batching the allocations
-	// todo: cache descriptors by descriptor set layout, not simply by technique
-
-	if (technique.descriptorSetCacheFrame != g_device->m_frameCount)
-	{
-		technique.descriptorSetCache.clear();
-		technique.descriptorSetCacheFrame = g_device->m_frameCount;
-	}
-
-	if (technique.descriptorSetCache.empty())
-	{
-		static const u32 cacheBatchSize = 16;
-
-		VkDescriptorSet       cachedDescriptorSets[cacheBatchSize];
-		VkDescriptorSetLayout setLayouts[cacheBatchSize];
-		for (u32 i = 0; i < cacheBatchSize; ++i)
+		if (technique.descriptorSetCacheFrame != g_device->m_frameCount)
 		{
-			setLayouts[i] = technique.descriptorSetLayout;
+			technique.descriptorSetCache.clear();
+			technique.descriptorSetCacheFrame = g_device->m_frameCount;
 		}
 
-		VkResult allocResult = VK_RESULT_MAX_ENUM;
-		VkDescriptorSetAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-		allocInfo.descriptorSetCount = cacheBatchSize;
-		allocInfo.pSetLayouts = setLayouts;
-		allocInfo.descriptorPool = g_device->m_currentFrame->currentDescriptorPool;
-		allocResult = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
-		if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY)
+		if (technique.descriptorSetCache.empty())
 		{
-			extendDescriptorPool(g_device->m_currentFrame);
+			static const u32 cacheBatchSize = 16;
+
+			VkDescriptorSet       cachedDescriptorSets[cacheBatchSize];
+			VkDescriptorSetLayout setLayouts[cacheBatchSize];
+			for (u32 i = 0; i < cacheBatchSize; ++i)
+			{
+				setLayouts[i] = technique.descriptorSetLayout;
+			}
+
+			VkResult allocResult = VK_RESULT_MAX_ENUM;
+			VkDescriptorSetAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+			allocInfo.descriptorSetCount = cacheBatchSize;
+			allocInfo.pSetLayouts = setLayouts;
 			allocInfo.descriptorPool = g_device->m_currentFrame->currentDescriptorPool;
 			allocResult = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
+			if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY)
+			{
+				extendDescriptorPool(g_device->m_currentFrame);
+				allocInfo.descriptorPool = g_device->m_currentFrame->currentDescriptorPool;
+				allocResult = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
+			}
+
+			RUSH_ASSERT(allocResult == VK_SUCCESS);
+
+			for (VkDescriptorSet it : cachedDescriptorSets)
+			{
+				technique.descriptorSetCache.push_back(it);
+			}
 		}
 
-		RUSH_ASSERT(allocResult == VK_SUCCESS);
+		m_currentDescriptorSet = technique.descriptorSetCache.back();
+		technique.descriptorSetCache.pop_back();
 
-		for (VkDescriptorSet it : cachedDescriptorSets)
+		for (u32 i = 0; i < technique.sampledImageCount; ++i)
 		{
-			technique.descriptorSetCache.push_back(it);
+			RUSH_ASSERT(m_pending.textures[i].valid());
+			TextureVK& texture = g_device->m_textures[m_pending.textures[i]];
+			VkImageSubresourceRange subresourceRange = { texture.aspectFlags, 0, texture.desc.mips, 0, 1 }; // TODO: track subresource states
+			texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
 		}
+
+		for (u32 i = 0; i < technique.storageImageCount; ++i)
+		{
+			RUSH_ASSERT(m_pending.storageImages[i].valid());
+			TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
+			texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
+		}
+
+		updateDescriptorSet(m_currentDescriptorSet, technique.bindings,
+			true, // use dynamic uniform buffers
+			true, // allow transient buffers
+			m_pending.constantBuffers,
+			m_pending.samplers,
+			m_pending.textures,
+			m_pending.storageImages,
+			m_pending.storageBuffers);
+
+		descriptorSets[0] = m_currentDescriptorSet;
+		descriptorSetMask |= 1;
 	}
 
-	m_currentDescriptorSet = technique.descriptorSetCache.back();
-	technique.descriptorSetCache.pop_back();
-
-	for (u32 i = 0; i < technique.sampledImageCount; ++i)
+	if (descriptorSetMask)
 	{
-		RUSH_ASSERT(m_pending.textures[i].valid());
-		TextureVK& texture = g_device->m_textures[m_pending.textures[i]];
-		VkImageSubresourceRange subresourceRange = { texture.aspectFlags, 0, texture.desc.mips, 0, 1 }; // TODO: track subresource states
-		texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
+		u32 first = bitScanForward(descriptorSetMask);
+		u32 count = bitCount(descriptorSetMask);
+
+		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
+			first, count, &descriptorSets[first],
+			technique.constantBufferCount, m_pending.constantBufferOffsets);
 	}
-
-	for (u32 i = 0; i < technique.storageImageCount; ++i)
-	{
-		RUSH_ASSERT(m_pending.storageImages[i].valid());
-		TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
-		texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
-	}
-
-	updateDescriptorSet(m_currentDescriptorSet, technique.bindings, 
-		true, // use dynamic uniform buffers
-		true, // allow transient buffers
-		m_pending.constantBuffers,
-		m_pending.samplers,
-		m_pending.textures,
-		m_pending.storageImages,
-		m_pending.storageBuffers);
-
-	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
-		0, 1, &m_currentDescriptorSet,
-		technique.constantBufferCount, m_pending.constantBufferOffsets);
 
 	m_dirtyState = 0;
 }
@@ -3703,6 +3696,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		VkDescriptorSetLayout layout = g_device->createDescriptorSetLayout(desc.bindings.descriptorSets[i], setStageFlags, false);
 		setLayouts.pushBack(layout);
 	}
+
+	res.descriptorSetCount = u32(setLayouts.size());
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
 	pipelineLayoutCreateInfo.setLayoutCount             = u32(setLayouts.currentSize);

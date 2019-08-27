@@ -72,6 +72,8 @@ struct TechniqueVK : GfxRefCount
 	u32 storageBufferCount      = 0;
 	u32 typedStorageBufferCount = 0; // last N storage buffers are typed
 
+	u32 descriptorSetCount = 0;
+
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
 
