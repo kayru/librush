@@ -103,7 +103,6 @@ int Platform_Main(const AppConfig& cfg)
 	
 	g_mainWindow = window;
 	
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 	GfxConfig gfxConfig;
 	if (cfg.gfxConfig)
 	{
@@ -115,7 +114,6 @@ int Platform_Main(const AppConfig& cfg)
 	}
 	g_mainGfxDevice  = Gfx_CreateDevice(window, gfxConfig);
 	g_mainGfxContext = Gfx_AcquireContext();
-#endif
 	
 	if (cfg.onStartup)
 	{
@@ -170,17 +168,13 @@ int Platform_Main(const AppConfig& cfg)
 					[NSApp updateWindows];
 				}
 
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 				Gfx_BeginFrame();
-#endif
 				if (cfg.onUpdate)
 				{
 					cfg.onUpdate(cfg.userData);
 				}
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 				Gfx_EndFrame();
 				Gfx_Present();
-#endif
 			}
 		}
 	}
@@ -190,10 +184,8 @@ int Platform_Main(const AppConfig& cfg)
 		cfg.onShutdown(cfg.userData);
 	}
 	
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 	Gfx_Release(g_mainGfxContext);
 	Gfx_Release(g_mainGfxDevice);
-#endif
 	
 	window->release();
 	
