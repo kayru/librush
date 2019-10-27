@@ -52,7 +52,6 @@ struct BitmapFontData
 	u32               height;
 };
 
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 class BitmapFontRenderer
 {
 public:
@@ -82,7 +81,6 @@ private:
 	TexturedQuad2D                   m_chars[256];
 	float                            m_scale;
 };
-#endif
 
 // Draw characters into a 32bpp RGBA bitmap.
 // Only code-page 437 characters ' ' (32) to '~' (126) are supported.

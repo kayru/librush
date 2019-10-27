@@ -63,7 +63,6 @@ int Platform_Main(const AppConfig& cfg)
 
 	g_mainWindow = window;
 
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 	GfxConfig gfxConfig;
 	if (cfg.gfxConfig)
 	{
@@ -75,7 +74,6 @@ int Platform_Main(const AppConfig& cfg)
 	}
 	g_mainGfxDevice  = Gfx_CreateDevice(window, gfxConfig);
 	g_mainGfxContext = Gfx_AcquireContext();
-#endif
 
 	if (cfg.onStartup)
 	{
@@ -84,7 +82,6 @@ int Platform_Main(const AppConfig& cfg)
 
 	while (window->isClosed() == false)
 	{
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 		Gfx_BeginFrame();
 
 		if (cfg.onUpdate)
@@ -94,7 +91,6 @@ int Platform_Main(const AppConfig& cfg)
 
 		Gfx_EndFrame();
 		Gfx_Present();
-#endif // RUSH_RENDER_API!=RUSH_RENDER_API_NULL
 
 		MSG msg;
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -109,10 +105,8 @@ int Platform_Main(const AppConfig& cfg)
 		cfg.onShutdown(cfg.userData);
 	}
 
-#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 	Gfx_Release(g_mainGfxContext);
 	Gfx_Release(g_mainGfxDevice);
-#endif
 
 	window->release();
 

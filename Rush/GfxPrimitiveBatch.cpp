@@ -69,10 +69,12 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 		m_pixelShaderTextured =
 		    Gfx_CreatePixelShader(GfxShaderSource(GfxShaderSourceType_MSL, MSL_EmbeddedShaders, 0, "psMainTextured"));
 	}
+#if RUSH_RENDER_API != RUSH_RENDER_API_NULL
 	else
 	{
 		RUSH_LOG_FATAL("Rendering back-end does not support SPIR-V, DXBC or MSL shaders.");
 	}
+#endif // RUSH_RENDER_API != RUSH_RENDER_API_NULL
 
 	BatchVertexFormat fmtDesc;
 

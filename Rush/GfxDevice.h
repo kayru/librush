@@ -390,4 +390,99 @@ inline void Gfx_Retain(GfxMeshShader h) {};
 inline void Gfx_Release(GfxMeshShader h) {};
 inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
 #endif
+
+// Null render API implementation
+
+#if RUSH_RENDER_API == RUSH_RENDER_API_NULL
+inline GfxDevice* Gfx_CreateDevice(Window* window, const GfxConfig& cfg) { return nullptr; }
+inline void Gfx_Release(GfxDevice* dev) {}
+inline void Gfx_BeginFrame() {}
+inline void Gfx_EndFrame() {}
+inline void Gfx_Present() {}
+inline void Gfx_SetPresentInterval(u32 interval) {}
+inline void Gfx_Finish() {}
+inline const GfxCapability& Gfx_GetCapability() { static const GfxCapability cap; return cap; }
+inline const GfxStats& Gfx_Stats() { static const GfxStats stats; return stats; }
+inline void Gfx_ResetStats() {}
+inline GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& fmt) { return {}; }
+inline GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code) { return {}; }
+inline GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code) { return {}; }
+inline GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code) { return {}; }
+inline GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code) { return {}; }
+inline GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc) { return {}; }
+inline GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data, u32 count, const void* texels) { return {}; }
+inline GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc) { return {}; }
+inline GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc) { return {}; }
+inline GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc) { return {}; }
+inline GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc) { return {}; }
+inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data) { return {}; }
+inline void Gfx_Retain(GfxDevice* dev) {}
+inline void Gfx_Retain(GfxContext* rc) {}
+inline void Gfx_Retain(GfxVertexFormat h) {}
+inline void Gfx_Retain(GfxVertexShader h) {}
+inline void Gfx_Retain(GfxPixelShader h) {}
+inline void Gfx_Retain(GfxGeometryShader h) {}
+inline void Gfx_Retain(GfxComputeShader h) {}
+inline void Gfx_Retain(GfxTechnique h) {}
+inline void Gfx_Retain(GfxTexture h) {}
+inline void Gfx_Retain(GfxBlendState h) {}
+inline void Gfx_Retain(GfxSampler h) {}
+inline void Gfx_Retain(GfxDepthStencilState h) {}
+inline void Gfx_Retain(GfxRasterizerState h) {}
+inline void Gfx_Retain(GfxBuffer h) {}
+inline void Gfx_Release(GfxVertexFormat h) {}
+inline void Gfx_Release(GfxVertexShader h) {}
+inline void Gfx_Release(GfxPixelShader h) {}
+inline void Gfx_Release(GfxGeometryShader h) {}
+inline void Gfx_Release(GfxComputeShader h) {}
+inline void Gfx_Release(GfxTechnique h) {}
+inline void Gfx_Release(GfxTexture h) {}
+inline void Gfx_Release(GfxBlendState h) {}
+inline void Gfx_Release(GfxSampler h) {}
+inline void Gfx_Release(GfxDepthStencilState h) {}
+inline void Gfx_Release(GfxRasterizerState h) {}
+inline void Gfx_Release(GfxBuffer h) {}
+inline const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h) { static const GfxTextureDesc desc; return desc; }
+inline GfxTexture Gfx_GetBackBufferColorTexture() { return {}; }
+inline GfxTexture Gfx_GetBackBufferDepthTexture() { return {}; }
+inline GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg h, u32 offset, u32 size) { return {}; }
+inline void Gfx_UnmapBuffer(GfxMappedBuffer& lock) {}
+inline void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size) {}
+inline void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size) { return {}; }
+inline void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h) {}
+inline GfxContext* Gfx_AcquireContext() { return {}; }
+inline void Gfx_Release(GfxContext* rc) {}
+inline void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc) {}
+inline void Gfx_EndPass(GfxContext* rc) {}
+inline void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags, float depth, u32 stencil) {}
+inline void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport) {}
+inline void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect) {}
+inline void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h) {}
+inline void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type) {}
+inline void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h) {}
+inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) {}
+inline void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h) {}
+inline void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h) {}
+inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h) {}
+inline void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h) {}
+inline void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState) {}
+inline void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nextState) {}
+inline void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState) {}
+inline void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset) {}
+inline void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) {}
+inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ) {}
+inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize) {}
+inline void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount) {}
+inline void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount) {}
+inline void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount, const void* pushConstants, u32 pushConstantsSize) {}
+inline void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount, u32 instanceCount, u32 instanceOffset) {}
+inline void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount) {}
+inline void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize) {}
+inline void Gfx_PushMarker(GfxContext* rc, const char* marker) {}
+inline void Gfx_PopMarker(GfxContext* rc) {}
+inline void Gfx_BeginTimer(GfxContext* rc, u32 timestampId) {}
+inline void Gfx_EndTimer(GfxContext* rc, u32 timestampId) {}
+inline void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData) {};
+#endif // RUSH_RENDER_API == RUSH_RENDER_API_NULL
+
 }
