@@ -465,7 +465,7 @@ enum class GfxStageFlags : u8
 	Compute  = 1 << (u32)GfxStage::Compute,
 
 	VertexPixel = Vertex | Pixel,
-	All = GfxStageFlags(~u8(0)),
+	All         = 0xFF,
 };
 
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxStageFlags, u8);
