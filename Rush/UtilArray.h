@@ -35,7 +35,7 @@ public:
 		m_buffer.m_size = other.m_buffer.m_size;
 	}
 
-	DynamicArray(DynamicArray&& other)
+	DynamicArray(DynamicArray&& other) noexcept
 		: DynamicArray()
 	{
 		if (&other != this)

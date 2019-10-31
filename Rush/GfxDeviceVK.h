@@ -248,7 +248,7 @@ struct DescriptorPoolVK
 
 	DescriptorPoolVK() = default;
 	DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSetDesc& desc, u32 maxSets);
-	DescriptorPoolVK(DescriptorPoolVK&& other);
+	DescriptorPoolVK(DescriptorPoolVK&& other) noexcept;
 	~DescriptorPoolVK();
 	void reset();
 

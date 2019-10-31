@@ -298,8 +298,6 @@ Mat4 Mat4::lookAt(const Vec3& position, const Vec3& target, const Vec3& up)
 	return res;
 }
 
-Frustum::Frustum() {}
-
 Frustum::Frustum(const Mat4& viewProj)
 {
 	m_planes[(size_t)FrustumPlane::Left].n.x = viewProj(0, 3) + viewProj(0, 0);

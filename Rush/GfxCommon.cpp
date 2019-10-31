@@ -172,10 +172,6 @@ u16 dataTypeSize(GfxVertexFormatDesc::DataType type)
 
 GfxVertexFormatDesc::GfxVertexFormatDesc() : m_hasPosition(false), m_hasNormal(false), m_hasColor(false)
 {
-	for (u32 i = 0; i < MaxStreams; ++i)
-	{
-		m_streamOffset[i] = 0;
-	}
 	for (u32 i = 0; i < MaxElements; ++i)
 	{
 		m_elements[i] = Element(0, DataType::Unused, Semantic::Unused, 0);

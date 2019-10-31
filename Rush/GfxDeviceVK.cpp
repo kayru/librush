@@ -971,7 +971,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    (subgroupProperties.supportedOperations & requiredSubgroupOperations) == requiredSubgroupOperations &&
 	    !!(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
 
-	m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations;
+	// m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations; // implementation WIP
 
 	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
@@ -5335,7 +5335,7 @@ DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSe
 	V(vkCreateDescriptorPool(vulkanDevice, &descriptorPoolCreateInfo, nullptr, &m_descriptorPool));
 }
 
-DescriptorPoolVK::DescriptorPoolVK(DescriptorPoolVK&& other)
+DescriptorPoolVK::DescriptorPoolVK(DescriptorPoolVK&& other) noexcept
 	: m_vulkanDevice(other.m_vulkanDevice)
 	, m_descriptorPool(other.m_descriptorPool)
 {

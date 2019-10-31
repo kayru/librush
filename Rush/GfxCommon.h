@@ -140,8 +140,8 @@ public:
 
 	GfxOwn() : m_handle(InvalidResourceHandle()) {}
 	GfxOwn(InvalidResourceHandle) : m_handle(InvalidResourceHandle()) {}
-	GfxOwn(GfxOwn&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
-	GfxOwn& operator=(GfxOwn<T>&& rhs)
+	GfxOwn(GfxOwn&& rhs) noexcept : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
+	GfxOwn& operator=(GfxOwn<T>&& rhs) noexcept
 	{
 		if (m_handle != rhs.m_handle)
 		{
@@ -199,7 +199,7 @@ public:
 		}
 	}
 
-	GfxRef(GfxRef&& rhs) : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
+	GfxRef(GfxRef&& rhs) noexcept : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
 	~GfxRef() { Gfx_Release(m_handle); }
 
 	GfxRef& operator=(GfxRef<T>&& rhs)
@@ -770,7 +770,7 @@ public:
 
 	struct Element
 	{
-		Element() {}
+		Element() = default;
 		Element(u16 _stream, DataType _type, Semantic _semantic, u8 _index);
 
 		u16      stream;
@@ -813,7 +813,7 @@ public:
 private:
 	StaticArray<Element, MaxElements> m_elements;
 
-	u16 m_streamOffset[MaxStreams];
+	u16 m_streamOffset[MaxStreams] = {};
 
 	bool m_hasPosition;
 	bool m_hasNormal;

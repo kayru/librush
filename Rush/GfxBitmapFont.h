@@ -48,8 +48,8 @@ struct BitmapFontData
 {
 	BitmapFontDesc    font;
 	DynamicArray<u32> pixels;
-	u32               width;
-	u32               height;
+	u32               width = 0;
+	u32               height = 0;
 };
 
 class BitmapFontRenderer
