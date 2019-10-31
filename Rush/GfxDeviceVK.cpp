@@ -2198,7 +2198,10 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image, VkImageLayout nextLayou
 		barrierDesc.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		break;
-	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: barrierDesc.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT; break;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		barrierDesc.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
+		dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		break;
 	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 		barrierDesc.dstAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
 		dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -2403,7 +2406,7 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 	VkImageLayout dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
 	VkImageSubresourceRange srcRange = { srcTexture.aspectFlags, 0, srcTexture.desc.mips, 0, 1 };
-	VkImageSubresourceRange dstRange = { dstTexture.desc.format, 0, dstTexture.desc.mips, 0, 1 };
+	VkImageSubresourceRange dstRange = { dstTexture.aspectFlags, 0, dstTexture.desc.mips, 0, 1 };
 
 	srcTexture.currentLayout = addImageBarrier(srcTexture.image, srcImageLayout, srcTexture.currentLayout, &srcRange);
 	dstTexture.currentLayout = addImageBarrier(dstTexture.image, dstImageLayout, dstTexture.currentLayout, &dstRange);
