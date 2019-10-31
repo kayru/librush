@@ -9,7 +9,7 @@ struct Vec2
 {
 	float x, y;
 
-	Vec2(){};
+	Vec2() = default;
 	Vec2(const float _x, const float _y) : x(_x), y(_y){};
 	Vec2(const float s) : x(s), y(s){};
 	Vec2(const float* arr) : x(arr[0]), y(arr[1]){};
@@ -124,7 +124,7 @@ struct Vec3
 {
 	float x, y, z;
 
-	Vec3(){};
+	Vec3() = default;
 
 	Vec3(const float _x, const float _y, const float _z) : x(_x), y(_y), z(_z){};
 	Vec3(const float s) : x(s), y(s), z(s){};
@@ -253,7 +253,7 @@ struct Vec4
 {
 	float x, y, z, w;
 
-	Vec4(){};
+	Vec4() = default;
 
 	Vec4(const float _x, const float _y, const float _z, const float _w) : x(_x), y(_y), z(_z), w(_w){};
 	Vec4(const float s) : x(s), y(s), z(s), w(s){};
@@ -484,7 +484,7 @@ struct Mat4
 {
 	Vec4 rows[4];
 
-	Mat4(){};
+	Mat4() = default;
 
 	Mat4(float m00, float m10, float m20, float m30, float m01, float m11, float m21, float m31, float m02, float m12,
 	    float m22, float m32, float m03, float m13, float m23, float m33);
@@ -589,7 +589,7 @@ public:
 		ClampType_MaxZ = 1 << 5
 	};
 
-	BoxT() {}
+	BoxT() = default;
 
 	BoxT(const VECTOR_TYPE& min, const VECTOR_TYPE& max) : m_min(min), m_max(max) {}
 
@@ -728,7 +728,7 @@ public:
 class Line2
 {
 public:
-	Line2() {}
+	Line2() = default;
 
 	Line2(const Vec2& a, const Vec2& b) : start(a), end(b) {}
 
@@ -758,7 +758,7 @@ public:
 class Line3
 {
 public:
-	Line3() {}
+	Line3() = default;
 
 	Line3(const Vec3& a, const Vec3& b) : start(a), end(b) {}
 
@@ -774,7 +774,7 @@ struct Plane
 	Vec3  n;
 	float d;
 
-	Plane() {}
+	Plane() = default;
 	Plane(const Vec3& _n, float _d) : n(_n), d(_d) {}
 	Plane(float _nx, float _ny, float _nz, float _d) : n(_nx, _ny, _nz), d(_d) {}
 
@@ -812,7 +812,7 @@ enum class FrustumPlane
 class Frustum
 {
 public:
-	Frustum();
+	Frustum() = default;
 	Frustum(const Mat4& viewproj);
 	~Frustum(){};
 
@@ -863,7 +863,7 @@ class Triangle
 public:
 	Vec3 a, b, c;
 
-	Triangle() {}
+	Triangle() = default;
 	Triangle(const Vec3& _a, const Vec3& _b, const Vec3& _c) : a(_a), b(_b), c(_c) {}
 
 	Vec3         calculateNormal() const { return calculateNormal(a, b, c); }

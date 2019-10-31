@@ -5169,7 +5169,7 @@ DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSe
 	V(vkCreateDescriptorPool(vulkanDevice, &descriptorPoolCreateInfo, nullptr, &m_descriptorPool));
 }
 
-DescriptorPoolVK::DescriptorPoolVK(DescriptorPoolVK&& other)
+DescriptorPoolVK::DescriptorPoolVK(DescriptorPoolVK&& other) noexcept
 	: m_vulkanDevice(other.m_vulkanDevice)
 	, m_descriptorPool(other.m_descriptorPool)
 {

@@ -22,7 +22,7 @@ public:
 		copyFrom(data, data ? strlen(data) : 0);
 	}
 
-	String(String&& other)
+	String(String&& other) noexcept
 	{
 		moveFrom((String&&)other);
 	}
@@ -39,7 +39,7 @@ public:
 		return *this;
 	}
 
-	String& operator=(String&& other)
+	String& operator=(String&& other) noexcept
 	{
 		moveFrom((String&&)other);
 		return *this;

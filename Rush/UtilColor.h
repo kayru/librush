@@ -12,7 +12,7 @@ struct ColorRGBA
 {
 	float r, g, b, a;
 
-	ColorRGBA() {}
+	ColorRGBA() = default;
 
 	ColorRGBA(float _r, float _g, float _b, float _a = 1.0f) : r(_r), g(_g), b(_b), a(_a) {}
 
@@ -46,7 +46,7 @@ struct ColorRGBA8
 {
 	u8 r, g, b, a;
 
-	ColorRGBA8() {}
+	ColorRGBA8() = default;
 
 	explicit ColorRGBA8(u32 col) { *this = *reinterpret_cast<ColorRGBA8*>(&col); }
 
