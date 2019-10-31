@@ -2787,12 +2787,12 @@ void GfxContext::applyState()
 
 	if (descriptorSetMask)
 	{
-		u32 first = bitScanForward(descriptorSetMask);
-		u32 count = bitCount(descriptorSetMask);
+		u32 first              = bitScanForward(descriptorSetMask);
+		u32 count              = bitCount(descriptorSetMask);
+		u32 dynamicOffsetCount = first == 0 ? technique.constantBufferCount : 0;
 
-		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout,
-			first, count, &descriptorSets[first],
-			technique.constantBufferCount, m_pending.constantBufferOffsets);
+		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout, first, count,
+		    &descriptorSets[first], dynamicOffsetCount, m_pending.constantBufferOffsets);
 	}
 
 	m_dirtyState = 0;
