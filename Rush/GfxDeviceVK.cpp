@@ -4168,7 +4168,7 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 	samplerCreateInfo.addressModeU        = convertSamplerAddressMode(desc.wrapU);
 	samplerCreateInfo.addressModeV        = convertSamplerAddressMode(desc.wrapV);
 	samplerCreateInfo.addressModeW        = convertSamplerAddressMode(desc.wrapW);
-	samplerCreateInfo.mipLodBias          = 0.0f;
+	samplerCreateInfo.mipLodBias          = desc.mipLodBias;
 	samplerCreateInfo.anisotropyEnable    = desc.anisotropy > 1.0f;
 	samplerCreateInfo.maxAnisotropy = min(desc.anisotropy, g_device->m_physicalDeviceProps.limits.maxSamplerAnisotropy);
 	samplerCreateInfo.compareOp     = convertCompareFunc(desc.compareFunc);

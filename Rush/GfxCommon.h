@@ -701,7 +701,8 @@ struct GfxSamplerDesc
 	GfxCompareFunc compareFunc = GfxCompareFunc::Never;
 	bool           compareEnable = false;
 
-	float anisotropy = 1.0;
+	float anisotropy = 1.0f;
+	float mipLodBias = 0.0f;
 
 	// Helper functions
 
