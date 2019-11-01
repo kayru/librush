@@ -5,6 +5,30 @@ project(Rush VERSION 0.1.0.0)
 
 set(RUSH_RENDER_API "NULL" CACHE STRING "Select renderer type")
 
+option(RUSH_CLANG_TIDY "Run clang-tidy static analysis" OFF)
+
+if (RUSH_CLANG_TIDY)
+	set(RUSH_CLANG_TIDY_CHECKS
+		*
+		-*avoid-c-arrays
+		-*braces-around-statements
+		-*deprecated-headers
+		-*magic-numbers
+		-*uppercase-literal-suffix
+		-*use-auto
+		-cppcoreguidelines*
+		-fuchsia*
+		-google-readability-casting
+		-google-readability-todo
+		-hicpp*
+		-misc-non-private-member-variables-in-classes
+		-readability-implicit-bool-conversion
+		hicpp-member-init
+	)
+	string(REPLACE ";" "," RUSH_CLANG_TIDY_CHECKS "${RUSH_CLANG_TIDY_CHECKS}")
+	set(CMAKE_CXX_CLANG_TIDY clang-tidy; -checks=${RUSH_CLANG_TIDY_CHECKS})
+endif()
+
 # NOTE: only Vulkan renderer is currently supported
 set_property(CACHE RUSH_RENDER_API PROPERTY STRINGS
 	NULL
