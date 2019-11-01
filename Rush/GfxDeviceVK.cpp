@@ -3687,12 +3687,14 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	RUSH_ASSERT_MSG(desc.bindings.useDefaultDescriptorSet,
 		"Pipelines without default descriptor set are not implemented");
 
-	StaticArray<VkDescriptorSetLayout, desc.bindings.MaxDescriptorSets> setLayouts;
+	static_assert(GfxShaderBindingDesc::MaxDescriptorSets == GfxContext::MaxDescriptorSets, "");
+
+	StaticArray<VkDescriptorSetLayout, GfxContext::MaxDescriptorSets> setLayouts;
 
 	res.descriptorSetLayout = g_device->createDescriptorSetLayout(desc.bindings, resourceStageFlags, true);
 	setLayouts.pushBack(res.descriptorSetLayout);
 
-	for (u32 i = 1; i < desc.bindings.MaxDescriptorSets; ++i)
+	for (u32 i = 1; i < GfxContext::MaxDescriptorSets; ++i)
 	{
 		if (desc.bindings.descriptorSets[i].isEmpty()) break;
 		u32 setStageFlags = convertStageFlags(desc.bindings.descriptorSets[i].stageFlags);

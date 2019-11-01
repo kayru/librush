@@ -605,7 +605,7 @@ public:
 		MaxVertexStreams   = PipelineInfoVK::MaxVertexStreams,
 		MaxConstantBuffers = 4,
 		MaxStorageBuffers  = 6,
-		MaxDescriptorSets  = 4,
+		MaxDescriptorSets  = GfxShaderBindingDesc::MaxDescriptorSets,
 	};
 
 	GfxContext(GfxContextType contextType = GfxContextType::Graphics);
