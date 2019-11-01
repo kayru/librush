@@ -46,23 +46,21 @@
 	inline bool operator!(T a) { return !static_cast<S>(a); }
 
 #if defined(_MSC_VER)
-#   define RUSH_FORCEINLINE __forceinline
-#   define RUSH_NOINLINE __declspec(noinline)
+#   define RUSH_ASSUME(x) __assume(x)
 #   define RUSH_BREAK {__debugbreak();}
-#   define RUSH_FUNCTION __func__
-#   define RUSH_DEPRECATED __declspec(deprecated)
-#   define RUSH_DEPRECATED_MSG(text) __declspec(deprecated(text))
 #   define RUSH_DISABLE_OPTIMIZATION __pragma(optimize("", off))
 #   define RUSH_ENABLE_OPTIMIZATION __pragma(optimize("", on))
-#elif defined(__GNUC__)
-#   define RUSH_FORCEINLINE __attribute__((always_inline)) inline
-#   define RUSH_NOINLINE __attribute__((noinline))
-#   define RUSH_BREAK {__builtin_trap();}
+#   define RUSH_FORCEINLINE __forceinline
 #   define RUSH_FUNCTION __func__
-#   define RUSH_DEPRECATED
-#   define RUSH_DEPRECATED_MSG(text)
-#   define RUSH_DISABLE_OPTIMIZATION
-#   define RUSH_ENABLE_OPTIMIZATION
+#   define RUSH_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__)
+#   define RUSH_ASSUME(x) __builtin_assume(x)
+#   define RUSH_BREAK {__builtin_trap();}
+#   define RUSH_DISABLE_OPTIMIZATION _Pragma("clang optimize off")
+#   define RUSH_ENABLE_OPTIMIZATION _Pragma("clang optimize on")
+#   define RUSH_FORCEINLINE __attribute__((always_inline)) inline
+#   define RUSH_FUNCTION __func__
+#   define RUSH_NOINLINE __attribute__((noinline))
 #endif
 
 // Common types
