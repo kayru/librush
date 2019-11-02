@@ -192,6 +192,11 @@ GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDe
 GfxOwn<GfxRasterizerState>   Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc);
 GfxOwn<GfxBuffer>            Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = nullptr);
 
+GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc);
+u32               Gfx_GetAccelerationStructureSize(GfxBufferArg buffer);
+u64               Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer);
+void              Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer);
+
 void Gfx_Retain(GfxDevice* dev);
 void Gfx_Retain(GfxContext* rc);
 void Gfx_Retain(GfxVertexFormat h);
@@ -377,19 +382,26 @@ inline void Gfx_AddImageBarrier(
     GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
 {
 }
-#endif
+#endif // RUSH_RENDER_SUPPORT_IMAGE_BARRIERS
 
 #ifndef RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 inline GfxContext* Gfx_BeginAsyncCompute(GfxContext*) { return nullptr; }
 inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*){};
-#endif
+#endif //RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 
 #ifndef RUSH_RENDER_SUPPORT_MESH_SHADER
 inline GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code) { return InvalidResourceHandle(); };
 inline void Gfx_Retain(GfxMeshShader h) {};
 inline void Gfx_Release(GfxMeshShader h) {};
 inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
-#endif
+#endif // RUSH_RENDER_SUPPORT_MESH_SHADER
+
+#ifndef RUSH_RENDER_SUPPORT_RAYTRACING
+inline GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc) { return InvalidResourceHandle(); }
+inline u32  Gfx_GetAccelerationStructureSize(GfxBufferArg buffer) { return 0; }
+inline u64  Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer) { return 0; }
+inline void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer) {}
+#endif // RUSH_RENDER_SUPPORT_RAYTRACING
 
 // Null render API implementation
 
