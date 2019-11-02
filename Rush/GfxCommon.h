@@ -81,8 +81,6 @@ class Window;
 class GfxDevice;
 class GfxContext;
 
-template <typename T> class GfxOwn;
-
 struct Vec2;
 struct Vec3;
 struct Vec4;
@@ -103,22 +101,26 @@ struct GfxDepthStencilDesc;
 struct GfxRasterizerDesc;
 struct GfxDescriptorSetDesc;
 struct GfxRayTracingPipelineDesc;
+struct GfxAccelerationStructureDesc;
 
-typedef ResourceHandle<GfxVertexFormatDesc>       GfxVertexFormat;
-typedef ResourceHandle<GfxVertexShaderDesc>       GfxVertexShader;
-typedef ResourceHandle<GfxPixelShaderDesc>        GfxPixelShader;
-typedef ResourceHandle<GfxGeometryShaderDesc>     GfxGeometryShader;
-typedef ResourceHandle<GfxComputeShaderDesc>      GfxComputeShader;
-typedef ResourceHandle<GfxMeshShaderDesc>         GfxMeshShader;
-typedef ResourceHandle<GfxRayTracingPipelineDesc> GfxRayTracingPipeline;
-typedef ResourceHandle<GfxTextureDesc>            GfxTexture;
-typedef ResourceHandle<GfxBufferDesc>             GfxBuffer;
-typedef ResourceHandle<GfxSamplerDesc>            GfxSampler;
-typedef ResourceHandle<GfxBlendStateDesc>         GfxBlendState;
-typedef ResourceHandle<GfxDepthStencilDesc>       GfxDepthStencilState;
-typedef ResourceHandle<GfxRasterizerDesc>         GfxRasterizerState;
-typedef ResourceHandle<GfxTechniqueDesc>          GfxTechnique;
-typedef ResourceHandle<GfxDescriptorSetDesc>      GfxDescriptorSet;
+typedef ResourceHandle<GfxVertexFormatDesc>          GfxVertexFormat;
+typedef ResourceHandle<GfxVertexShaderDesc>          GfxVertexShader;
+typedef ResourceHandle<GfxPixelShaderDesc>           GfxPixelShader;
+typedef ResourceHandle<GfxGeometryShaderDesc>        GfxGeometryShader;
+typedef ResourceHandle<GfxComputeShaderDesc>         GfxComputeShader;
+typedef ResourceHandle<GfxMeshShaderDesc>            GfxMeshShader;
+typedef ResourceHandle<GfxRayTracingPipelineDesc>    GfxRayTracingPipeline;
+typedef ResourceHandle<GfxAccelerationStructureDesc> GfxAccelerationStructure;
+typedef ResourceHandle<GfxTextureDesc>               GfxTexture;
+typedef ResourceHandle<GfxBufferDesc>                GfxBuffer;
+typedef ResourceHandle<GfxSamplerDesc>               GfxSampler;
+typedef ResourceHandle<GfxBlendStateDesc>            GfxBlendState;
+typedef ResourceHandle<GfxDepthStencilDesc>          GfxDepthStencilState;
+typedef ResourceHandle<GfxRasterizerDesc>            GfxRasterizerState;
+typedef ResourceHandle<GfxTechniqueDesc>             GfxTechnique;
+typedef ResourceHandle<GfxDescriptorSetDesc>         GfxDescriptorSet;
+
+u32 Gfx_GenerateUniqueId();
 
 struct GfxRefCount
 {
@@ -129,6 +131,20 @@ struct GfxRefCount
 		return m_refs--;
 	}
 	u32 m_refs = 0;
+};
+
+struct GfxResourceBase : GfxRefCount
+{
+	GfxResourceBase() = default;
+	GfxResourceBase(GfxResourceBase&&) noexcept = default;
+	GfxResourceBase& operator = (GfxResourceBase&&) = default;
+	GfxResourceBase(const GfxResourceBase&) = delete;
+	~GfxResourceBase() = default;
+
+	u32 getId() const { return m_id; }
+
+private:
+	u32 m_id = Gfx_GenerateUniqueId();
 };
 
 template <typename T> class GfxOwn
@@ -257,20 +273,22 @@ private:
 	T m_handle;
 };
 
-typedef GfxArg<GfxVertexFormat>      GfxVertexFormatArg;
-typedef GfxArg<GfxVertexShader>      GfxVertexShaderArg;
-typedef GfxArg<GfxPixelShader>       GfxPixelShaderArg;
-typedef GfxArg<GfxGeometryShader>    GfxGeometryShaderArg;
-typedef GfxArg<GfxComputeShader>     GfxComputeShaderArg;
-typedef GfxArg<GfxMeshShader>        GfxMeshShaderArg;
-typedef GfxArg<GfxTexture>           GfxTextureArg;
-typedef GfxArg<GfxBuffer>            GfxBufferArg;
-typedef GfxArg<GfxSampler>           GfxSamplerArg;
-typedef GfxArg<GfxBlendState>        GfxBlendStateArg;
-typedef GfxArg<GfxDepthStencilState> GfxDepthStencilStateArg;
-typedef GfxArg<GfxRasterizerState>   GfxRasterizerStateArg;
-typedef GfxArg<GfxTechnique>         GfxTechniqueArg;
-typedef GfxArg<GfxDescriptorSet>     GfxDescriptorSetArg;
+typedef GfxArg<GfxVertexFormat>          GfxVertexFormatArg;
+typedef GfxArg<GfxVertexShader>          GfxVertexShaderArg;
+typedef GfxArg<GfxPixelShader>           GfxPixelShaderArg;
+typedef GfxArg<GfxGeometryShader>        GfxGeometryShaderArg;
+typedef GfxArg<GfxComputeShader>         GfxComputeShaderArg;
+typedef GfxArg<GfxMeshShader>            GfxMeshShaderArg;
+typedef GfxArg<GfxTexture>               GfxTextureArg;
+typedef GfxArg<GfxBuffer>                GfxBufferArg;
+typedef GfxArg<GfxSampler>               GfxSamplerArg;
+typedef GfxArg<GfxBlendState>            GfxBlendStateArg;
+typedef GfxArg<GfxDepthStencilState>     GfxDepthStencilStateArg;
+typedef GfxArg<GfxRasterizerState>       GfxRasterizerStateArg;
+typedef GfxArg<GfxTechnique>             GfxTechniqueArg;
+typedef GfxArg<GfxDescriptorSet>         GfxDescriptorSetArg;
+typedef GfxArg<GfxRayTracingPipeline>    GfxRayTracingPipelineArg;
+typedef GfxArg<GfxAccelerationStructure> GfxAccelerationStructureArg;
 
 enum class GfxContextType : u8
 {
@@ -956,6 +974,17 @@ struct GfxRayTracingInstanceDesc
 	u32   instanceContributionToHitGroupIndex : 24;
 	u32   flags : 8;
 	u64   accelerationStructureHandle;
+
+	void init()
+	{
+		memset(this, 0, sizeof(*this));
+
+		transform[0] = 1;
+		transform[5] = 1;
+		transform[10] = 1;
+
+		instanceMask = 0xFF;
+	}
 };
 
 enum class GfxAccelerationStructureType
@@ -987,6 +1016,8 @@ struct GfxRayTracingGeometryDesc
 	u32       indexBufferOffset = 0;
 	u32       indexCount        = 0;
 	GfxFormat indexFormat       = GfxFormat_Unknown;
+
+	bool isOpaque = false;
 };
 
 struct GfxAccelerationStructureDesc
@@ -996,7 +1027,6 @@ struct GfxAccelerationStructureDesc
 	GfxRayTracingGeometryDesc* geometries   = nullptr;
 	u32                        geometyCount = 0;
 
-	GfxRayTracingInstanceDesc* instances     = nullptr;
 	u32                        instanceCount = 0;
 };
 

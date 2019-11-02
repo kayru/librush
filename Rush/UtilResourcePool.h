@@ -59,19 +59,20 @@ public:
 		push(default_value);
 	}
 
-	HANDLE_TYPE push(const T& val)
+	template<typename DeducedT>
+	HANDLE_TYPE push(DeducedT&& val) noexcept
 	{
 		size_t idx;
 		if (empty.empty())
 		{
 			idx = data.size();
-			data.push_back(val);
+			data.push_back(std::forward<T>(val));
 		}
 		else
 		{
 			idx = empty.back();
 			empty.pop_back();
-			data[idx] = val;
+			data[idx] = std::forward<T>(val);
 		}
 		RUSH_ASSERT(idx < std::numeric_limits<UntypedResourceHandle::IndexType>::max())
 		return HANDLE_TYPE(UntypedResourceHandle((UntypedResourceHandle::IndexType)idx));

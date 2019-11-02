@@ -399,4 +399,11 @@ GfxTextureDesc GfxTextureDesc::makeCube(u32 _size, GfxFormat _format, GfxUsageFl
 	res.usage  = _usage;
 	return res;
 }
+
+static u32 g_uniqueIdCounter = 1;
+u32 Gfx_GenerateUniqueId()
+{
+	return g_uniqueIdCounter++;
+}
+
 }

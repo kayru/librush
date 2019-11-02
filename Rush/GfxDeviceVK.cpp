@@ -16,10 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _MSC_VER
-#pragma warning(disable : 26812) // non-scoped enums
-#endif
-
 namespace Rush
 {
 
@@ -70,19 +66,19 @@ static GfxContext* allocateContext(GfxContextType type, const char* name);
 static GfxContext* getUploadContext();
 static u32         aspectFlagsFromFormat(GfxFormat format);
 
-template <typename HandleType, typename ObjectType, typename PoolHandleType>
-GfxOwn<HandleType> retainResourceT(ResourcePool<ObjectType, PoolHandleType>& pool, const ObjectType& object)
+template <typename HandleType, typename ObjectType, typename PoolHandleType, typename ObjectTypeDeduced>
+GfxOwn<HandleType> retainResourceT(ResourcePool<ObjectType, PoolHandleType>& pool, ObjectTypeDeduced&& object)
 {
-	RUSH_ASSERT(object.id != 0);
-	auto handle = pool.push(object);
+	RUSH_ASSERT(object.getId() != 0);
+	auto handle = pool.push(std::forward<ObjectType>(object));
 	Gfx_Retain(HandleType(handle));
 	return GfxDevice::makeOwn(HandleType(handle));
 }
 
-template <typename HandleType, typename ObjectType>
-GfxOwn<HandleType> retainResource(ResourcePool<ObjectType, HandleType>& pool, const ObjectType& object)
+template <typename HandleType, typename ObjectType, typename ObjectTypeDeduced>
+GfxOwn<HandleType> retainResource(ResourcePool<ObjectType, HandleType>& pool, ObjectTypeDeduced&& object)
 {
-	return retainResourceT<HandleType>(pool, object);
+	return retainResourceT<HandleType>(pool, std::forward<ObjectType>(object));
 }
 
 template <typename HandleType, typename ObjectType, typename PoolHandleType>
@@ -942,10 +938,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_currentFrame                         = &m_frameData.back();
 	m_currentFrame->presentSemaphoreWaited = true;
 
-	BlendStateVK& defaultBlendState = m_blendStates[InvalidResourceHandle{}];
-	defaultBlendState.id            = generateId();
-	defaultBlendState.desc.src      = GfxBlendParam::One;
-	defaultBlendState.desc.alphaSrc = GfxBlendParam::One;
+	{
+		BlendStateVK defaultBlendState;
+		defaultBlendState.desc.src = GfxBlendParam::One;
+		defaultBlendState.desc.alphaSrc = GfxBlendParam::One;
+		std::swap(m_blendStates[InvalidResourceHandle{}], defaultBlendState);
+	}
 
 	// Setup resize event notifications
 
@@ -1084,6 +1082,8 @@ GfxDevice::~GfxDevice()
 		}
 	}
 
+	m_accelerationStructures.reset();
+	m_rayTracingPipelines.reset();
 	m_techniques.reset();
 	m_shaders.reset();
 	m_vertexFormats.reset();
@@ -1094,7 +1094,6 @@ GfxDevice::~GfxDevice()
 	m_blendStates.reset();
 	m_samplers.reset();
 	m_descriptorSets.reset();
-	m_rayTracingPipelines.reset();
 
 	for (auto& it : m_descriptorSetLayouts)
 	{
@@ -1172,13 +1171,13 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 	RUSH_ASSERT(info.techniqueHandle.valid());
 
 	PipelineKey key = {};
-	key.techniqueId = g_device->m_techniques[info.techniqueHandle].id;
+	key.techniqueId = g_device->m_techniques[info.techniqueHandle].getId();
 
 	if (!g_device->m_techniques[info.techniqueHandle].cs.valid())
 	{
-		key.blendStateId        = g_device->m_blendStates[info.blendStateHandle].id;
-		key.depthStencilStateId = g_device->m_depthStencilStates[info.depthStencilStateHandle].id;
-		key.rasterizerStateId   = g_device->m_rasterizerStates[info.rasterizerStateHandle].id;
+		key.blendStateId        = g_device->m_blendStates[info.blendStateHandle].getId();
+		key.depthStencilStateId = g_device->m_depthStencilStates[info.depthStencilStateHandle].getId();
+		key.rasterizerStateId   = g_device->m_rasterizerStates[info.rasterizerStateHandle].getId();
 		for (u32 i = 0; i < RUSH_COUNTOF(key.vertexBufferStride); ++i)
 		{
 			key.vertexBufferStride[i] = info.vertexBufferStride[i];
@@ -1543,12 +1542,12 @@ VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDesc& desc, VkRenderPass
 	FrameBufferKey key = {};
 
 	key.renderPass    = renderPass;
-	key.depthBufferId = g_device->m_textures[desc.depth].id;
+	key.depthBufferId = g_device->m_textures[desc.depth].getId();
 	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
 		if (desc.color[i].valid())
 		{
-			key.colorBufferId[i] = g_device->m_textures[desc.color[i]].id;
+			key.colorBufferId[i] = g_device->m_textures[desc.color[i]].getId();
 		}
 		else
 		{
@@ -1882,8 +1881,6 @@ void GfxDevice::enqueueDestroyDescriptorPool(DescriptorPoolVK* object)
 }
 
 void GfxDevice::enqueueDestroySampler(VkSampler object) { m_currentFrame->destructionQueue.samplers.push_back(object); }
-
-u32 GfxDevice::generateId() { return m_uniqueResourceCounter++; }
 
 void MemoryAllocatorVK::init(u32 memoryType, bool hostVisible)
 {
@@ -2649,28 +2646,36 @@ void GfxContext::applyState()
 	RUSH_ASSERT(m_pending.technique.valid());
 	TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
 
-	VkPipelineBindPoint bindPoint =
-	    technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 
 	if (m_dirtyState & DirtyStateFlag_Pipeline)
 	{
-		PipelineInfoVK info = {};
-
-		info.techniqueHandle         = m_pending.technique;
-		info.primitiveType           = m_pending.primitiveType;
-		info.depthStencilStateHandle = m_pending.depthStencilState;
-		info.rasterizerStateHandle   = m_pending.rasterizerState;
-		info.blendStateHandle        = m_pending.blendState;
-		for (u32 i = 0; i < RUSH_COUNTOF(info.vertexBufferStride); ++i)
+		if (m_pending.technique.valid())
 		{
-			info.vertexBufferStride[i] = m_pending.vertexBufferStride[i];
-		}
-		info.renderPass           = m_currentRenderPass;
-		info.colorAttachmentCount = m_currentColorAttachmentCount;
-		info.colorSampleCount     = m_currentColorSampleCount;
-		info.depthSampleCount     = m_currentDepthSampleCount;
+			PipelineInfoVK info = {};
 
-		m_activePipeline = g_device->createPipeline(info);
+			info.techniqueHandle = m_pending.technique;
+			info.primitiveType = m_pending.primitiveType;
+			info.depthStencilStateHandle = m_pending.depthStencilState;
+			info.rasterizerStateHandle = m_pending.rasterizerState;
+			info.blendStateHandle = m_pending.blendState;
+			for (u32 i = 0; i < RUSH_COUNTOF(info.vertexBufferStride); ++i)
+			{
+				info.vertexBufferStride[i] = m_pending.vertexBufferStride[i];
+			}
+			info.renderPass = m_currentRenderPass;
+			info.colorAttachmentCount = m_currentColorAttachmentCount;
+			info.colorSampleCount = m_currentColorSampleCount;
+			info.depthSampleCount = m_currentDepthSampleCount;
+
+			m_activePipeline = g_device->createPipeline(info);
+			bindPoint = technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+		}
+		else if (m_pending.rayTracingPipeline.valid())
+		{
+			m_activePipeline = g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline].pipeline;
+			bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		}
 
 		vkCmdBindPipeline(m_commandBuffer, bindPoint, m_activePipeline);
 
@@ -2700,7 +2705,7 @@ void GfxContext::applyState()
 
 		VkDeviceSize offset = buffer.info.offset;
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
-		    buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 
 		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
@@ -3133,7 +3138,10 @@ void Gfx_Finish()
 {
 	g_device->flushUploadContext(g_context);
 
-	g_context->split();
+	if (g_context->m_isActive)
+	{
+		g_context->split();
+	}
 
 	vkDeviceWaitIdle(g_vulkanDevice);
 }
@@ -3163,7 +3171,6 @@ GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 {
 	VertexFormatVK format;
 
-	format.id   = g_device->generateId();
 	format.desc = desc;
 	format.attributes.resize(desc.elementCount());
 
@@ -3208,7 +3215,7 @@ static VkShaderModule createShaderModule(VkDevice device, const GfxShaderSource&
 	return result;
 }
 
-ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
+static ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 {
 	ShaderVK result;
 
@@ -3267,7 +3274,6 @@ GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -3288,7 +3294,6 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -3309,7 +3314,6 @@ GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -3330,7 +3334,6 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -3351,7 +3354,6 @@ GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -3494,7 +3496,6 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 
 	DescriptorSetVK res;
 
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	res.layout = g_device->createDescriptorSetLayout(desc, convertStageFlags(desc.stageFlags), false);
@@ -3572,8 +3573,6 @@ void DescriptorSetVK::destroy()
 GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 {
 	TechniqueVK res;
-
-	res.id = g_device->generateId();
 
 	if (g_device->m_supportedExtensions.AMD_wave_limits)
 	{
@@ -3872,7 +3871,6 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	RUSH_ASSERT(desc.usage != GfxUsageFlags::None);
 
 	TextureVK res;
-	res.id            = g_device->generateId();
 	res.desc          = desc;
 	res.currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -4100,7 +4098,6 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLa
 
 	TextureVK res;
 
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	res.ownsMemory = false;
@@ -4180,7 +4177,6 @@ void Gfx_Release(GfxTexture h) { releaseResource(g_device->m_textures, h); }
 GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 {
 	BlendStateVK res;
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	return retainResource(g_device->m_blendStates, res);
@@ -4193,7 +4189,6 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 {
 	SamplerVK res;
 
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	VkSamplerCreateInfo samplerCreateInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -4230,7 +4225,6 @@ void Gfx_Release(GfxSampler h) { releaseResource(g_device->m_samplers, h); }
 GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
 {
 	DepthStencilStateVK res;
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	return retainResource(g_device->m_depthStencilStates, res);
@@ -4242,7 +4236,6 @@ void Gfx_Release(GfxDepthStencilState h) { releaseResource(g_device->m_depthSten
 GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
 {
 	RasterizerStateVK res;
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	return retainResource(g_device->m_rasterizerStates, res);
@@ -4299,7 +4292,6 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 {
 	BufferVK res;
 
-	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	VkBufferCreateInfo bufferCreateInfo = makeBufferCreateInfo(desc);
@@ -4495,20 +4487,20 @@ static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
 {
 	for (u32 i = 0; i < GfxContext::MaxVertexStreams; ++i)
 	{
-		if (buffer.id == g_device->m_buffers[rc->m_pending.vertexBuffer[i]].id)
+		if (buffer.getId() == g_device->m_buffers[rc->m_pending.vertexBuffer[i]].getId())
 		{
 			rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 		}
 	}
 
-	if (buffer.id == g_device->m_buffers[rc->m_pending.indexBuffer].id)
+	if (buffer.getId() == g_device->m_buffers[rc->m_pending.indexBuffer].getId())
 	{
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
 	}
 
 	for (u32 i = 0; i < GfxContext::MaxStorageBuffers; ++i)
 	{
-		if (buffer.id == g_device->m_buffers[rc->m_pending.storageBuffers[i]].id)
+		if (buffer.getId() == g_device->m_buffers[rc->m_pending.storageBuffers[i]].getId())
 		{
 			rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 		}
@@ -4516,7 +4508,7 @@ static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
 
 	for (u32 i = 0; i < GfxContext::MaxConstantBuffers; ++i)
 	{
-		if (buffer.id == g_device->m_buffers[rc->m_pending.constantBuffers[i]].id)
+		if (buffer.getId() == g_device->m_buffers[rc->m_pending.constantBuffers[i]].getId())
 		{
 			rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
 		}
@@ -4525,7 +4517,7 @@ static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
 
 static VkDeviceSize getBufferAlignmentRequirements(GfxBufferFlags flags)
 {
-	VkDeviceSize alignment = 1;
+	VkDeviceSize alignment = 16;
 
 	if (!!(flags & GfxBufferFlags::Vertex))
 	{
@@ -4824,12 +4816,13 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 	vkCmdSetScissor(rc->m_commandBuffer, 0, 1, &scissor);
 }
 
-void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h)
+void Gfx_SetTechnique(GfxContext* ctx, GfxTechniqueArg h)
 {
-	if (rc->m_pending.technique != h)
+	if (ctx->m_pending.technique != h)
 	{
-		rc->m_pending.technique = h;
-		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
+		ctx->m_pending.rayTracingPipeline = {};
+		ctx->m_pending.technique = h;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
 	}
 }
 
@@ -5406,7 +5399,6 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 {
 	RayTracingPipelineVK result;
 
-	result.id                = g_device->generateId();
 	result.maxRecursionDepth = desc.maxRecursionDepth;
 	result.bindings          = desc.bindings;
 
@@ -5495,13 +5487,152 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	return retainResource(g_device->m_rayTracingPipelines, result);
 }
 
-GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc) { return {}; }
+static VkMemoryRequirements2KHR getMemoryReq(
+    VkAccelerationStructureNV accel, VkAccelerationStructureMemoryRequirementsTypeNV type)
+{
+	VkAccelerationStructureMemoryRequirementsInfoNV memoryReqInfo = {
+	    VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV};
+	VkMemoryRequirements2KHR memoryReq  = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+	memoryReqInfo.accelerationStructure = accel;
+	memoryReqInfo.type                  = type;
+	vkGetAccelerationStructureMemoryRequirementsNV(g_vulkanDevice, &memoryReqInfo, &memoryReq);
+	return memoryReq;
+}
 
-u32 Gfx_GetAccelerationStructureSize(GfxBufferArg buffer) { return 0; }
+static VkMemoryAllocateInfo getAllocInfo(
+    VkAccelerationStructureNV accel, VkAccelerationStructureMemoryRequirementsTypeNV type)
+{
+	VkMemoryAllocateInfo     allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+	VkMemoryRequirements2KHR memoryReq = getMemoryReq(accel, type);
+	allocInfo.allocationSize           = memoryReq.memoryRequirements.size;
+	allocInfo.memoryTypeIndex          = g_device->memoryTypeFromProperties(
+        memoryReq.memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	return allocInfo;
+}
 
-u64 Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer) { return 0; }
+GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc)
+{
+	AccelerationStructureVK result;
+	result.type = desc.type;
 
-void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer) {}
+	if (desc.type == GfxAccelerationStructureType::BottomLevel)
+	{
+		result.nativeGeometries.resize(desc.geometyCount);
+
+		for (u32 i = 0; i < desc.geometyCount; ++i)
+		{
+			const auto& geometryDesc = desc.geometries[i];
+
+			const BufferVK& vertexBufferVK = g_device->m_buffers[geometryDesc.vertexBuffer];
+			const BufferVK& indexBufferVK  = g_device->m_buffers[geometryDesc.indexBuffer];
+
+			RUSH_ASSERT(geometryDesc.type == GfxRayTracingGeometryType::Triangles);
+			RUSH_ASSERT(
+			    geometryDesc.indexFormat == GfxFormat_R32_Uint || geometryDesc.indexFormat == GfxFormat_R16_Uint);
+
+			VkGeometryNV& geometry = result.nativeGeometries[i];
+
+			geometry.sType                = VK_STRUCTURE_TYPE_GEOMETRY_NV;
+			geometry.pNext                = nullptr;
+			geometry.geometryType         = VK_GEOMETRY_TYPE_TRIANGLES_NV;
+			geometry.geometry.aabbs.sType = VK_STRUCTURE_TYPE_GEOMETRY_AABB_NV;
+			geometry.flags                = geometryDesc.isOpaque ? VK_GEOMETRY_OPAQUE_BIT_NV : 0;
+
+			VkGeometryTrianglesNV& triangles = geometry.geometry.triangles;
+
+			triangles.sType        = VK_STRUCTURE_TYPE_GEOMETRY_TRIANGLES_NV;
+			triangles.pNext        = nullptr;
+			triangles.vertexData   = vertexBufferVK.info.buffer;
+			triangles.vertexOffset = vertexBufferVK.info.offset + geometryDesc.vertexBufferOffset;
+			triangles.vertexCount  = geometryDesc.vertexCount;
+			triangles.vertexStride = geometryDesc.vertexStride;
+			triangles.vertexFormat = Gfx_vkConvertFormat(geometryDesc.vertexFormat);
+
+			triangles.indexData   = indexBufferVK.info.buffer;
+			triangles.indexOffset = indexBufferVK.info.offset + geometryDesc.indexBufferOffset;
+			triangles.indexCount  = geometryDesc.indexCount;
+			triangles.indexType =
+			    geometryDesc.indexFormat == GfxFormat_R32_Uint ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
+
+			triangles.transformData   = VK_NULL_HANDLE;
+			triangles.transformOffset = 0;
+		}
+
+		result.info               = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV};
+		result.info.type          = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_NV;
+		result.info.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_NV; // TODO: convert flags
+		result.info.geometryCount = desc.geometyCount;
+		result.info.pGeometries   = result.nativeGeometries.data();
+	}
+	else if (desc.type == GfxAccelerationStructureType::TopLevel)
+	{
+		result.info               = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV};
+		result.info.type          = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_NV;
+		result.info.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_NV; // TODO: convert flags
+		result.info.instanceCount = desc.instanceCount;
+	}
+	else
+	{
+		RUSH_LOG_ERROR("Unexpected acceleration structure type");
+	}
+
+	VkAccelerationStructureCreateInfoNV createInfo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_NV};
+	createInfo.info                                = result.info;
+	V(vkCreateAccelerationStructureNV(g_vulkanDevice, &createInfo, g_allocationCallbacks, &result.native));
+
+	auto allocInfo =
+	    getAllocInfo(result.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV);
+
+	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &result.memory));
+
+	VkBindAccelerationStructureMemoryInfoNV bindInfo = {VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_NV};
+	bindInfo.accelerationStructure                   = result.native;
+	bindInfo.memory                                  = result.memory;
+	bindInfo.memoryOffset                            = 0;
+
+	V(vkBindAccelerationStructureMemoryNV(g_vulkanDevice, 1, &bindInfo));
+
+	V(vkGetAccelerationStructureHandleNV(g_vulkanDevice, result.native, 8, &result.handle));
+
+	return retainResource(g_device->m_accelerationStructures, result);
+}
+
+u64 Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h) 
+{
+	AccelerationStructureVK& accel = g_device->m_accelerationStructures[h];
+	return accel.handle;
+}
+
+void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer)
+{
+	// TODO: batch acceleration structure builds / updates
+
+	AccelerationStructureVK& accel = g_device->m_accelerationStructures[h];
+
+	auto scratchAllocInfo =
+	    getAllocInfo(accel.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV);
+
+	const u32          scratchAlignment = 256; // TODO: what should the alignment be?
+	MemoryAllocatorVK& scratchAllocator = g_device->m_currentFrame->localOnlyAllocator;
+	MemoryBlockVK      scratchBlock     = scratchAllocator.alloc(scratchAllocInfo.allocationSize, scratchAlignment);
+
+	VkDescriptorBufferInfo instanceBufferInfo = {};
+
+	if (accel.type == GfxAccelerationStructureType::TopLevel && instanceBuffer.valid())
+	{
+		instanceBufferInfo = g_device->m_buffers[instanceBuffer].info;
+	}
+
+	vkCmdBuildAccelerationStructureNV(ctx->m_commandBuffer,
+		&accel.info,
+		instanceBufferInfo.buffer, instanceBufferInfo.offset,
+		VK_FALSE, // update
+		accel.native, VK_NULL_HANDLE, // dest, source
+		scratchBlock.buffer, scratchBlock.offset);
+}
+
+void Gfx_Retain(GfxAccelerationStructure h) { g_device->m_accelerationStructures[h].addReference(); }
+void Gfx_Release(GfxAccelerationStructure h) { releaseResource(g_device->m_accelerationStructures, h); }
 
 void Gfx_Retain(GfxRayTracingPipeline h) { g_device->m_rayTracingPipelines[h].addReference(); }
 void Gfx_Release(GfxRayTracingPipeline h) { releaseResource(g_device->m_rayTracingPipelines, h); }
@@ -5534,6 +5665,57 @@ void RayTracingPipelineVK::destroy()
 
 	vkDestroyPipeline(g_vulkanDevice, pipeline, g_allocationCallbacks);
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
+}
+
+void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccelerationStructureArg tlas,
+    GfxBufferArg sbt, u32 width, u32 height, u32 depth)
+{
+	if (ctx->m_pending.rayTracingPipeline != pipeline)
+	{
+		ctx->m_pending.technique = {};
+		ctx->m_pending.rayTracingPipeline = pipeline;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
+	}
+
+	if (ctx->m_pending.accelerationStructure != tlas)
+	{
+		ctx->m_pending.accelerationStructure = tlas;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_AccelerationStructure;
+	}
+
+	ctx->applyState();
+
+	ctx->flushBarriers();
+
+	BufferVK& sbtBuffer = g_device->m_buffers[sbt];
+
+	// TODO: get offsets from pipeline metadata
+
+	const u32 sbtRaygenOffset = 0;
+	const u32 sbtMissOffset = 1;
+	const u32 sbtMissStride = 0; // only single shader is supported
+
+	vkCmdTraceRaysNV(ctx->m_commandBuffer,
+		sbtBuffer.info.buffer, sbtBuffer.info.offset + sbtRaygenOffset,
+		sbtBuffer.info.buffer, sbtBuffer.info.offset + sbtMissOffset, sbtMissStride,
+		VK_NULL_HANDLE, 0, 0, // hit group table
+		VK_NULL_HANDLE, 0, 0, // callable table
+		width, height, depth);
+}
+
+void AccelerationStructureVK::destroy()
+{
+	if (native != VK_NULL_HANDLE)
+	{
+		vkDestroyAccelerationStructureNV(g_vulkanDevice, native, g_allocationCallbacks);
+		native = VK_NULL_HANDLE;
+	}
+
+	if (memory != VK_NULL_HANDLE)
+	{
+		g_device->enqueueDestroyMemory(memory);
+		memory = VK_NULL_HANDLE;
+	}
 }
 
 } // namespace Rush
