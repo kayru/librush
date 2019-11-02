@@ -192,10 +192,11 @@ GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDe
 GfxOwn<GfxRasterizerState>   Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc);
 GfxOwn<GfxBuffer>            Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = nullptr);
 
-GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc);
-u32               Gfx_GetAccelerationStructureSize(GfxBufferArg buffer);
-u64               Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer);
-void              Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer);
+GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc);
+GfxOwn<GfxBuffer>             Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc);
+u32                           Gfx_GetAccelerationStructureSize(GfxBufferArg buffer);
+u64                           Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer);
+void                          Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer);
 
 void Gfx_Retain(GfxDevice* dev);
 void Gfx_Retain(GfxContext* rc);
@@ -226,6 +227,7 @@ void Gfx_Release(GfxSampler h);
 void Gfx_Release(GfxDepthStencilState h);
 void Gfx_Release(GfxRasterizerState h);
 void Gfx_Release(GfxBuffer h);
+void Gfx_Release(GfxRayTracingPipeline h);
 
 #ifdef RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc);
@@ -396,12 +398,14 @@ inline void Gfx_Release(GfxMeshShader h) {};
 inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
 #endif // RUSH_RENDER_SUPPORT_MESH_SHADER
 
-#ifndef RUSH_RENDER_SUPPORT_RAYTRACING
-inline GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc) { return InvalidResourceHandle(); }
-inline u32  Gfx_GetAccelerationStructureSize(GfxBufferArg buffer) { return 0; }
-inline u64  Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer) { return 0; }
-inline void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer) {}
-#endif // RUSH_RENDER_SUPPORT_RAYTRACING
+#ifndef RUSH_RENDER_SUPPORT_RAY_TRACING
+inline GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc) { return {}; }
+inline GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc) { return {}; }
+inline u32               Gfx_GetAccelerationStructureSize(GfxBufferArg buffer) { return 0; }
+inline u64               Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer) { return 0; }
+inline void              Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer) {}
+inline void              Gfx_Release(GfxRayTracingPipeline h){};
+#endif // RUSH_RENDER_SUPPORT_RAY_TRACING
 
 // Null render API implementation
 

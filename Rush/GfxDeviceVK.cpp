@@ -3,8 +3,8 @@
 #if RUSH_RENDER_API == RUSH_RENDER_API_VK
 
 #include "UtilLog.h"
-#include "Window.h"
 #include "UtilString.h"
+#include "Window.h"
 
 #include <algorithm>
 
@@ -16,6 +16,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _MSC_VER
+#pragma warning(disable : 26812) // non-scoped enums
+#endif
+
 namespace Rush
 {
 
@@ -25,6 +29,7 @@ class GfxContext;
 static GfxDevice*  g_device       = nullptr;
 static GfxContext* g_context      = nullptr;
 static VkDevice    g_vulkanDevice = VK_NULL_HANDLE;
+static VkAllocationCallbacks* g_allocationCallbacks = nullptr;
 
 static PFN_vkDebugMarkerSetObjectTagEXT      vkDebugMarkerSetObjectTag         = VK_NULL_HANDLE;
 static PFN_vkDebugMarkerSetObjectNameEXT     vkDebugMarkerSetObjectName        = VK_NULL_HANDLE;
@@ -419,7 +424,15 @@ static VkShaderStageFlags convertStageFlags(GfxStageFlags flags)
 	{
 		res |= VK_SHADER_STAGE_COMPUTE_BIT;
 	}
-
+	if (!!(flags & GfxStageFlags::Mesh))
+	{
+		res |= VK_SHADER_STAGE_TASK_BIT_NV | VK_SHADER_STAGE_MESH_BIT_NV;
+	}
+	if (!!(flags & GfxStageFlags::RayTracing))
+	{
+		res |= VK_SHADER_STAGE_RAYGEN_BIT_NV | VK_SHADER_STAGE_ANY_HIT_BIT_NV | VK_SHADER_STAGE_CLOSEST_HIT_BIT_NV |
+		       VK_SHADER_STAGE_MISS_BIT_NV | VK_SHADER_STAGE_INTERSECTION_BIT_NV | VK_SHADER_STAGE_CALLABLE_BIT_NV;
+	}
 	return res;
 }
 
@@ -535,7 +548,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	instanceCreateInfo.ppEnabledLayerNames     = enabledInstanceLayers.data();
 	instanceCreateInfo.enabledExtensionCount   = (u32)enabledInstanceExtensions.size();
 	instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions.data();
-	V(vkCreateInstance(&instanceCreateInfo, nullptr, &m_vulkanInstance));
+	V(vkCreateInstance(&instanceCreateInfo, g_allocationCallbacks, &m_vulkanInstance));
 
 	volkLoadInstance(m_vulkanInstance);
 
@@ -556,7 +569,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		                           VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
 		callbackCreateInfo.pfnCallback = &debugReportCallback;
 		callbackCreateInfo.pUserData   = nullptr;
-		V(vkCreateDebugReportCallbackEXT(m_vulkanInstance, &callbackCreateInfo, nullptr, &m_debugReportCallbackExt));
+		V(vkCreateDebugReportCallbackEXT(m_vulkanInstance, &callbackCreateInfo, g_allocationCallbacks, &m_debugReportCallbackExt));
 	}
 
 	u32 gpuCount = 0;
@@ -674,15 +687,16 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	DynamicArray<const char*> enabledDeviceLayers;
 	DynamicArray<const char*> enabledDeviceExtensions;
 
-	auto enableDeviceExtension = [&](const char* name, bool required = false)
-	{
+	auto enableDeviceExtension = [&](const char* name, bool required = false) {
 		return enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, name, required);
 	};
 
 	enableDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
 
-	m_supportedExtensions.NV_geometry_shader_passthrough = enableDeviceExtension(VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME, false);
-	m_supportedExtensions.AMD_shader_explicit_vertex_parameter = enableDeviceExtension(VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME, false);
+	m_supportedExtensions.NV_geometry_shader_passthrough =
+	    enableDeviceExtension(VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME, false);
+	m_supportedExtensions.AMD_shader_explicit_vertex_parameter =
+	    enableDeviceExtension(VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME, false);
 
 	if (enableDeviceExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, false))
 	{
@@ -691,7 +705,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_supportedExtensions.NV_mesh_shader = enableDeviceExtension(VK_NV_MESH_SHADER_EXTENSION_NAME);
 
-	m_supportedExtensions.NV_framebuffer_mixed_samples = enableDeviceExtension(VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME);
+	m_supportedExtensions.NV_framebuffer_mixed_samples =
+	    enableDeviceExtension(VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME);
 	m_supportedExtensions.EXT_sample_locations = enableDeviceExtension(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
 
 	if (!cfg.debug)
@@ -707,14 +722,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	{
 		m_nvRayTracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV;
 		m_nvRayTracingProps.pNext = physicalDeviceProps2Next;
-		physicalDeviceProps2Next = &m_nvRayTracingProps;
+		physicalDeviceProps2Next  = &m_nvRayTracingProps;
 	}
 
 	if (m_supportedExtensions.NV_mesh_shader)
 	{
 		m_nvMeshShaderProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV;
 		m_nvMeshShaderProps.pNext = physicalDeviceProps2Next;
-		physicalDeviceProps2Next = &m_nvMeshShaderProps;
+		physicalDeviceProps2Next  = &m_nvMeshShaderProps;
 	}
 
 	enableDeviceExtension(VK_EXT_SHADER_SUBGROUP_BALLOT_EXTENSION_NAME);
@@ -726,10 +741,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	physicalDeviceProps2Next                              = &subgroupProperties;
 
 	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {};
-	if(m_supportedExtensions.AMD_wave_limits)
+	if (m_supportedExtensions.AMD_wave_limits)
 	{
-		waveLimitProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
-		waveLimitProps.pNext = physicalDeviceProps2Next;
+		waveLimitProps.sType     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
+		waveLimitProps.pNext     = physicalDeviceProps2Next;
 		physicalDeviceProps2Next = &waveLimitProps;
 	}
 
@@ -742,7 +757,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	if (!m_supportedExtensions.KHR_maintenance1)
 	{
-		m_supportedExtensions.AMD_negative_viewport_height = enableDeviceExtension("VK_AMD_negative_viewport_height", false);
+		m_supportedExtensions.AMD_negative_viewport_height =
+		    enableDeviceExtension("VK_AMD_negative_viewport_height", false);
 	}
 
 	bool debugMerkersAvailable = enableDeviceExtension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME, false);
@@ -774,7 +790,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	deviceCreateInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
 	deviceCreateInfo.pEnabledFeatures        = &enabledDeviceFeatures;
 
-	V(vkCreateDevice(m_physicalDevice, &deviceCreateInfo, nullptr, &m_vulkanDevice));
+	V(vkCreateDevice(m_physicalDevice, &deviceCreateInfo, g_allocationCallbacks, &m_vulkanDevice));
 	g_vulkanDevice = m_vulkanDevice;
 
 	if (debugMerkersAvailable)
@@ -867,7 +883,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_desiredSwapChainImageCount = cfg.minimizeLatency ? 1 : 2;
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-	V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, nullptr, &m_presentCompleteSemaphore));
+	V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_presentCompleteSemaphore));
 
 	createSwapChain();
 
@@ -878,7 +894,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		cmdPoolInfo.queueFamilyIndex        = graphicsQueueIndex;
 		cmdPoolInfo.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, nullptr, &m_graphicsCommandPool));
+		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, g_allocationCallbacks, &m_graphicsCommandPool));
 	}
 
 	if (m_computeQueueIndex != invalidIndex)
@@ -887,7 +903,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		cmdPoolInfo.queueFamilyIndex        = computeQueueIndex;
 		cmdPoolInfo.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, nullptr, &m_computeCommandPool));
+		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, g_allocationCallbacks, &m_computeCommandPool));
 	}
 
 	if (m_transferQueueIndex != invalidIndex)
@@ -896,13 +912,13 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		cmdPoolInfo.queueFamilyIndex        = transferQueueIndex;
 		cmdPoolInfo.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, nullptr, &m_transferCommandPool));
+		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, g_allocationCallbacks, &m_transferCommandPool));
 	}
 
 	// Pipeline cache
 
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-	V(vkCreatePipelineCache(m_vulkanDevice, &pipelineCacheCreateInfo, nullptr, &m_pipelineCache));
+	V(vkCreatePipelineCache(m_vulkanDevice, &pipelineCacheCreateInfo, g_allocationCallbacks, &m_pipelineCache));
 
 	// Frame data (descriptor pools, timing pools, memory allocators)
 
@@ -913,7 +929,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		    2 * (GfxStats::MaxCustomTimers + 1); // 2 slots per custom timer + 2 slots for total frame time
 		timestampPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
 
-		V(vkCreateQueryPool(m_vulkanDevice, &timestampPoolCreateInfo, nullptr, &it.timestampPool));
+		V(vkCreateQueryPool(m_vulkanDevice, &timestampPoolCreateInfo, g_allocationCallbacks, &it.timestampPool));
 		it.timestampPoolData.resize(timestampPoolCreateInfo.queryCount);
 		it.timestampSlotMap.resize(timestampPoolCreateInfo.queryCount);
 
@@ -953,14 +969,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_caps.textureTopLeft = Vec2(0.0f, 0.0f);
 	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_SPV;
-	m_caps.compute          = true;
-	m_caps.instancing       = true;
-	m_caps.drawIndirect     = true;
-	m_caps.dispatchIndirect = true;
-	m_caps.pushConstants    = true;
-	m_caps.shaderInt16      = !!enabledDeviceFeatures.shaderInt16;
-	m_caps.shaderInt64      = !!enabledDeviceFeatures.shaderInt64;
-	m_caps.asyncCompute     = m_computeQueueIndex != invalidIndex;
+	m_caps.compute                 = true;
+	m_caps.instancing              = true;
+	m_caps.drawIndirect            = true;
+	m_caps.dispatchIndirect        = true;
+	m_caps.pushConstants           = true;
+	m_caps.shaderInt16             = !!enabledDeviceFeatures.shaderInt16;
+	m_caps.shaderInt64             = !!enabledDeviceFeatures.shaderInt64;
+	m_caps.asyncCompute            = m_computeQueueIndex != invalidIndex;
 	m_caps.constantBufferAlignment = u32(m_physicalDeviceProps.limits.minUniformBufferOffsetAlignment);
 
 	const u32 requiredSubgroupOperations = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_VOTE_BIT |
@@ -973,7 +989,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// m_caps.sampleLocations = m_supportedExtensions.EXT_sample_locations; // implementation WIP
 
-	m_caps.explicitVertexParameterAMD  = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
+	m_caps.explicitVertexParameterAMD = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
 	m_caps.rayTracingNV                = m_supportedExtensions.NV_ray_tracing;
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
@@ -1009,14 +1025,14 @@ static void extendDescriptorPool(GfxDevice::FrameData* frameData)
 	if (frameData->availableDescriptorPools.empty())
 	{
 		// TODO: create separate pools based on different descriptor set layouts to save on descriptor memory
-		const u32 maxSets = 1024;
+		const u32                               maxSets = 1024;
 		DescriptorPoolVK::DescriptorsPerSetDesc desc;
-		desc.dynamicUniformBuffers = GfxContext::MaxConstantBuffers;
-		desc.samplers = GfxContext::MaxTextures / 2;
-		desc.sampledImages = GfxContext::MaxTextures;
-		desc.storageImages = GfxContext::MaxStorageImages;
-		desc.storageBuffers = GfxContext::MaxStorageBuffers;
-		desc.storageTexelBuffers = GfxContext::MaxStorageBuffers;
+		desc.dynamicUniformBuffers  = GfxContext::MaxConstantBuffers;
+		desc.samplers               = GfxContext::MaxTextures / 2;
+		desc.sampledImages          = GfxContext::MaxTextures;
+		desc.storageImages          = GfxContext::MaxStorageImages;
+		desc.storageBuffers         = GfxContext::MaxStorageBuffers;
+		desc.storageTexelBuffers    = GfxContext::MaxStorageBuffers;
 		desc.accelerationStructures = 1;
 
 		DescriptorPoolVK newPool(g_vulkanDevice, desc, maxSets);
@@ -1078,15 +1094,16 @@ GfxDevice::~GfxDevice()
 	m_blendStates.reset();
 	m_samplers.reset();
 	m_descriptorSets.reset();
-	
+	m_rayTracingPipelines.reset();
+
 	for (auto& it : m_descriptorSetLayouts)
 	{
-		vkDestroyDescriptorSetLayout(m_vulkanDevice, it.second, nullptr);
+		vkDestroyDescriptorSetLayout(m_vulkanDevice, it.second, g_allocationCallbacks);
 	}
 
 	for (auto& it : m_pipelines)
 	{
-		vkDestroyPipeline(m_vulkanDevice, it.second, nullptr);
+		vkDestroyPipeline(m_vulkanDevice, it.second, g_allocationCallbacks);
 	}
 
 	for (FrameData& it : m_frameData)
@@ -1102,36 +1119,36 @@ GfxDevice::~GfxDevice()
 		it.descriptorPools.clear();
 		it.availableDescriptorPools.clear();
 
-		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, nullptr);
+		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, g_allocationCallbacks);
 
 		it.destructionQueue.flush(m_vulkanDevice);
 	}
 
 	for (auto& it : m_renderPasses)
 	{
-		vkDestroyRenderPass(m_vulkanDevice, it.second, nullptr);
+		vkDestroyRenderPass(m_vulkanDevice, it.second, g_allocationCallbacks);
 	}
 
 	for (auto& it : m_frameBuffers)
 	{
-		vkDestroyFramebuffer(m_vulkanDevice, it.second, nullptr);
+		vkDestroyFramebuffer(m_vulkanDevice, it.second, g_allocationCallbacks);
 	}
 
-	vkDestroyPipelineCache(m_vulkanDevice, m_pipelineCache, nullptr);
+	vkDestroyPipelineCache(m_vulkanDevice, m_pipelineCache, g_allocationCallbacks);
 
-	vkDestroySwapchainKHR(m_vulkanDevice, m_swapChain, nullptr);
-	vkDestroyCommandPool(m_vulkanDevice, m_graphicsCommandPool, nullptr);
+	vkDestroySwapchainKHR(m_vulkanDevice, m_swapChain, g_allocationCallbacks);
+	vkDestroyCommandPool(m_vulkanDevice, m_graphicsCommandPool, g_allocationCallbacks);
 	if (m_computeCommandPool)
 	{
-		vkDestroyCommandPool(m_vulkanDevice, m_computeCommandPool, nullptr);
+		vkDestroyCommandPool(m_vulkanDevice, m_computeCommandPool, g_allocationCallbacks);
 	}
 	if (m_transferCommandPool)
 	{
-		vkDestroyCommandPool(m_vulkanDevice, m_transferCommandPool, nullptr);
+		vkDestroyCommandPool(m_vulkanDevice, m_transferCommandPool, g_allocationCallbacks);
 	}
-	vkDestroySurfaceKHR(m_vulkanInstance, m_swapChainSurface, nullptr);
-	vkDestroySemaphore(m_vulkanDevice, m_presentCompleteSemaphore, nullptr);
-	vkDestroyDevice(m_vulkanDevice, nullptr);
+	vkDestroySurfaceKHR(m_vulkanInstance, m_swapChainSurface, g_allocationCallbacks);
+	vkDestroySemaphore(m_vulkanDevice, m_presentCompleteSemaphore, g_allocationCallbacks);
+	vkDestroyDevice(m_vulkanDevice, g_allocationCallbacks);
 
 	if (m_debugReportCallbackExt)
 	{
@@ -1143,11 +1160,11 @@ GfxDevice::~GfxDevice()
 
 		if (vkDestroyDebugReportCallbackEXT)
 		{
-			vkDestroyDebugReportCallbackEXT(m_vulkanInstance, m_debugReportCallbackExt, nullptr);
+			vkDestroyDebugReportCallbackEXT(m_vulkanInstance, m_debugReportCallbackExt, g_allocationCallbacks);
 		}
 	}
 
-	vkDestroyInstance(m_vulkanInstance, nullptr);
+	vkDestroyInstance(m_vulkanInstance, g_allocationCallbacks);
 }
 
 VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
@@ -1191,7 +1208,7 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 
 		// setup done
 
-		V(vkCreateComputePipelines(m_vulkanDevice, m_pipelineCache, 1, &createInfo, nullptr, &pipeline));
+		V(vkCreateComputePipelines(m_vulkanDevice, m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &pipeline));
 	}
 	else
 	{
@@ -1374,8 +1391,8 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 		{
 			dynamicStates.pushBack(VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT);
 		}
-		dyn.dynamicStateCount          = u32(dynamicStates.currentSize);
-		dyn.pDynamicStates             = dynamicStates.data;
+		dyn.dynamicStateCount = u32(dynamicStates.currentSize);
+		dyn.pDynamicStates    = dynamicStates.data;
 
 		// render pass
 
@@ -1386,7 +1403,7 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 
 		// setup done
 
-		V(vkCreateGraphicsPipelines(m_vulkanDevice, m_pipelineCache, 1, &createInfo, nullptr, &pipeline));
+		V(vkCreateGraphicsPipelines(m_vulkanDevice, m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &pipeline));
 	}
 
 	RUSH_ASSERT(pipeline);
@@ -1411,7 +1428,7 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 		{
 			colorTargetCount++;
 			key.colorFormats[i] = g_device->m_textures[desc.color[i]].desc.format;
-			u32 sampleCount = g_device->m_textures[desc.color[i]].desc.samples;
+			u32 sampleCount     = g_device->m_textures[desc.color[i]].desc.samples;
 			RUSH_ASSERT(key.colorSampleCount == 0 || key.colorSampleCount == sampleCount);
 			key.colorSampleCount = sampleCount;
 		}
@@ -1421,10 +1438,14 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 		}
 	}
 
-	if (key.depthSampleCount == 0 && key.colorSampleCount != 0) key.depthSampleCount = key.colorSampleCount;
-	if (key.depthSampleCount != 0 && key.colorSampleCount == 0) key.colorSampleCount = key.depthSampleCount;
-	if (key.colorSampleCount == 0) key.colorSampleCount = 1;
-	if (key.depthSampleCount == 0) key.depthSampleCount = 1;
+	if (key.depthSampleCount == 0 && key.colorSampleCount != 0)
+		key.depthSampleCount = key.colorSampleCount;
+	if (key.depthSampleCount != 0 && key.colorSampleCount == 0)
+		key.colorSampleCount = key.depthSampleCount;
+	if (key.colorSampleCount == 0)
+		key.colorSampleCount = 1;
+	if (key.depthSampleCount == 0)
+		key.depthSampleCount = 1;
 
 	auto existingPass = m_renderPasses.find(key);
 	if (existingPass != m_renderPasses.end())
@@ -1444,7 +1465,7 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 	if (desc.depth.valid())
 	{
 		auto& attachment = attachmentDesc[attachmentCount];
-		
+
 		const auto& textureDesc = g_device->m_textures[desc.depth].desc;
 
 		attachment.samples        = convertSampleCount(textureDesc.samples);
@@ -1510,7 +1531,7 @@ VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
 	// setup done
 	VkRenderPass renderPass = VK_NULL_HANDLE;
 
-	V(vkCreateRenderPass(m_vulkanDevice, &renderPassCreateInfo, nullptr, &renderPass));
+	V(vkCreateRenderPass(m_vulkanDevice, &renderPassCreateInfo, g_allocationCallbacks, &renderPass));
 
 	m_renderPasses.insert(std::make_pair(key, renderPass));
 
@@ -1587,7 +1608,7 @@ VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDesc& desc, VkRenderPass
 
 	VkFramebuffer frameBuffer = VK_NULL_HANDLE;
 
-	V(vkCreateFramebuffer(m_vulkanDevice, &frameBufferCreateInfo, nullptr, &frameBuffer));
+	V(vkCreateFramebuffer(m_vulkanDevice, &frameBufferCreateInfo, g_allocationCallbacks, &frameBuffer));
 
 	m_frameBuffers.insert(std::make_pair(key, frameBuffer));
 
@@ -1604,12 +1625,12 @@ void GfxDevice::createSwapChain()
 		VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
 		surfaceCreateInfo.hinstance                   = (HINSTANCE)GetModuleHandle(nullptr);
 		surfaceCreateInfo.hwnd                        = *(HWND*)m_window->nativeHandle();
-		V(vkCreateWin32SurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, nullptr, &m_swapChainSurface));
+		V(vkCreateWin32SurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, g_allocationCallbacks, &m_swapChainSurface));
 #elif defined(RUSH_PLATFORM_LINUX)
 		VkXcbSurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR};
 		surfaceCreateInfo.connection                = (xcb_connection_t*)m_window->nativeConnection();
 		surfaceCreateInfo.window                    = (xcb_window_t)(uintptr_t(m_window->nativeHandle()) & 0xFFFFFFFF);
-		V(vkCreateXcbSurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, nullptr, &m_swapChainSurface));
+		V(vkCreateXcbSurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, g_allocationCallbacks, &m_swapChainSurface));
 #else
 		RUSH_LOG_FATAL("GfxDevice::createSwapChain() is not implemented");
 #endif
@@ -1634,9 +1655,9 @@ void GfxDevice::createSwapChain()
 	V(vkGetPhysicalDeviceSurfacePresentModesKHR(
 	    m_physicalDevice, m_swapChainSurface, &presentModeCount, m_availablePresentModes.data()));
 
-	auto presentModeSupported = [&](VkPresentModeKHR mode)
-	{
-		return std::find(m_availablePresentModes.begin(), m_availablePresentModes.end(), mode) != m_availablePresentModes.end();
+	auto presentModeSupported = [&](VkPresentModeKHR mode) {
+		return std::find(m_availablePresentModes.begin(), m_availablePresentModes.end(), mode) !=
+		       m_availablePresentModes.end();
 	};
 
 	VkPresentModeKHR pendingPresentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -1702,11 +1723,11 @@ void GfxDevice::createSwapChain()
 
 	auto oldSwapChain = m_swapChain;
 
-	V(vkCreateSwapchainKHR(m_vulkanDevice, &swapChainCreateInfo, nullptr, &m_swapChain));
+	V(vkCreateSwapchainKHR(m_vulkanDevice, &swapChainCreateInfo, g_allocationCallbacks, &m_swapChain));
 
 	if (oldSwapChain)
 	{
-		vkDestroySwapchainKHR(m_vulkanDevice, oldSwapChain, nullptr);
+		vkDestroySwapchainKHR(m_vulkanDevice, oldSwapChain, g_allocationCallbacks);
 	}
 
 	u32 swapChainImageCount = 0;
@@ -1739,7 +1760,7 @@ void GfxDevice::createSwapChain()
 		GfxTextureDesc textureDesc = GfxTextureDesc::make2D(
 		    m_swapChainExtent.width, m_swapChainExtent.height, swapChainFormat, GfxUsageFlags::RenderTarget);
 		m_swapChainTextures[i] =
-			retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
+		    retainResource(m_textures, TextureVK::create(textureDesc, m_swapChainImages[i], VK_IMAGE_LAYOUT_UNDEFINED));
 	}
 
 	m_presentInterval      = m_desiredPresentInterval;
@@ -1768,7 +1789,7 @@ void GfxDevice::beginFrame()
 	if (m_swapChainValid)
 	{
 		VkResult result = vkAcquireNextImageKHR(
-			m_vulkanDevice, m_swapChain, UINT64_MAX, m_presentCompleteSemaphore, VK_NULL_HANDLE, &m_swapChainIndex);
+		    m_vulkanDevice, m_swapChain, UINT64_MAX, m_presentCompleteSemaphore, VK_NULL_HANDLE, &m_swapChainIndex);
 
 		if (result != VK_SUCCESS)
 		{
@@ -1949,7 +1970,7 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 	                         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 	bufferCreateInfo.size = blockSize;
 
-	V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, nullptr, &block.buffer));
+	V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, g_allocationCallbacks, &block.buffer));
 
 	VkMemoryRequirements memoryReq = {};
 	vkGetBufferMemoryRequirements(g_vulkanDevice, block.buffer, &memoryReq);
@@ -1958,7 +1979,7 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 	allocInfo.allocationSize       = memoryReq.size;
 	allocInfo.memoryTypeIndex      = m_memoryType;
 
-	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, nullptr, &block.memory));
+	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &block.memory));
 	V(vkBindBufferMemory(g_vulkanDevice, block.buffer, block.memory, 0));
 
 	if (m_hostVisible)
@@ -2004,7 +2025,7 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 
 	VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 	fenceCreateInfo.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
-	vkCreateFence(g_vulkanDevice, &fenceCreateInfo, nullptr, &m_fence);
+	vkCreateFence(g_vulkanDevice, &fenceCreateInfo, g_allocationCallbacks, &m_fence);
 
 	VkCommandBufferAllocateInfo allocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 	allocateInfo.commandPool                 = commandPool;
@@ -2014,7 +2035,7 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 	V(vkAllocateCommandBuffers(g_vulkanDevice, &allocateInfo, &m_commandBuffer));
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-	V(vkCreateSemaphore(g_vulkanDevice, &semaphoreCreateInfo, nullptr, &m_completionSemaphore));
+	V(vkCreateSemaphore(g_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_completionSemaphore));
 }
 
 GfxContext::~GfxContext()
@@ -2026,8 +2047,8 @@ GfxContext::~GfxContext()
 	RUSH_ASSERT(!m_isActive);
 	vkFreeCommandBuffers(g_vulkanDevice, commandPool, 1, &m_commandBuffer);
 
-	vkDestroyFence(g_vulkanDevice, m_fence, nullptr);
-	vkDestroySemaphore(g_vulkanDevice, m_completionSemaphore, nullptr);
+	vkDestroyFence(g_vulkanDevice, m_fence, g_allocationCallbacks);
+	vkDestroySemaphore(g_vulkanDevice, m_completionSemaphore, g_allocationCallbacks);
 }
 
 void GfxContext::beginBuild()
@@ -2102,7 +2123,8 @@ void GfxContext::submit(VkQueue queue)
 		m_pendingBufferUploads.clear();
 	}
 
-	if (queue == g_device->m_graphicsQueue && !g_device->m_currentFrame->presentSemaphoreWaited && g_device->m_swapChainValid)
+	if (queue == g_device->m_graphicsQueue && !g_device->m_currentFrame->presentSemaphoreWaited &&
+	    g_device->m_swapChainValid)
 	{
 		addDependency(g_device->m_presentCompleteSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 		g_device->m_currentFrame->presentSemaphoreWaited = true;
@@ -2309,7 +2331,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	if (desc.depth.valid())
 	{
 		TextureVK& texture                = g_device->m_textures[desc.depth];
-		depthSampleCount = texture.desc.samples;
+		depthSampleCount                  = texture.desc.samples;
 		m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 		m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
 
@@ -2317,7 +2339,8 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 		// TODO: initialize default subresource range to cover entire image
 		VkImageSubresourceRange subresourceRange = {texture.aspectFlags, 0, texture.desc.mips, 0, 1};
 
-		texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, texture.currentLayout, &subresourceRange);
+		texture.currentLayout = addImageBarrier(
+		    texture.image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, texture.currentLayout, &subresourceRange);
 		clearValues[clearValueCount] = m_pendingClear.getClearDepthStencil();
 		++clearValueCount;
 	}
@@ -2330,12 +2353,13 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	{
 		if (desc.color[i].valid())
 		{
-			TextureVK& texture                = g_device->m_textures[desc.color[i]];
+			TextureVK& texture = g_device->m_textures[desc.color[i]];
 			RUSH_ASSERT(colorSampleCount == 0 || colorSampleCount == texture.desc.samples);
-			colorSampleCount = texture.desc.samples;
+			colorSampleCount                  = texture.desc.samples;
 			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 			m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
-			texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, texture.currentLayout);
+			texture.currentLayout =
+			    addImageBarrier(texture.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, texture.currentLayout);
 			if (shouldClearColor)
 			{
 				clearValues[clearValueCount] = m_pendingClear.getClearColor();
@@ -2348,10 +2372,14 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 		}
 	}
 
-	if (depthSampleCount == 0 && colorSampleCount != 0) depthSampleCount = colorSampleCount;
-	if (depthSampleCount != 0 && colorSampleCount == 0) colorSampleCount = depthSampleCount;
-	if (colorSampleCount == 0) colorSampleCount = 1;
-	if (depthSampleCount == 0) depthSampleCount = 1;
+	if (depthSampleCount == 0 && colorSampleCount != 0)
+		depthSampleCount = colorSampleCount;
+	if (depthSampleCount != 0 && colorSampleCount == 0)
+		colorSampleCount = depthSampleCount;
+	if (colorSampleCount == 0)
+		colorSampleCount = 1;
+	if (depthSampleCount == 0)
+		depthSampleCount = 1;
 
 	VkRenderPassBeginInfo renderPassBeginInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
 	renderPassBeginInfo.renderPass            = g_device->createRenderPass(desc);
@@ -2394,19 +2422,19 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 
 	VkImageResolve region = {};
 	region.srcSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-	region.srcOffset = VkOffset3D{ 0,0,0 };
+	region.srcOffset      = VkOffset3D{0, 0, 0};
 	region.dstSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-	region.dstOffset = VkOffset3D{ 0,0,0 };
-	region.extent = VkExtent3D{ srcTexture.desc.width, srcTexture.desc.height, srcTexture.desc.depth };
+	region.dstOffset      = VkOffset3D{0, 0, 0};
+	region.extent         = VkExtent3D{srcTexture.desc.width, srcTexture.desc.height, srcTexture.desc.depth};
 
-	VkImage srcImage = srcTexture.image;
+	VkImage       srcImage       = srcTexture.image;
 	VkImageLayout srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
-	VkImage dstImage = dstTexture.image;
+	VkImage       dstImage       = dstTexture.image;
 	VkImageLayout dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-	VkImageSubresourceRange srcRange = { srcTexture.aspectFlags, 0, srcTexture.desc.mips, 0, 1 };
-	VkImageSubresourceRange dstRange = { dstTexture.aspectFlags, 0, dstTexture.desc.mips, 0, 1 };
+	VkImageSubresourceRange srcRange = {srcTexture.aspectFlags, 0, srcTexture.desc.mips, 0, 1};
+	VkImageSubresourceRange dstRange = {dstTexture.aspectFlags, 0, dstTexture.desc.mips, 0, 1};
 
 	srcTexture.currentLayout = addImageBarrier(srcTexture.image, srcImageLayout, srcTexture.currentLayout, &srcRange);
 	dstTexture.currentLayout = addImageBarrier(dstTexture.image, dstImageLayout, dstTexture.currentLayout, &dstRange);
@@ -2417,12 +2445,9 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 }
 
 static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSetDesc& desc,
-	bool useDynamicUniformBuffers, bool allowTransientBuffers,
-	const GfxBuffer* constantBuffers,
-	const GfxSampler* samplers,
-	const GfxTexture* textures,
-	const GfxTexture* storageImages,
-	const GfxBuffer* storageBuffers)
+    bool useDynamicUniformBuffers, bool allowTransientBuffers, const GfxBuffer* constantBuffers,
+    const GfxSampler* samplers, const GfxTexture* textures, const GfxTexture* storageImages,
+    const GfxBuffer* storageBuffers)
 {
 	const u32 maxWriteDescriptorSetCount = 3 + desc.rwImages + desc.rwBuffers + desc.rwTypedBuffers;
 
@@ -2442,17 +2467,16 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 
 		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
 
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = targetSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext           = nullptr;
+		writeDescriptorSet.dstSet          = targetSet;
+		writeDescriptorSet.dstBinding      = bindingIndex;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = desc.constantBuffers;
-		writeDescriptorSet.descriptorType = useDynamicUniformBuffers
-			? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-			: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		writeDescriptorSet.pImageInfo = nullptr;
-		writeDescriptorSet.pBufferInfo = pendingConstantBufferInfo.m_data;
+		writeDescriptorSet.descriptorType =
+		    useDynamicUniformBuffers ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writeDescriptorSet.pImageInfo       = nullptr;
+		writeDescriptorSet.pBufferInfo      = pendingConstantBufferInfo.m_data;
 		writeDescriptorSet.pTexelBufferView = nullptr;
 		bindingIndex += writeDescriptorSet.descriptorCount;
 
@@ -2467,7 +2491,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 
 			bufferInfo.buffer = buffer.info.buffer;
 			bufferInfo.offset = buffer.info.offset;
-			bufferInfo.range = buffer.desc.stride;
+			bufferInfo.range  = buffer.desc.stride;
 		}
 	}
 
@@ -2483,15 +2507,15 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
 		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
 
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = targetSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = desc.samplers;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
-		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext            = nullptr;
+		writeDescriptorSet.dstSet           = targetSet;
+		writeDescriptorSet.dstBinding       = bindingIndex;
+		writeDescriptorSet.dstArrayElement  = 0;
+		writeDescriptorSet.descriptorCount  = desc.samplers;
+		writeDescriptorSet.descriptorType   = VK_DESCRIPTOR_TYPE_SAMPLER;
+		writeDescriptorSet.pImageInfo       = &imageInfos[imageInfoCount];
+		writeDescriptorSet.pBufferInfo      = nullptr;
 		writeDescriptorSet.pTexelBufferView = nullptr;
 		bindingIndex += writeDescriptorSet.descriptorCount;
 
@@ -2503,8 +2527,8 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
 
-			imageInfo.sampler = sampler.native;
-			imageInfo.imageView = VK_NULL_HANDLE;
+			imageInfo.sampler     = sampler.native;
+			imageInfo.imageView   = VK_NULL_HANDLE;
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
 	}
@@ -2516,15 +2540,15 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
 		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
 
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = targetSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = desc.textures;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
-		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext            = nullptr;
+		writeDescriptorSet.dstSet           = targetSet;
+		writeDescriptorSet.dstBinding       = bindingIndex;
+		writeDescriptorSet.dstArrayElement  = 0;
+		writeDescriptorSet.descriptorCount  = desc.textures;
+		writeDescriptorSet.descriptorType   = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		writeDescriptorSet.pImageInfo       = &imageInfos[imageInfoCount];
+		writeDescriptorSet.pBufferInfo      = nullptr;
 		writeDescriptorSet.pTexelBufferView = nullptr;
 		bindingIndex += writeDescriptorSet.descriptorCount;
 
@@ -2536,8 +2560,8 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
 
-			imageInfo.sampler = VK_NULL_HANDLE;
-			imageInfo.imageView = texture.imageView;
+			imageInfo.sampler     = VK_NULL_HANDLE;
+			imageInfo.imageView   = texture.imageView;
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
 	}
@@ -2551,15 +2575,15 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
 		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
 
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = targetSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorCount = 1;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		writeDescriptorSet.pImageInfo = &imageInfos[imageInfoCount];
-		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext            = nullptr;
+		writeDescriptorSet.dstSet           = targetSet;
+		writeDescriptorSet.dstBinding       = bindingIndex;
+		writeDescriptorSet.dstArrayElement  = 0;
+		writeDescriptorSet.descriptorCount  = 1;
+		writeDescriptorSet.descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		writeDescriptorSet.pImageInfo       = &imageInfos[imageInfoCount];
+		writeDescriptorSet.pBufferInfo      = nullptr;
 		writeDescriptorSet.pTexelBufferView = nullptr;
 
 		TextureVK& texture = g_device->m_textures[storageImages[i]];
@@ -2567,8 +2591,8 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 		VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
 
-		imageInfo.sampler = VK_NULL_HANDLE;
-		imageInfo.imageView = texture.imageView;
+		imageInfo.sampler     = VK_NULL_HANDLE;
+		imageInfo.imageView   = texture.imageView;
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
 		bindingIndex += writeDescriptorSet.descriptorCount;
@@ -2585,27 +2609,27 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
 		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
 
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = targetSet;
-		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext           = nullptr;
+		writeDescriptorSet.dstSet          = targetSet;
+		writeDescriptorSet.dstBinding      = bindingIndex;
 		writeDescriptorSet.descriptorCount = 1;
 		writeDescriptorSet.dstArrayElement = 0;
 
 		if (i >= desc.rwBuffers)
 		{
 			RUSH_ASSERT(buffer.bufferView != VK_NULL_HANDLE);
-			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-			writeDescriptorSet.pImageInfo = nullptr;
-			writeDescriptorSet.pBufferInfo = nullptr;
+			writeDescriptorSet.descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+			writeDescriptorSet.pImageInfo       = nullptr;
+			writeDescriptorSet.pBufferInfo      = nullptr;
 			writeDescriptorSet.pTexelBufferView = &buffer.bufferView;
 		}
 		else
 		{
 			RUSH_ASSERT(buffer.info.buffer != VK_NULL_HANDLE);
-			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			writeDescriptorSet.pImageInfo = nullptr;
-			writeDescriptorSet.pBufferInfo = &buffer.info;
+			writeDescriptorSet.descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			writeDescriptorSet.pImageInfo       = nullptr;
+			writeDescriptorSet.pBufferInfo      = &buffer.info;
 			writeDescriptorSet.pTexelBufferView = nullptr;
 		}
 
@@ -2626,25 +2650,25 @@ void GfxContext::applyState()
 	TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
 
 	VkPipelineBindPoint bindPoint =
-		technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+	    technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 	if (m_dirtyState & DirtyStateFlag_Pipeline)
 	{
 		PipelineInfoVK info = {};
 
-		info.techniqueHandle = m_pending.technique;
-		info.primitiveType = m_pending.primitiveType;
+		info.techniqueHandle         = m_pending.technique;
+		info.primitiveType           = m_pending.primitiveType;
 		info.depthStencilStateHandle = m_pending.depthStencilState;
-		info.rasterizerStateHandle = m_pending.rasterizerState;
-		info.blendStateHandle = m_pending.blendState;
+		info.rasterizerStateHandle   = m_pending.rasterizerState;
+		info.blendStateHandle        = m_pending.blendState;
 		for (u32 i = 0; i < RUSH_COUNTOF(info.vertexBufferStride); ++i)
 		{
 			info.vertexBufferStride[i] = m_pending.vertexBufferStride[i];
 		}
-		info.renderPass = m_currentRenderPass;
+		info.renderPass           = m_currentRenderPass;
 		info.colorAttachmentCount = m_currentColorAttachmentCount;
-		info.colorSampleCount = m_currentColorSampleCount;
-		info.depthSampleCount = m_currentDepthSampleCount;
+		info.colorSampleCount     = m_currentColorSampleCount;
+		info.depthSampleCount     = m_currentDepthSampleCount;
 
 		m_activePipeline = g_device->createPipeline(info);
 
@@ -2676,13 +2700,13 @@ void GfxContext::applyState()
 
 		VkDeviceSize offset = buffer.info.offset;
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
-			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+		    buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 
 		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
 
 	VkDescriptorSet descriptorSets[MaxDescriptorSets];
-	u32 descriptorSetMask = 0;
+	u32             descriptorSetMask = 0;
 
 	if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 	{
@@ -2702,7 +2726,7 @@ void GfxContext::applyState()
 	if (m_dirtyState == DirtyStateFlag_ConstantBufferOffset)
 	{
 		RUSH_ASSERT_MSG(technique.bindings.useDefaultDescriptorSet,
-			"Constant buffer offsets only implemented for default descriptor set");
+		    "Constant buffer offsets only implemented for default descriptor set");
 		descriptorSets[0] = m_currentDescriptorSet;
 		descriptorSetMask |= 1;
 		m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
@@ -2733,17 +2757,17 @@ void GfxContext::applyState()
 				setLayouts[i] = technique.descriptorSetLayout;
 			}
 
-			VkResult allocResult = VK_RESULT_MAX_ENUM;
-			VkDescriptorSetAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-			allocInfo.descriptorSetCount = cacheBatchSize;
-			allocInfo.pSetLayouts = setLayouts;
-			allocInfo.descriptorPool = g_device->m_currentFrame->currentDescriptorPool;
+			VkResult                    allocResult = VK_RESULT_MAX_ENUM;
+			VkDescriptorSetAllocateInfo allocInfo   = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+			allocInfo.descriptorSetCount            = cacheBatchSize;
+			allocInfo.pSetLayouts                   = setLayouts;
+			allocInfo.descriptorPool                = g_device->m_currentFrame->currentDescriptorPool;
 			allocResult = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
 			if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY)
 			{
 				extendDescriptorPool(g_device->m_currentFrame);
 				allocInfo.descriptorPool = g_device->m_currentFrame->currentDescriptorPool;
-				allocResult = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
+				allocResult              = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
 			}
 
 			RUSH_ASSERT(allocResult == VK_SUCCESS);
@@ -2760,26 +2784,26 @@ void GfxContext::applyState()
 		for (u32 i = 0; i < technique.sampledImageCount; ++i)
 		{
 			RUSH_ASSERT(m_pending.textures[i].valid());
-			TextureVK& texture = g_device->m_textures[m_pending.textures[i]];
-			VkImageSubresourceRange subresourceRange = { texture.aspectFlags, 0, texture.desc.mips, 0, 1 }; // TODO: track subresource states
-			texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
+			TextureVK&              texture          = g_device->m_textures[m_pending.textures[i]];
+			VkImageSubresourceRange subresourceRange = {
+			    texture.aspectFlags, 0, texture.desc.mips, 0, 1}; // TODO: track subresource states
+			texture.currentLayout = addImageBarrier(
+			    texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
 		}
 
 		for (u32 i = 0; i < technique.storageImageCount; ++i)
 		{
 			RUSH_ASSERT(m_pending.storageImages[i].valid());
 			TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
-			texture.currentLayout = addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
+			texture.currentLayout =
+			    addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
 		}
 
 		updateDescriptorSet(m_currentDescriptorSet, technique.bindings,
-			true, // use dynamic uniform buffers
-			true, // allow transient buffers
-			m_pending.constantBuffers,
-			m_pending.samplers,
-			m_pending.textures,
-			m_pending.storageImages,
-			m_pending.storageBuffers);
+		    true, // use dynamic uniform buffers
+		    true, // allow transient buffers
+		    m_pending.constantBuffers, m_pending.samplers, m_pending.textures, m_pending.storageImages,
+		    m_pending.storageBuffers);
 
 		descriptorSets[0] = m_currentDescriptorSet;
 		descriptorSetMask |= 1;
@@ -2797,7 +2821,6 @@ void GfxContext::applyState()
 
 	m_dirtyState = 0;
 }
-
 
 static GfxContext* allocateContext(GfxContextType type, const char* name)
 {
@@ -2911,8 +2934,7 @@ static void writeTimestamp(GfxContext* context, u32 slotIndex, VkPipelineStageFl
 
 void Gfx_BeginFrame()
 {
-	if (!g_device->m_resizeEvents.empty() ||
-		g_device->m_desiredPresentInterval != g_device->m_presentInterval)
+	if (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval)
 	{
 		g_device->createSwapChain();
 		g_device->m_resizeEvents.clear();
@@ -2997,7 +3019,7 @@ void GfxDevice::captureScreenshot()
 	bufferCreateInfo.usage              = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferCreateInfo.size               = screenshotSizeInBytes;
 
-	V(vkCreateBuffer(m_vulkanDevice, &bufferCreateInfo, nullptr, &buffer));
+	V(vkCreateBuffer(m_vulkanDevice, &bufferCreateInfo, g_allocationCallbacks, &buffer));
 
 	VkMemoryRequirements memoryReq = {};
 	vkGetBufferMemoryRequirements(m_vulkanDevice, buffer, &memoryReq);
@@ -3006,7 +3028,7 @@ void GfxDevice::captureScreenshot()
 	allocInfo.allocationSize       = memoryReq.size;
 	allocInfo.memoryTypeIndex      = m_memoryTypes.hostOnly;
 
-	V(vkAllocateMemory(m_vulkanDevice, &allocInfo, nullptr, &memory));
+	V(vkAllocateMemory(m_vulkanDevice, &allocInfo, g_allocationCallbacks, &memory));
 	V(vkBindBufferMemory(m_vulkanDevice, buffer, memory, 0));
 	V(vkMapMemory(m_vulkanDevice, memory, 0, memoryReq.size, 0, &mappedBuffer));
 
@@ -3045,8 +3067,8 @@ void GfxDevice::captureScreenshot()
 	Gfx_Release(context);
 
 	vkUnmapMemory(m_vulkanDevice, memory);
-	vkDestroyBuffer(m_vulkanDevice, buffer, nullptr);
-	vkFreeMemory(m_vulkanDevice, memory, nullptr);
+	vkDestroyBuffer(m_vulkanDevice, buffer, g_allocationCallbacks);
+	vkFreeMemory(m_vulkanDevice, memory, g_allocationCallbacks);
 }
 
 void Gfx_EndFrame()
@@ -3055,8 +3077,10 @@ void Gfx_EndFrame()
 
 	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 
-	TextureVK& backBufferTexture = g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
-	backBufferTexture.currentLayout = g_context->addImageBarrier(backBufferTexture.image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, backBufferTexture.currentLayout);
+	TextureVK& backBufferTexture =
+	    g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
+	backBufferTexture.currentLayout = g_context->addImageBarrier(
+	    backBufferTexture.image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, backBufferTexture.currentLayout);
 
 	g_context->endBuild();
 
@@ -3103,10 +3127,7 @@ void Gfx_Present()
 	g_device->m_frameCount++;
 }
 
-void Gfx_SetPresentInterval(u32 interval)
-{
-	g_device->m_desiredPresentInterval = interval;
-}
+void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval = interval; }
 
 void Gfx_Finish()
 {
@@ -3170,17 +3191,29 @@ GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 
 void Gfx_Release(GfxVertexFormat h) { releaseResource(g_device->m_vertexFormats, h); }
 
+static VkShaderModule createShaderModule(VkDevice device, const GfxShaderSource& code)
+{
+	VkShaderModule result = VK_NULL_HANDLE;
+
+	if (code.empty())
+	{
+		return result;
+	}
+
+	VkShaderModuleCreateInfo moduleCreateInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+	moduleCreateInfo.codeSize = code.size();
+	moduleCreateInfo.pCode = (const u32*)code.data();
+
+	V(vkCreateShaderModule(device, &moduleCreateInfo, g_allocationCallbacks, &result));
+	return result;
+}
+
 ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 {
 	ShaderVK result;
 
 	result.entry = _strdup(code.entry);
-
-	VkShaderModuleCreateInfo moduleCreateInfo = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-	moduleCreateInfo.codeSize                 = code.size();
-	moduleCreateInfo.pCode                    = (const u32*)code.data();
-
-	V(vkCreateShaderModule(device, &moduleCreateInfo, nullptr, &result.module));
+	result.module = createShaderModule(device, code);
 
 	return result;
 }
@@ -3318,7 +3351,7 @@ GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
 	RUSH_ASSERT(code.type == GfxShaderSourceType_SPV);
 
 	ShaderVK res = createShader(g_vulkanDevice, code);
-	res.id = g_device->generateId();
+	res.id       = g_device->generateId();
 
 	if (res.module)
 	{
@@ -3330,25 +3363,18 @@ GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Retain(GfxMeshShader h)
-{
-	g_device->m_shaders[h.index()].addReference();
-}
+void Gfx_Retain(GfxMeshShader h) { g_device->m_shaders[h.index()].addReference(); }
 
-void Gfx_Release(GfxMeshShader h)
-{
-	releaseResource(g_device->m_shaders, h);
-}
+void Gfx_Release(GfxMeshShader h) { releaseResource(g_device->m_shaders, h); }
 
 // descriptor set
 
-VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(const GfxDescriptorSetDesc& desc,
-	u32 resourceStageFlags,
-	bool useDynamicUniformBuffers)
+VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
+    const GfxDescriptorSetDesc& desc, u32 resourceStageFlags, bool useDynamicUniformBuffers)
 {
 	DescriptorSetLayoutKey key;
-	key.desc = desc;
-	key.resourceStageFlags = resourceStageFlags;
+	key.desc                     = desc;
+	key.resourceStageFlags       = resourceStageFlags;
 	key.useDynamicUniformBuffers = useDynamicUniformBuffers;
 
 	auto existing = m_descriptorSetLayouts.find(key);
@@ -3361,76 +3387,105 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(const GfxDescriptorSe
 	layoutBindings.reserve(desc.getResourceCount());
 
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {};
-	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descriptorSetLayoutCreateInfo.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 
 	u32 bindingSlot = 0;
 
 	for (u32 i = 0; i < desc.constantBuffers; ++i)
 	{
-		VkDescriptorSetLayoutBinding uniformBinding = {};
-		uniformBinding.binding = bindingSlot++;
-		uniformBinding.descriptorType = useDynamicUniformBuffers
-			? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-			: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uniformBinding.descriptorCount = 1;
-		uniformBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(uniformBinding);
+		VkDescriptorSetLayoutBinding layoutBinding = {};
+		layoutBinding.binding                      = bindingSlot++;
+		layoutBinding.descriptorType =
+		    useDynamicUniformBuffers ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		layoutBinding.descriptorCount = 1;
+		layoutBinding.stageFlags      = resourceStageFlags;
+		layoutBindings.push_back(layoutBinding);
 	}
 
 	for (u32 i = 0; i < desc.samplers; ++i)
 	{
-		VkDescriptorSetLayoutBinding samplerBinding = {};
-		samplerBinding.binding = bindingSlot++;
-		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-		samplerBinding.descriptorCount = 1;
-		samplerBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(samplerBinding);
+		VkDescriptorSetLayoutBinding layoutBinding = {};
+		layoutBinding.binding                      = bindingSlot++;
+		layoutBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLER;
+		layoutBinding.descriptorCount              = 1;
+		layoutBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(layoutBinding);
 	}
 
 	for (u32 i = 0; i < desc.textures; ++i)
 	{
-		VkDescriptorSetLayoutBinding imageBinding = {};
-		imageBinding.binding = bindingSlot++;
-		imageBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		imageBinding.descriptorCount = 1;
-		imageBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(imageBinding);
+		VkDescriptorSetLayoutBinding layoutBinding = {};
+		layoutBinding.binding                      = bindingSlot++;
+		layoutBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		layoutBinding.descriptorCount              = 1;
+		layoutBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(layoutBinding);
 	}
 
 	for (u32 i = 0; i < desc.rwImages; ++i)
 	{
-		VkDescriptorSetLayoutBinding imageBinding = {};
-		imageBinding.binding = bindingSlot++;
-		imageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		imageBinding.descriptorCount = 1;
-		imageBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(imageBinding);
+		VkDescriptorSetLayoutBinding layoutBinding = {};
+		layoutBinding.binding                      = bindingSlot++;
+		layoutBinding.descriptorType               = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		layoutBinding.descriptorCount              = 1;
+		layoutBinding.stageFlags                   = resourceStageFlags;
+		layoutBindings.push_back(layoutBinding);
 	}
 
 	for (u32 i = 0; i < u32(desc.rwBuffers) + desc.rwTypedBuffers; ++i)
 	{
 		const bool isTyped = i >= desc.rwBuffers;
 
-		VkDescriptorSetLayoutBinding bufferBinding = {};
-		bufferBinding.binding = bindingSlot++;
-		bufferBinding.descriptorType = isTyped ? VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		bufferBinding.descriptorCount = 1;
-		bufferBinding.stageFlags = resourceStageFlags;
-		layoutBindings.push_back(bufferBinding);
+		VkDescriptorSetLayoutBinding layoutBinding = {};
+		layoutBinding.binding                      = bindingSlot++;
+		layoutBinding.descriptorType =
+		    isTyped ? VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		layoutBinding.descriptorCount = 1;
+		layoutBinding.stageFlags      = resourceStageFlags;
+		layoutBindings.push_back(layoutBinding);
+	}
+
+	for (u32 i = 0; i < desc.accelerationStructures; ++i)
+	{
+		VkDescriptorSetLayoutBinding layoutBinding = {};
+		layoutBinding.binding = bindingSlot++;
+		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV;
+		layoutBinding.descriptorCount = 1;
+		layoutBinding.stageFlags = resourceStageFlags;
+		layoutBindings.push_back(layoutBinding);
 	}
 
 	RUSH_ASSERT(bindingSlot == layoutBindings.size());
 	RUSH_ASSERT(bindingSlot == desc.getResourceCount());
 
 	descriptorSetLayoutCreateInfo.bindingCount = (u32)layoutBindings.size();
-	descriptorSetLayoutCreateInfo.pBindings = layoutBindings.data();
+	descriptorSetLayoutCreateInfo.pBindings    = layoutBindings.data();
 
 	VkDescriptorSetLayout res = VK_NULL_HANDLE;
-	V(vkCreateDescriptorSetLayout(g_vulkanDevice, &descriptorSetLayoutCreateInfo, nullptr, &res));
+	V(vkCreateDescriptorSetLayout(g_vulkanDevice, &descriptorSetLayoutCreateInfo, g_allocationCallbacks, &res));
 
 	m_descriptorSetLayouts.insert(std::make_pair(key, res));
 
 	return res;
+}
+
+DescriptorSetLayoutArray GfxDevice::createDescriptorSetLayouts(
+    const GfxShaderBindingDesc& desc, u32 resourceStageFlags)
+{
+	RUSH_ASSERT_MSG(desc.useDefaultDescriptorSet, "Pipelines without default descriptor set are not implemented");
+	static_assert(GfxShaderBindingDesc::MaxDescriptorSets == GfxContext::MaxDescriptorSets, "");
+	DescriptorSetLayoutArray setLayouts;
+	setLayouts.pushBack(createDescriptorSetLayout(desc, resourceStageFlags, true));
+
+	for (u32 i = 1; i < GfxContext::MaxDescriptorSets; ++i)
+	{
+		if (desc.descriptorSets[i].isEmpty())
+			break;
+		u32 setStageFlags = convertStageFlags(desc.descriptorSets[i].stageFlags);
+		setLayouts.pushBack(createDescriptorSetLayout(desc.descriptorSets[i], setStageFlags, false));
+	}
+
+	return setLayouts;
 }
 
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
@@ -3439,7 +3494,7 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 
 	DescriptorSetVK res;
 
-	res.id = g_device->generateId();
+	res.id   = g_device->generateId();
 	res.desc = desc;
 
 	res.layout = g_device->createDescriptorSetLayout(desc, convertStageFlags(desc.stageFlags), false);
@@ -3447,25 +3502,19 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 	// TODO: cache pools and reuse them for different sets
 	DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
 	poolDesc.staticUniformBuffers = desc.constantBuffers;
-	poolDesc.sampledImages = desc.textures;
-	poolDesc.samplers = desc.samplers;
-	poolDesc.storageImages = desc.rwImages;
-	poolDesc.storageBuffers = desc.rwBuffers;
-	poolDesc.storageTexelBuffers = desc.rwTypedBuffers;
-	res.pool = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
+	poolDesc.sampledImages        = desc.textures;
+	poolDesc.samplers             = desc.samplers;
+	poolDesc.storageImages        = desc.rwImages;
+	poolDesc.storageBuffers       = desc.rwBuffers;
+	poolDesc.storageTexelBuffers  = desc.rwTypedBuffers;
+	res.pool                      = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
 
 	return retainResource(g_device->m_descriptorSets, res);
 }
 
-void Gfx_Retain(GfxDescriptorSet h)
-{
-	g_device->m_descriptorSets[h].addReference();
-}
+void Gfx_Retain(GfxDescriptorSet h) { g_device->m_descriptorSets[h].addReference(); }
 
-void Gfx_Release(GfxDescriptorSet h)
-{
-	releaseResource(g_device->m_descriptorSets, h);
-}
+void Gfx_Release(GfxDescriptorSet h) { releaseResource(g_device->m_descriptorSets, h); }
 
 void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 {
@@ -3474,11 +3523,11 @@ void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 }
 
 void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
-	const GfxBuffer* constantBuffers,
-	const GfxSampler* samplers,
-	const GfxTexture* textures,
-	const GfxTexture* storageImages,
-	const GfxBuffer* storageBuffers)
+    const GfxBuffer*                             constantBuffers,
+    const GfxSampler*                            samplers,
+    const GfxTexture*                            textures,
+    const GfxTexture*                            storageImages,
+    const GfxBuffer*                             storageBuffers)
 {
 	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
 	if (ds.native)
@@ -3488,32 +3537,25 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 
 		DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
 		poolDesc.staticUniformBuffers = desc.constantBuffers;
-		poolDesc.sampledImages = desc.textures;
-		poolDesc.samplers = desc.samplers;
-		poolDesc.storageImages = desc.rwImages;
-		poolDesc.storageBuffers = desc.rwBuffers;
-		poolDesc.storageTexelBuffers = desc.rwTypedBuffers;
-		ds.pool = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
+		poolDesc.sampledImages        = desc.textures;
+		poolDesc.samplers             = desc.samplers;
+		poolDesc.storageImages        = desc.rwImages;
+		poolDesc.storageBuffers       = desc.rwBuffers;
+		poolDesc.storageTexelBuffers  = desc.rwTypedBuffers;
+		ds.pool                       = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
 	}
 
-	VkDescriptorSetAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = &ds.layout;
-	allocInfo.descriptorPool = ds.pool->m_descriptorPool;
-	VkResult allocResult = vkAllocateDescriptorSets(
-		ds.pool->m_vulkanDevice, 
-		&allocInfo, 
-		&ds.native);
+	VkDescriptorSetAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+	allocInfo.descriptorSetCount          = 1;
+	allocInfo.pSetLayouts                 = &ds.layout;
+	allocInfo.descriptorPool              = ds.pool->m_descriptorPool;
+	VkResult allocResult                  = vkAllocateDescriptorSets(ds.pool->m_vulkanDevice, &allocInfo, &ds.native);
 	RUSH_ASSERT(allocResult == VK_SUCCESS);
 
 	updateDescriptorSet(ds.native, ds.desc,
-		false, // useDynamicUniformBuffers
-		false, // allowTransientBuffers
-		constantBuffers,
-		samplers,
-		textures,
-		storageImages,
-		storageBuffers);
+	    false, // useDynamicUniformBuffers
+	    false, // allowTransientBuffers
+	    constantBuffers, samplers, textures, storageImages, storageBuffers);
 }
 
 void DescriptorSetVK::destroy()
@@ -3649,11 +3691,11 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			RUSH_ASSERT_MSG(!desc.vs.valid(), "Vertex shader can't be used together with mesh shader.");
 			RUSH_ASSERT_MSG(!desc.gs.valid(), "Geometry shader can't be used together with mesh shader.");
 
-			VkPipelineShaderStageCreateInfo stageInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-			stageInfo.stage  = VK_SHADER_STAGE_MESH_BIT_NV;
-			stageInfo.module = g_device->m_shaders[desc.ms].module;
-			stageInfo.pName  = g_device->m_shaders[desc.ms].entry;
-			stageInfo.pSpecializationInfo = res.specializationInfo;
+			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+			stageInfo.stage                           = VK_SHADER_STAGE_MESH_BIT_NV;
+			stageInfo.module                          = g_device->m_shaders[desc.ms].module;
+			stageInfo.pName                           = g_device->m_shaders[desc.ms].entry;
+			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			res.shaderStages.push_back(stageInfo);
 			res.ms.retain(desc.ms);
@@ -3683,29 +3725,16 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		resourceStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
 	if (desc.ps.valid())
 		resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+	if (desc.ms.valid())
+		resourceStageFlags |= VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
 
-	RUSH_ASSERT_MSG(desc.bindings.useDefaultDescriptorSet,
-		"Pipelines without default descriptor set are not implemented");
+	auto setLayouts = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
 
-	static_assert(GfxShaderBindingDesc::MaxDescriptorSets == GfxContext::MaxDescriptorSets, "");
-
-	StaticArray<VkDescriptorSetLayout, GfxContext::MaxDescriptorSets> setLayouts;
-
-	res.descriptorSetLayout = g_device->createDescriptorSetLayout(desc.bindings, resourceStageFlags, true);
-	setLayouts.pushBack(res.descriptorSetLayout);
-
-	for (u32 i = 1; i < GfxContext::MaxDescriptorSets; ++i)
-	{
-		if (desc.bindings.descriptorSets[i].isEmpty()) break;
-		u32 setStageFlags = convertStageFlags(desc.bindings.descriptorSets[i].stageFlags);
-		VkDescriptorSetLayout layout = g_device->createDescriptorSetLayout(desc.bindings.descriptorSets[i], setStageFlags, false);
-		setLayouts.pushBack(layout);
-	}
-
+	res.descriptorSetLayout = setLayouts[0]; // default descriptor set layout
 	res.descriptorSetCount = u32(setLayouts.size());
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-	pipelineLayoutCreateInfo.setLayoutCount             = u32(setLayouts.currentSize);
+	pipelineLayoutCreateInfo.setLayoutCount             = u32(setLayouts.size());
 	pipelineLayoutCreateInfo.pSetLayouts                = setLayouts.data;
 
 	VkPushConstantRange pushConstantRange;
@@ -3718,7 +3747,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 	}
 
-	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, nullptr, &res.pipelineLayout));
+	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, g_allocationCallbacks, &res.pipelineLayout));
 
 	// Done
 
@@ -3745,7 +3774,7 @@ void TechniqueVK::destroy()
 	delete[] waveLimits;
 
 	// TODO: queue-up destruction
-	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, nullptr);
+	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
 
 void Gfx_Release(GfxTechnique h) { releaseResource(g_device->m_techniques, h); }
@@ -3782,7 +3811,7 @@ VkDeviceMemory allocDeviceMemory(size_t size, u32 memoryType)
 	allocInfo.allocationSize       = size;
 	allocInfo.memoryTypeIndex      = memoryType;
 
-	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, nullptr, &result));
+	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &result));
 
 	return result;
 }
@@ -3933,7 +3962,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 	imageCreateInfo.initialLayout = res.currentLayout;
 
-	V(vkCreateImage(g_vulkanDevice, &imageCreateInfo, nullptr, &res.image));
+	V(vkCreateImage(g_vulkanDevice, &imageCreateInfo, g_allocationCallbacks, &res.image));
 	res.ownsImage = true;
 
 	VkMemoryRequirements memoryReq = {};
@@ -3944,7 +3973,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	allocInfo.memoryTypeIndex =
 	    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, nullptr, &res.memory));
+	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 	res.ownsMemory = true;
 
 	V(vkBindImageMemory(g_vulkanDevice, res.image, res.memory, 0));
@@ -3960,21 +3989,23 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	imageViewCreateInfo.subresourceRange = {res.aspectFlags, 0, desc.mips, 0, imageCreateInfo.arrayLayers};
 	imageViewCreateInfo.image            = res.image;
 
-	V(vkCreateImageView(g_vulkanDevice, &imageViewCreateInfo, nullptr, &res.imageView));
+	V(vkCreateImageView(g_vulkanDevice, &imageViewCreateInfo, g_allocationCallbacks, &res.imageView));
 
 	if (!!(desc.usage & GfxUsageFlags::DepthStencil))
 	{
 		VkImageViewCreateInfo depthViewCreateInfo = imageViewCreateInfo;
 		depthViewCreateInfo.format                = imageCreateInfo.format;
-		V(vkCreateImageView(g_vulkanDevice, &depthViewCreateInfo, nullptr, &res.depthStencilImageView));
+		V(vkCreateImageView(g_vulkanDevice, &depthViewCreateInfo, g_allocationCallbacks, &res.depthStencilImageView));
 	}
 
 	if (data)
 	{
 		GfxContext* uploadContext = getUploadContext();
 
-		VkImageSubresourceRange subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, desc.mips, 0, imageCreateInfo.arrayLayers};
-		uploadContext->addImageBarrier(res.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, res.currentLayout, &subresourceRange);
+		VkImageSubresourceRange subresourceRange = {
+		    VK_IMAGE_ASPECT_COLOR_BIT, 0, desc.mips, 0, imageCreateInfo.arrayLayers};
+		uploadContext->addImageBarrier(
+		    res.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, res.currentLayout, &subresourceRange);
 		uploadContext->flushBarriers();
 
 		const size_t bitsPerPixel   = getBitsPerPixel(desc.format);
@@ -4000,7 +4031,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 		stagingBufferCreateInfo.size               = stagingBufferSize;
 
 		VkBuffer stagingBuffer = VK_NULL_HANDLE;
-		V(vkCreateBuffer(g_vulkanDevice, &stagingBufferCreateInfo, nullptr, &stagingBuffer));
+		V(vkCreateBuffer(g_vulkanDevice, &stagingBufferCreateInfo, g_allocationCallbacks, &stagingBuffer));
 
 		VkMemoryRequirements stagingMemoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, stagingBuffer, &stagingMemoryReq);
@@ -4009,7 +4040,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 		// TODO: allocate memory from a pool, rather than do individual allocations
 		VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
-		V(vkAllocateMemory(g_vulkanDevice, &stagingAllocInfo, nullptr, &stagingMemory));
+		V(vkAllocateMemory(g_vulkanDevice, &stagingAllocInfo, g_allocationCallbacks, &stagingMemory));
 		V(vkBindBufferMemory(g_vulkanDevice, stagingBuffer, stagingMemory, 0));
 
 		// TODO: keep upload / staging memory persistently mapped
@@ -4051,7 +4082,8 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			stagingImageOffset += alignedLevelSize;
 		}
 
-		res.currentLayout = uploadContext->addImageBarrier(res.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &subresourceRange);
+		res.currentLayout = uploadContext->addImageBarrier(res.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &subresourceRange);
 
 		vkUnmapMemory(g_vulkanDevice, stagingMemory);
 
@@ -4089,12 +4121,13 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLa
 	viewCreateInfo.subresourceRange = {aspectFlags, 0, desc.mips, 0, 1};
 	viewCreateInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
 
-	V(vkCreateImageView(g_vulkanDevice, &viewCreateInfo, nullptr, &res.imageView));
+	V(vkCreateImageView(g_vulkanDevice, &viewCreateInfo, g_allocationCallbacks, &res.imageView));
 
 	return res;
 }
 
-GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
+GfxOwn<GfxTexture> Gfx_CreateTexture(
+    const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
 {
 	return retainResource(g_device->m_textures, TextureVK::create(desc, data, count, pixels));
 }
@@ -4180,12 +4213,16 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 	samplerCreateInfo.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 	samplerCreateInfo.unnormalizedCoordinates = false;
 
-	V(vkCreateSampler(g_vulkanDevice, &samplerCreateInfo, nullptr, &res.native));
+	V(vkCreateSampler(g_vulkanDevice, &samplerCreateInfo, g_allocationCallbacks, &res.native));
 
 	return retainResource(g_device->m_samplers, res);
 }
 
-void SamplerVK::destroy() { RUSH_ASSERT(m_refs == 0); g_device->enqueueDestroySampler(native); }
+void SamplerVK::destroy()
+{
+	RUSH_ASSERT(m_refs == 0);
+	g_device->enqueueDestroySampler(native);
+}
 
 void Gfx_Release(GfxSampler h) { releaseResource(g_device->m_samplers, h); }
 
@@ -4275,7 +4312,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 
 	if (data || isStatic)
 	{
-		V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, nullptr, &res.info.buffer));
+		V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, g_allocationCallbacks, &res.info.buffer));
 		res.ownsBuffer = true;
 
 		res.size        = (u32)bufferCreateInfo.size;
@@ -4289,14 +4326,14 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		stagingBufferCreateInfo.usage              = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
 		VkBuffer stagingBuffer = VK_NULL_HANDLE;
-		V(vkCreateBuffer(g_vulkanDevice, &stagingBufferCreateInfo, nullptr, &stagingBuffer));
+		V(vkCreateBuffer(g_vulkanDevice, &stagingBufferCreateInfo, g_allocationCallbacks, &stagingBuffer));
 
 		VkMemoryRequirements stagingMemoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, stagingBuffer, &stagingMemoryReq);
 		VkMemoryAllocateInfo stagingAllocInfo = getStagingMemoryAllocateInfo(stagingMemoryReq);
 
 		VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
-		V(vkAllocateMemory(g_vulkanDevice, &stagingAllocInfo, nullptr, &stagingMemory));
+		V(vkAllocateMemory(g_vulkanDevice, &stagingAllocInfo, g_allocationCallbacks, &stagingMemory));
 
 		void* mappedBuffer = nullptr;
 		V(vkMapMemory(g_vulkanDevice, stagingMemory, 0, stagingAllocInfo.allocationSize, 0, &mappedBuffer));
@@ -4317,7 +4354,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		allocInfo.memoryTypeIndex =
 		    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, nullptr, &res.memory));
+		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 		res.ownsMemory = true;
 
 		V(vkBindBufferMemory(g_vulkanDevice, res.info.buffer, res.memory, 0));
@@ -4349,7 +4386,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		allocInfo.allocationSize       = max(memoryReq.size, bufferCreateInfo.size);
 		allocInfo.memoryTypeIndex      = g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
 
-		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, nullptr, &res.memory));
+		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 		res.ownsMemory = true;
 
 		V(vkBindBufferMemory(g_vulkanDevice, res.info.buffer, res.memory, 0));
@@ -4368,7 +4405,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		bufferViewCreateInfo.format                 = convertFormat(desc.format);
 		bufferViewCreateInfo.offset                 = res.info.offset;
 		bufferViewCreateInfo.range                  = res.info.range;
-		V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &res.bufferView));
+		V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, g_allocationCallbacks, &res.bufferView));
 	}
 
 	return retainResource(g_device->m_buffers, res);
@@ -4597,7 +4634,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 			bufferViewCreateInfo.format                 = convertFormat(buffer.desc.format);
 			bufferViewCreateInfo.offset                 = buffer.info.offset;
 			bufferViewCreateInfo.range                  = buffer.info.range;
-			V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, nullptr, &buffer.bufferView));
+			V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, g_allocationCallbacks, &buffer.bufferView));
 		}
 	}
 
@@ -4922,7 +4959,7 @@ void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t off
 	{
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer | GfxContext::DirtyStateFlag_ConstantBufferOffset;
 		rc->m_pending.constantBufferOffsets[index] = u32(offset);
-		rc->m_pending.constantBuffers[index] = h;
+		rc->m_pending.constantBuffers[index]       = h;
 	}
 	else if (rc->m_pending.constantBufferOffsets[index] != offset)
 	{
@@ -4951,13 +4988,14 @@ void Gfx_AddImageBarrier(
 		return;
 	}
 
-	texture.currentLayout = rc->addImageBarrier(texture.image, desiredLayout, texture.currentLayout, &subresourceRangeVk);
+	texture.currentLayout =
+	    rc->addImageBarrier(texture.image, desiredLayout, texture.currentLayout, &subresourceRangeVk);
 }
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline;
-	
+
 	if (!desc.depth.valid() && !desc.color[0].valid())
 	{
 		GfxPassDesc backBufferPassDesc = desc;
@@ -4973,10 +5011,7 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 
 void Gfx_EndPass(GfxContext* rc) { rc->endRenderPass(); }
 
-void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
-{
-	rc->resolveImage(src, dst);
-}
+void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) { rc->resolveImage(src, dst); }
 
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 {
@@ -5119,7 +5154,7 @@ void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* push
 		TechniqueVK& technique = g_device->m_techniques[rc->m_pending.technique];
 		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
 		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
-			pushConstantsSize, pushConstants);
+		    pushConstantsSize, pushConstants);
 	}
 
 	vkCmdDrawMeshTasksNV(rc->m_commandBuffer, taskCount, firstTask);
@@ -5195,7 +5230,7 @@ void ShaderVK::destroy()
 {
 	RUSH_ASSERT(m_refs == 0);
 	// TODO: queue-up destruction
-	vkDestroyShaderModule(g_vulkanDevice, module, nullptr);
+	vkDestroyShaderModule(g_vulkanDevice, module, g_allocationCallbacks);
 	deallocateBytes(const_cast<char*>(entry));
 }
 
@@ -5234,37 +5269,37 @@ void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 {
 	for (VkSampler s : samplers)
 	{
-		vkDestroySampler(vulkanDevice, s, nullptr);
+		vkDestroySampler(vulkanDevice, s, g_allocationCallbacks);
 	}
 	samplers.clear();
 
 	for (VkDeviceMemory p : memory)
 	{
-		vkFreeMemory(vulkanDevice, p, nullptr);
+		vkFreeMemory(vulkanDevice, p, g_allocationCallbacks);
 	}
 	memory.clear();
 
 	for (VkBuffer p : buffers)
 	{
-		vkDestroyBuffer(vulkanDevice, p, nullptr);
+		vkDestroyBuffer(vulkanDevice, p, g_allocationCallbacks);
 	}
 	buffers.clear();
 
 	for (VkImage p : images)
 	{
-		vkDestroyImage(vulkanDevice, p, nullptr);
+		vkDestroyImage(vulkanDevice, p, g_allocationCallbacks);
 	}
 	images.clear();
 
 	for (VkImageView p : imageViews)
 	{
-		vkDestroyImageView(vulkanDevice, p, nullptr);
+		vkDestroyImageView(vulkanDevice, p, g_allocationCallbacks);
 	}
 	imageViews.clear();
 
 	for (VkBufferView p : bufferViews)
 	{
-		vkDestroyBufferView(vulkanDevice, p, nullptr);
+		vkDestroyBufferView(vulkanDevice, p, g_allocationCallbacks);
 	}
 	bufferViews.clear();
 
@@ -5318,47 +5353,187 @@ const char* toString(VkResult value)
 	}
 }
 
-DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSetDesc& desc, u32 maxSets) : m_vulkanDevice(vulkanDevice)
+DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSetDesc& desc, u32 maxSets)
+: m_vulkanDevice(vulkanDevice)
 {
-	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-	descriptorPoolCreateInfo.maxSets = maxSets;
+	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+	descriptorPoolCreateInfo.maxSets                    = maxSets;
 
 	StaticArray<VkDescriptorPoolSize, 16> poolSizes;
 
-	if (desc.staticUniformBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, desc.staticUniformBuffers * maxSets});
-	if (desc.dynamicUniformBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, desc.dynamicUniformBuffers * maxSets});
-	if (desc.samplers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_SAMPLER, desc.samplers * maxSets});
-	if (desc.sampledImages) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, desc.sampledImages * maxSets});
-	if (desc.storageImages) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, desc.storageImages * maxSets});
-	if (desc.storageBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, desc.storageBuffers * maxSets});
-	if (desc.storageTexelBuffers) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, desc.storageTexelBuffers * maxSets});
-	if (desc.accelerationStructures) poolSizes.pushBack({VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, desc.accelerationStructures * maxSets});
+	if (desc.staticUniformBuffers)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, desc.staticUniformBuffers * maxSets});
+	if (desc.dynamicUniformBuffers)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, desc.dynamicUniformBuffers * maxSets});
+	if (desc.samplers)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_SAMPLER, desc.samplers * maxSets});
+	if (desc.sampledImages)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, desc.sampledImages * maxSets});
+	if (desc.storageImages)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, desc.storageImages * maxSets});
+	if (desc.storageBuffers)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, desc.storageBuffers * maxSets});
+	if (desc.storageTexelBuffers)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, desc.storageTexelBuffers * maxSets});
+	if (desc.accelerationStructures)
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, desc.accelerationStructures * maxSets});
 
 	descriptorPoolCreateInfo.poolSizeCount = u32(poolSizes.currentSize);
-	descriptorPoolCreateInfo.pPoolSizes = poolSizes.data;
+	descriptorPoolCreateInfo.pPoolSizes    = poolSizes.data;
 
-	V(vkCreateDescriptorPool(vulkanDevice, &descriptorPoolCreateInfo, nullptr, &m_descriptorPool));
+	V(vkCreateDescriptorPool(vulkanDevice, &descriptorPoolCreateInfo, g_allocationCallbacks, &m_descriptorPool));
 }
 
 DescriptorPoolVK::DescriptorPoolVK(DescriptorPoolVK&& other) noexcept
-	: m_vulkanDevice(other.m_vulkanDevice)
-	, m_descriptorPool(other.m_descriptorPool)
+: m_vulkanDevice(other.m_vulkanDevice), m_descriptorPool(other.m_descriptorPool)
 {
 	other.m_descriptorPool = VK_NULL_HANDLE;
 }
 
 DescriptorPoolVK::~DescriptorPoolVK()
 {
-	if (m_vulkanDevice != VK_NULL_HANDLE && 
-		m_descriptorPool != VK_NULL_HANDLE)
+	if (m_vulkanDevice != VK_NULL_HANDLE && m_descriptorPool != VK_NULL_HANDLE)
 	{
-		vkDestroyDescriptorPool(m_vulkanDevice, m_descriptorPool, nullptr);
+		vkDestroyDescriptorPool(m_vulkanDevice, m_descriptorPool, g_allocationCallbacks);
 	}
 }
 
-void DescriptorPoolVK::reset()
+void DescriptorPoolVK::reset() { V(vkResetDescriptorPool(m_vulkanDevice, m_descriptorPool, 0)); }
+
+// ray tracing
+
+GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc)
 {
-	V(vkResetDescriptorPool(m_vulkanDevice, m_descriptorPool, 0));
+	RayTracingPipelineVK result;
+
+	result.id                = g_device->generateId();
+	result.maxRecursionDepth = desc.maxRecursionDepth;
+	result.bindings          = desc.bindings;
+
+	RUSH_ASSERT_MSG(desc.bindings.accelerationStructures <= 1, "Binding multiple acceleration structures is not implemented");
+
+	// shader modules
+
+	RUSH_ASSERT_MSG(!desc.rayGen.empty(), "Ray generation shader must always be provided");
+
+	result.rayGen     = createShaderModule(g_vulkanDevice, desc.rayGen);
+	result.miss       = createShaderModule(g_vulkanDevice, desc.miss);
+	result.closestHit = createShaderModule(g_vulkanDevice, desc.closestHit);
+	result.anyHit     = createShaderModule(g_vulkanDevice, desc.anyHit);
+
+	// set layouts
+
+	const u32 resourceStageFlags = convertStageFlags(GfxStageFlags::RayTracing);
+	result.setLayouts = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
+
+	// pipeline layout
+
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayoutCreateInfo.setLayoutCount = u32(result.setLayouts.size());
+	pipelineLayoutCreateInfo.pSetLayouts = result.setLayouts.data;
+
+	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, nullptr, &result.pipelineLayout));
+
+	// ray tracing pipeline
+
+	static constexpr u32 MaxShaders = 4; // raygen + miss + chs + ahs
+	StaticArray<VkPipelineShaderStageCreateInfo, MaxShaders> shaderStages;
+	StaticArray<VkRayTracingShaderGroupCreateInfoNV, MaxShaders> shaderGroups;
+
+	if (result.rayGen != VK_NULL_HANDLE)
+	{
+		VkRayTracingShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV };
+		group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
+		group.generalShader = u32(shaderStages.size());
+		shaderGroups.pushBack(group);
+
+		VkPipelineShaderStageCreateInfo stage = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+		stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_NV;
+		stage.module = result.rayGen;
+		stage.pName = "main";
+		shaderStages.pushBack(stage);
+	}
+
+	if (result.miss != VK_NULL_HANDLE)
+	{
+		VkRayTracingShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV };
+		group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
+		group.generalShader = u32(shaderStages.size());
+		shaderGroups.pushBack(group);
+
+		VkPipelineShaderStageCreateInfo stage = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+		stage.stage = VK_SHADER_STAGE_MISS_BIT_NV;
+		stage.module = result.miss;
+		stage.pName = "main";
+		shaderStages.pushBack(stage);
+	}
+
+	RUSH_ASSERT_MSG(result.closestHit == VK_NULL_HANDLE, "Closest hit shaders are not implemented");
+	RUSH_ASSERT_MSG(result.anyHit == VK_NULL_HANDLE, "Any hit shaders are not implemented");
+
+	VkRayTracingPipelineCreateInfoNV createInfo = { VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV };
+
+	createInfo.stageCount = u32(shaderStages.size());
+	createInfo.pStages = shaderStages.data;
+
+	createInfo.groupCount = u32(shaderGroups.size());
+	createInfo.pGroups = shaderGroups.data;
+
+	createInfo.maxRecursionDepth = desc.maxRecursionDepth;
+
+	createInfo.layout = result.pipelineLayout;
+
+	V(vkCreateRayTracingPipelinesNV(
+	    g_vulkanDevice, g_device->m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &result.pipeline));
+
+	const u32 handleSize = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	result.shaderHandles.resize(handleSize * shaderGroups.size());
+
+	V(vkGetRayTracingShaderGroupHandlesNV(g_vulkanDevice, result.pipeline, 0, createInfo.groupCount,
+	    u32(result.shaderHandles.size()), result.shaderHandles.data()));
+
+	return retainResource(g_device->m_rayTracingPipelines, result);
+}
+
+GfxOwn<GfxBuffer> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc) { return {}; }
+
+u32 Gfx_GetAccelerationStructureSize(GfxBufferArg buffer) { return 0; }
+
+u64 Gfx_GetAccelerationStructureHandle(GfxBufferArg buffer) { return 0; }
+
+void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxBufferArg buffer) {}
+
+void Gfx_Retain(GfxRayTracingPipeline h) { g_device->m_rayTracingPipelines[h].addReference(); }
+void Gfx_Release(GfxRayTracingPipeline h) { releaseResource(g_device->m_rayTracingPipelines, h); }
+
+void RayTracingPipelineVK::destroy() 
+{
+	if (rayGen != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(g_vulkanDevice, rayGen, g_allocationCallbacks);
+		rayGen = VK_NULL_HANDLE;
+	}
+
+	if (closestHit != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(g_vulkanDevice, closestHit, g_allocationCallbacks);
+		closestHit = VK_NULL_HANDLE;
+	}
+
+	if (anyHit != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(g_vulkanDevice, anyHit, g_allocationCallbacks);
+		anyHit = VK_NULL_HANDLE;
+	}
+
+	if (miss != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(g_vulkanDevice, miss, g_allocationCallbacks);
+		miss = VK_NULL_HANDLE;
+	}
+
+	vkDestroyPipeline(g_vulkanDevice, pipeline, g_allocationCallbacks);
+	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
 
 } // namespace Rush

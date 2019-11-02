@@ -66,10 +66,11 @@
 #define RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 #elif RUSH_RENDER_API == RUSH_RENDER_API_VK
 #define RUSH_RENDER_API_NAME "Vulkan"
-#define RUSH_RENDER_SUPPORT_IMAGE_BARRIERS
-#define RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
-#define RUSH_RENDER_SUPPORT_MESH_SHADER
-#define RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
+#define RUSH_RENDER_SUPPORT_IMAGE_BARRIERS  1
+#define RUSH_RENDER_SUPPORT_ASYNC_COMPUTE   1
+#define RUSH_RENDER_SUPPORT_MESH_SHADER     1
+#define RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS 1
+#define RUSH_RENDER_SUPPORT_RAY_TRACING     1
 #else // RUSH_RENDER_API_EXTERNAL
 #define RUSH_RENDER_API_NAME "Unknown"
 #endif
@@ -437,12 +438,14 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxUsageFlags, u8);
 
 enum class GfxStage : u8
 {
-	Vertex,
-	Geometry,
-	Pixel,
-	Hull,
-	Domain,
-	Compute,
+	Vertex      = 0,
+	Geometry    = 1,
+	Pixel       = 2,
+	Hull        = 3,
+	Domain      = 4,
+	Compute     = 5,
+	Mesh        = 6,
+	RayTracing  = 7,
 	count
 };
 
@@ -450,12 +453,14 @@ enum class GfxStageFlags : u8
 {
 	None = 0,
 
-	Vertex   = 1 << (u32)GfxStage::Vertex,
-	Geometry = 1 << (u32)GfxStage::Geometry,
-	Pixel    = 1 << (u32)GfxStage::Pixel,
-	Hull     = 1 << (u32)GfxStage::Hull,
-	Domain   = 1 << (u32)GfxStage::Domain,
-	Compute  = 1 << (u32)GfxStage::Compute,
+	Vertex     = 1u << (u32)GfxStage::Vertex,
+	Geometry   = 1u << (u32)GfxStage::Geometry,
+	Pixel      = 1u << (u32)GfxStage::Pixel,
+	Hull       = 1u << (u32)GfxStage::Hull,
+	Domain     = 1u << (u32)GfxStage::Domain,
+	Compute    = 1u << (u32)GfxStage::Compute,
+	Mesh       = 1u << (u32)GfxStage::Mesh,
+	RayTracing = 1u << (u32)GfxStage::RayTracing,
 
 	VertexPixel = Vertex | Pixel,
 	All         = 0xFF,
@@ -829,17 +834,18 @@ struct GfxShaderSource : public DynamicArray<char>
 
 struct GfxDescriptorSetDesc
 {
-	u8            constantBuffers = 0;
-	u8            samplers        = 0;
-	u8            textures        = 0;
-	u8            rwImages        = 0;
-	u8            rwBuffers       = 0;
-	u8            rwTypedBuffers  = 0;
+	u8            constantBuffers        = 0;
+	u8            samplers               = 0;
+	u8            textures               = 0;
+	u8            rwImages               = 0;
+	u8            rwBuffers              = 0;
+	u8            rwTypedBuffers         = 0;
+	u8            accelerationStructures = 0;
 	GfxStageFlags stageFlags      = GfxStageFlags::All;
 
 	u32 getResourceCount() const
 	{
-		return constantBuffers + samplers + textures + rwImages + rwBuffers + rwTypedBuffers;
+		return constantBuffers + samplers + textures + rwImages + rwBuffers + rwTypedBuffers + accelerationStructures;
 	}
 
 	bool isEmpty() const { return getResourceCount() == 0; }
@@ -1000,6 +1006,10 @@ struct GfxRayTracingPipelineDesc
 	GfxShaderSource miss;
 	GfxShaderSource closestHit;
 	GfxShaderSource anyHit;
+
+	GfxShaderBindingDesc bindings;
+
+	u32 maxRecursionDepth = 1;
 };
 
 inline u32 computeSubresourceCount(TextureType type, u32 mipCount, u32 layerCount)

@@ -173,9 +173,33 @@ struct DescriptorSetVK : GfxRefCount
 {
 	u32                      id = 0;
 	GfxDescriptorSetDesc     desc;
-	VkDescriptorSetLayout    layout = VK_NULL_HANDLE;
+	VkDescriptorSetLayout    layout = VK_NULL_HANDLE; // lifetime managed by device
 	VkDescriptorSet          native = VK_NULL_HANDLE;
 	DescriptorPoolVK*        pool = nullptr;
+
+	void destroy();
+};
+
+using DescriptorSetLayoutArray = StaticArray<VkDescriptorSetLayout, GfxShaderBindingDesc::MaxDescriptorSets>;
+
+struct RayTracingPipelineVK : GfxRefCount
+{
+	u32 id = 0;
+
+	VkShaderModule rayGen     = VK_NULL_HANDLE;
+	VkShaderModule miss       = VK_NULL_HANDLE;
+	VkShaderModule closestHit = VK_NULL_HANDLE;
+	VkShaderModule anyHit     = VK_NULL_HANDLE;
+
+	DescriptorSetLayoutArray setLayouts; // lifetime managed by device
+
+	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+	VkPipeline pipeline = VK_NULL_HANDLE;
+
+	u32                  maxRecursionDepth = 1;
+	GfxShaderBindingDesc bindings;
+
+	DynamicArray<u8> shaderHandles;
 
 	void destroy();
 };
@@ -269,6 +293,8 @@ public:
 	VkDescriptorSetLayout createDescriptorSetLayout(const GfxDescriptorSetDesc& desc,
 		u32 resourceStageFlags,
 		bool useDynamicUniformBuffers);
+
+	DescriptorSetLayoutArray createDescriptorSetLayouts(const GfxShaderBindingDesc& desc, u32 resourceStageFlags);
 
 	void          createSwapChain();
 
@@ -477,16 +503,17 @@ public:
 
 	// resources
 
-	ResourcePool<TechniqueVK, GfxTechnique>                 m_techniques;
-	ResourcePool<ShaderVK, UntypedResourceHandle>           m_shaders;
-	ResourcePool<VertexFormatVK, GfxVertexFormat>           m_vertexFormats;
-	ResourcePool<BufferVK, GfxBuffer>                       m_buffers;
-	ResourcePool<DepthStencilStateVK, GfxDepthStencilState> m_depthStencilStates;
-	ResourcePool<RasterizerStateVK, GfxRasterizerState>     m_rasterizerStates;
-	ResourcePool<TextureVK, GfxTexture>                     m_textures;
-	ResourcePool<BlendStateVK, GfxBlendState>               m_blendStates;
-	ResourcePool<SamplerVK, GfxSampler>                     m_samplers;
-	ResourcePool<DescriptorSetVK, GfxDescriptorSet>         m_descriptorSets;
+	ResourcePool<TechniqueVK, GfxTechnique>                   m_techniques;
+	ResourcePool<ShaderVK, UntypedResourceHandle>             m_shaders;
+	ResourcePool<VertexFormatVK, GfxVertexFormat>             m_vertexFormats;
+	ResourcePool<BufferVK, GfxBuffer>                         m_buffers;
+	ResourcePool<DepthStencilStateVK, GfxDepthStencilState>   m_depthStencilStates;
+	ResourcePool<RasterizerStateVK, GfxRasterizerState>       m_rasterizerStates;
+	ResourcePool<TextureVK, GfxTexture>                       m_textures;
+	ResourcePool<BlendStateVK, GfxBlendState>                 m_blendStates;
+	ResourcePool<SamplerVK, GfxSampler>                       m_samplers;
+	ResourcePool<DescriptorSetVK, GfxDescriptorSet>           m_descriptorSets;
+	ResourcePool<RayTracingPipelineVK, GfxRayTracingPipeline> m_rayTracingPipelines;
 
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
