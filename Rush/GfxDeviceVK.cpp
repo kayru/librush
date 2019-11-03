@@ -1857,6 +1857,11 @@ u32 GfxDevice::memoryTypeFromProperties(u32 memoryTypeBits, VkFlags requiredFlag
 	return 0xFFFFFFFF;
 }
 
+void GfxDevice::euqneueDestroyPipeline(VkPipeline object)
+{
+	m_currentFrame->destructionQueue.pipelines.push_back(object);
+}
+
 void GfxDevice::enqueueDestroyMemory(VkDeviceMemory object)
 {
 	m_currentFrame->destructionQueue.memory.push_back(object);
@@ -5303,6 +5308,12 @@ const GfxCapability& Gfx_GetCapability() { return g_device->m_caps; }
 
 void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 {
+	for (VkPipeline x : pipelines)
+	{
+		vkDestroyPipeline(vulkanDevice, x, g_allocationCallbacks);
+	}
+	pipelines.clear();
+
 	for (VkSampler s : samplers)
 	{
 		vkDestroySampler(vulkanDevice, s, g_allocationCallbacks);
@@ -5739,7 +5750,8 @@ void RayTracingPipelineVK::destroy()
 		miss = VK_NULL_HANDLE;
 	}
 
-	vkDestroyPipeline(g_vulkanDevice, pipeline, g_allocationCallbacks);
+	g_device->euqneueDestroyPipeline(pipeline);
+
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
 

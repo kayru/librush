@@ -308,6 +308,7 @@ public:
 	void flushUploadContext(GfxContext* dependentContext = nullptr, bool waitForCompletion = false);
 
 	// TODO: destruction queue shoult be tied to main queue command buffer execution rather than frames
+	void euqneueDestroyPipeline(VkPipeline pipeline);
 	void enqueueDestroyMemory(VkDeviceMemory object);
 	void enqueueDestroyBuffer(VkBuffer object);
 	void enqueueDestroyImage(VkImage object);
@@ -522,6 +523,7 @@ public:
 
 	struct DestructionQueue
 	{
+		DynamicArray<VkPipeline>        pipelines;
 		DynamicArray<VkDeviceMemory>    memory;
 		DynamicArray<VkBuffer>          buffers;
 		DynamicArray<VkImage>           images;
