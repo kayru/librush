@@ -445,6 +445,7 @@ enum class GfxUsageFlags : u8
 
 	RenderTarget_ShaderResource = ShaderResource | RenderTarget,
 	DepthStencil_ShaderResource = ShaderResource | DepthStencil,
+	StorageImage_ShaderResource = ShaderResource | StorageImage,
 };
 
 enum class GfxSampleCount : u8
@@ -935,6 +936,12 @@ struct GfxTextureDesc
 	static GfxTextureDesc make2D(u32 _width, u32 _height, GfxFormat _format = GfxFormat_RGBA8_Unorm,
 	    GfxUsageFlags _usage = GfxUsageFlags::ShaderResource);
 
+	static GfxTextureDesc make2D(const Tuple2i size, GfxFormat _format = GfxFormat_RGBA8_Unorm,
+		GfxUsageFlags _usage = GfxUsageFlags::ShaderResource)
+	{
+		return make2D(size.x, size.y, _format, _usage);
+	}
+
 	static GfxTextureDesc make3D(u32 _width, u32 _height, u32 _depth, GfxFormat _format = GfxFormat_RGBA8_Unorm,
 	    GfxUsageFlags _usage = GfxUsageFlags::ShaderResource);
 
@@ -948,6 +955,9 @@ struct GfxTextureDesc
 	{
 		return type == TextureType::Tex2DArray || type == TextureType::Tex1DArray || type == TextureType::TexCubeArray;
 	}
+
+	Tuple2i getSize2D() const { return { int(width), int(height) }; }
+	Tuple3i getSize3D() const { return { int(width), int(height), int(depth) }; }
 
 	u32           width     = 0;
 	u32           height    = 0;

@@ -331,6 +331,16 @@ template <typename T> inline void Gfx_SetScissorRect(GfxContext* rc, const Tuple
 	Gfx_SetScissorRect(rc, rect);
 }
 
+inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(GfxBufferFlags flags, GfxFormat format, u32 count = 0, u32 stride = 0, const void* data = nullptr)
+{
+	return Gfx_CreateBuffer(GfxBufferDesc(flags, format, count, stride), data);
+}
+
+inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(GfxBufferFlags flags, u32 count = 0, u32 stride = 0, const void* data = nullptr)
+{
+	return Gfx_CreateBuffer(GfxBufferDesc(flags, count, stride), data);
+}
+
 inline GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const void* pixels)
 {
 	GfxTextureData data;
