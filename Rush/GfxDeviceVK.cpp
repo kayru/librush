@@ -993,6 +993,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.mixedSamplesNV              = m_supportedExtensions.NV_framebuffer_mixed_samples;
 	m_caps.meshShaderNV                = m_supportedExtensions.NV_mesh_shader && m_nvMeshShaderFeatures.meshShader;
+	if (m_caps.rayTracingNV)
+	{
+		m_caps.rtShaderHandleSize = m_nvRayTracingProps.shaderGroupHandleSize;
+		m_caps.rtSbtMaxStride     = m_nvRayTracingProps.maxShaderGroupStride;
+		m_caps.rtSbtAlignment     = m_nvRayTracingProps.shaderGroupBaseAlignment;
+	}
 
 	m_caps.colorSampleCounts = m_physicalDeviceProps.limits.framebufferColorSampleCounts;
 	m_caps.depthSampleCounts = m_physicalDeviceProps.limits.framebufferDepthSampleCounts;
@@ -5518,6 +5524,12 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	    u32(result.shaderHandles.size()), result.shaderHandles.data()));
 
 	return retainResource(g_device->m_rayTracingPipelines, result);
+}
+
+const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index)
+{
+	// TODO
+	return nullptr;
 }
 
 static VkMemoryRequirements2KHR getMemoryReq(

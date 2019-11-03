@@ -321,13 +321,13 @@ inline bool isArrayTexture(TextureType type)
 
 enum GfxShaderSourceType : u8
 {
-	GfxShaderSourceType_Unknown,
-	GfxShaderSourceType_SPV,  // binary
-	GfxShaderSourceType_GLSL, // text
-	GfxShaderSourceType_HLSL, // text
-	GfxShaderSourceType_DXBC, // binary
-	GfxShaderSourceType_DXIL, // binary
-	GfxShaderSourceType_MSL,  // text
+	GfxShaderSourceType_Unknown = 0,
+	GfxShaderSourceType_SPV     = 1, // binary
+	GfxShaderSourceType_GLSL    = 2, // text
+	GfxShaderSourceType_HLSL    = 3, // text
+	GfxShaderSourceType_DXBC    = 4, // binary
+	GfxShaderSourceType_DXIL    = 5, // binary
+	GfxShaderSourceType_MSL     = 6, // text
 };
 
 enum GfxFormatType : u8
@@ -958,6 +958,14 @@ struct GfxTextureDesc
 	TextureType   type      = TextureType::Tex2D;
 	GfxUsageFlags usage     = GfxUsageFlags::ShaderResource;
 	const char*   debugName = nullptr;
+};
+
+enum class GfxRayTracingShaderType
+{
+	RayGen,
+	Miss,
+	HitGroup,
+	Callable
 };
 
 enum class GfxRayTracingGeometryType

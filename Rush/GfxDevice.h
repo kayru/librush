@@ -110,6 +110,10 @@ struct GfxCapability
 
 	u32 constantBufferAlignment = 4;
 
+	u32 rtShaderHandleSize = 0;
+	u32 rtSbtMaxStride = 0;
+	u32 rtSbtAlignment = 0;
+
 	ProjectionFlags projectionFlags = ProjectionFlags::Default;
 
 	bool shaderTypeSupported(GfxShaderSourceType type) const { return (shaderTypeMask & (1 << type)) != 0; }
@@ -194,6 +198,7 @@ GfxOwn<GfxBuffer>            Gfx_CreateBuffer(const GfxBufferDesc& desc, const v
 
 GfxOwn<GfxRayTracingPipeline>    Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc);
 GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc);
+const u8*                        Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index);
 u64                              Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h);
 void                             Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer = InvalidResourceHandle());
 void                             Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccelerationStructureArg tlas, GfxBufferArg sbt, u32 width, u32 height = 1, u32 depth = 1);
@@ -402,6 +407,7 @@ inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const voi
 #ifndef RUSH_RENDER_SUPPORT_RAY_TRACING
 inline GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc) { return {}; }
 inline GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc) { return {}; }
+inline const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index) { return {}; }
 inline u64  Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h) { return 0; }
 inline void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer) {}
 inline void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccelerationStructureArg tlas, GfxBufferArg sbt, u32 width, u32 height, u32 depth);

@@ -178,7 +178,7 @@ struct RayTracingPipelineVK : PipelineBaseVK
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
 
-	u32                  maxRecursionDepth = 1;
+	u32 maxRecursionDepth = 1;
 
 	DynamicArray<u8> shaderHandles;
 
