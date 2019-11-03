@@ -517,14 +517,14 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxClearFlags, u8);
 
 enum class GfxBufferFlags : u32
 {
-	None                  = 0u,
-	Vertex                = 1u << 0,
-	Index                 = 1u << 1,
-	Constant              = 1u << 2,
-	Storage               = 1u << 3,
-	Texel                 = 1u << 4,
-	IndirectArgs          = 1u << 5,
-	AccelerationStructure = 1u << 6,
+	None         = 0u,
+	Vertex       = 1u << 0,
+	Index        = 1u << 1,
+	Constant     = 1u << 2,
+	Storage      = 1u << 3,
+	Texel        = 1u << 4,
+	IndirectArgs = 1u << 5,
+	RayTracing   = 1u << 6,
 
 	Transient = 1u << 31,
 

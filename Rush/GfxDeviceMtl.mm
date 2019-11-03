@@ -13,13 +13,13 @@ static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
 static id<MTLDevice> g_metalDevice = nil;
 
-template <typename ObjectType, typename HandleType>
+template <typename ObjectType, typename HandleType, typename ObjectTypeDeduced>
 HandleType retainResource(
 	ResourcePool<ObjectType, HandleType>& pool,
-	const ObjectType& object)
+	ObjectTypeDeduced&& object)
 {
 	RUSH_ASSERT(object.uniqueId != 0);
-	auto handle = pool.push(object);
+	auto handle = pool.push(std::forward<ObjectType>(object));
 	Gfx_Retain(handle);
 	Gfx_Retain(g_device);
 	return handle;

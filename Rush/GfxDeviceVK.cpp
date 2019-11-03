@@ -4330,13 +4330,19 @@ static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	}
 
+	if (!!(desc.flags & GfxBufferFlags::RayTracing))
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_RAY_TRACING_BIT_NV;
+	}
+
 	bufferCreateInfo.size = desc.count * desc.stride;
 
 	return bufferCreateInfo;
 }
 
 // buffers
-GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
+
+static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 {
 	BufferVK res;
 
@@ -4448,7 +4454,12 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		V(vkCreateBufferView(g_vulkanDevice, &bufferViewCreateInfo, g_allocationCallbacks, &res.bufferView));
 	}
 
-	return retainResource(g_device->m_buffers, res);
+	return res;
+}
+
+GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
+{
+	return retainResource(g_device->m_buffers, createBuffer(desc, data));
 }
 
 void Gfx_vkFlushBarriers(GfxContext* ctx) { ctx->flushBarriers(); }
@@ -4595,6 +4606,11 @@ static VkDeviceSize getBufferAlignmentRequirements(GfxBufferFlags flags)
 	if (!!(flags & GfxBufferFlags::IndirectArgs))
 	{
 		alignment = max(alignment, g_device->m_physicalDeviceProps.limits.minStorageBufferOffsetAlignment);
+	}
+
+	if (!!(flags & GfxBufferFlags::RayTracing))
+	{
+		alignment = max(alignment, VkDeviceSize(256));
 	}
 
 	return alignment;
@@ -5576,6 +5592,9 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	V(vkGetRayTracingShaderGroupHandlesNV(g_vulkanDevice, result.pipeline, 0, createInfo.groupCount,
 	    u32(result.shaderHandles.size()), result.shaderHandles.data()));
 
+	GfxBufferDesc bufferDesc(GfxBufferFlags::RayTracing, u32(shaderGroups.size()), handleSize);
+	result.systemSbt = createBuffer(bufferDesc, result.shaderHandles.data());
+
 	return retainResource(g_device->m_rayTracingPipelines, result);
 }
 
@@ -5759,6 +5778,8 @@ void Gfx_Release(GfxRayTracingPipeline h) { releaseResource(g_device->m_rayTraci
 
 void RayTracingPipelineVK::destroy() 
 {
+	systemSbt.destroy();
+
 	if (rayGen != VK_NULL_HANDLE)
 	{
 		vkDestroyShaderModule(g_vulkanDevice, rayGen, g_allocationCallbacks);
@@ -5789,7 +5810,7 @@ void RayTracingPipelineVK::destroy()
 }
 
 void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, GfxAccelerationStructureArg tlas,
-    GfxBufferArg sbt, u32 width, u32 height, u32 depth)
+    GfxBufferArg hitGroups, u32 width, u32 height, u32 depth)
 {
 	if (ctx->m_pending.rayTracingPipeline != pipelineHandle)
 	{
@@ -5808,22 +5829,22 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, Gfx
 
 	ctx->flushBarriers();
 
-	BufferVK& sbtBuffer = g_device->m_buffers[sbt];
 
 	// TODO: get offsets from pipeline metadata
 
 	const u32 sbtRaygenOffset = 0 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	const u32 sbtMissOffset   = 1 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	const u32 sbtMissStride   = 0; // only single shader is supported
-	const u32 sbtHitStride    = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 
 	RayTracingPipelineVK& pipeline = g_device->m_rayTracingPipelines[pipelineHandle];
+	BufferVK& sbtBuffer = pipeline.systemSbt;
+	BufferVK& hitGroupBuffer = g_device->m_buffers[hitGroups];
 
 	vkCmdTraceRaysNV(ctx->m_commandBuffer,
-		sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.rayGenOffset,                 // raygen
-	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.missOffset, sbtMissStride,    // miss
-	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.hitGroupOffset, sbtHitStride, // hit group
-	    VK_NULL_HANDLE, 0, 0,                                                                 // callable
+	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.rayGenOffset,               // raygen
+	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.missOffset, sbtMissStride,  // miss
+	    hitGroupBuffer.info.buffer, hitGroupBuffer.info.offset, hitGroupBuffer.desc.stride, // hit group
+	    VK_NULL_HANDLE, 0, 0,                                                               // callable
 	    width, height, depth);
 }
 

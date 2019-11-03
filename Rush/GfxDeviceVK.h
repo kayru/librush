@@ -180,6 +180,8 @@ struct RayTracingPipelineVK : PipelineBaseVK
 
 	u32 maxRecursionDepth = 1;
 
+	BufferVK systemSbt;
+
 	DynamicArray<u8> shaderHandles;
 
 	u32 rayGenOffset   = 0;
