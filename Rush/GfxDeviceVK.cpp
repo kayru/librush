@@ -5685,12 +5685,26 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		instanceBufferInfo = g_device->m_buffers[instanceBuffer].info;
 	}
 
+	if (accel.type == GfxAccelerationStructureType::TopLevel)
+	{
+		// TODO: add pipeline barriers at the high level
+		// TODO: batch acceleration structure builds and barriers
+		Gfx_vkFullPipelineBarrier(ctx);
+	}
+
 	vkCmdBuildAccelerationStructureNV(ctx->m_commandBuffer,
 		&accel.info,
 		instanceBufferInfo.buffer, instanceBufferInfo.offset,
 		VK_FALSE, // update
 		accel.native, VK_NULL_HANDLE, // dest, source
 		scratchBlock.buffer, scratchBlock.offset);
+
+	if (accel.type == GfxAccelerationStructureType::TopLevel)
+	{
+		// TODO: add pipeline barriers at the high level
+		// TODO: batch acceleration structure builds and barriers
+		Gfx_vkFullPipelineBarrier(ctx);
+	}
 }
 
 void Gfx_Retain(GfxAccelerationStructure h) { g_device->m_accelerationStructures[h].addReference(); }
