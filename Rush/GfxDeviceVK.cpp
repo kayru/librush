@@ -5456,7 +5456,8 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	result.maxRecursionDepth = desc.maxRecursionDepth;
 	result.bindings          = desc.bindings;
 
-	RUSH_ASSERT_MSG(desc.bindings.accelerationStructures <= 1, "Binding multiple acceleration structures is not implemented");
+	RUSH_ASSERT_MSG(
+	    desc.bindings.accelerationStructures <= 1, "Binding multiple acceleration structures is not implemented");
 
 	// shader modules
 
@@ -5470,36 +5471,42 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	// set layouts
 
 	const u32 resourceStageFlags = convertStageFlags(GfxStageFlags::RayTracing);
-	result.setLayouts = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
+	result.setLayouts            = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
 
 	// pipeline layout
 
-	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-	pipelineLayoutCreateInfo.setLayoutCount = u32(result.setLayouts.size());
-	pipelineLayoutCreateInfo.pSetLayouts = result.setLayouts.data;
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+	pipelineLayoutCreateInfo.setLayoutCount             = u32(result.setLayouts.size());
+	pipelineLayoutCreateInfo.pSetLayouts                = result.setLayouts.data;
 
 	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, nullptr, &result.pipelineLayout));
 
 	// ray tracing pipeline
 
-	const u32 handleSize = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	const u32            handleSize = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	static constexpr u32 MaxShaders = 4; // raygen + miss + chs + ahs
-	StaticArray<VkPipelineShaderStageCreateInfo, MaxShaders> shaderStages;
+	StaticArray<VkPipelineShaderStageCreateInfo, MaxShaders>     shaderStages;
 	StaticArray<VkRayTracingShaderGroupCreateInfoNV, MaxShaders> shaderGroups;
 
 	if (result.rayGen != VK_NULL_HANDLE)
 	{
 		result.rayGenOffset = u32(shaderGroups.size() * handleSize);
 
-		VkRayTracingShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV };
-		group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
-		group.generalShader = u32(shaderStages.size());
+		VkRayTracingShaderGroupCreateInfoNV group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV};
+		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
+
+		group.generalShader      = u32(shaderStages.size());
+		group.closestHitShader   = VK_SHADER_UNUSED_NV;
+		group.anyHitShader       = VK_SHADER_UNUSED_NV;
+		group.intersectionShader = VK_SHADER_UNUSED_NV;
+
 		shaderGroups.pushBack(group);
 
-		VkPipelineShaderStageCreateInfo stage = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-		stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_NV;
-		stage.module = result.rayGen;
-		stage.pName = "main";
+		VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stage.stage                           = VK_SHADER_STAGE_RAYGEN_BIT_NV;
+		stage.module                          = result.rayGen;
+		stage.pName                           = "main";
+
 		shaderStages.pushBack(stage);
 	}
 
@@ -5507,28 +5514,55 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	{
 		result.missOffset = u32(shaderGroups.size() * handleSize);
 
-		VkRayTracingShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV };
-		group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
-		group.generalShader = u32(shaderStages.size());
+		VkRayTracingShaderGroupCreateInfoNV group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV};
+		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
+
+		group.generalShader      = u32(shaderStages.size());
+		group.closestHitShader   = VK_SHADER_UNUSED_NV;
+		group.anyHitShader       = VK_SHADER_UNUSED_NV;
+		group.intersectionShader = VK_SHADER_UNUSED_NV;
+
 		shaderGroups.pushBack(group);
 
-		VkPipelineShaderStageCreateInfo stage = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-		stage.stage = VK_SHADER_STAGE_MISS_BIT_NV;
-		stage.module = result.miss;
-		stage.pName = "main";
+		VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stage.stage                           = VK_SHADER_STAGE_MISS_BIT_NV;
+		stage.module                          = result.miss;
+		stage.pName                           = "main";
+
 		shaderStages.pushBack(stage);
 	}
 
-	RUSH_ASSERT_MSG(result.closestHit == VK_NULL_HANDLE, "Closest hit shaders are not implemented");
+	if (result.closestHit != VK_NULL_HANDLE)
+	{
+		result.hitGroupOffset = u32(shaderGroups.size() * handleSize);
+
+		VkRayTracingShaderGroupCreateInfoNV group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV};
+		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_NV;
+
+		group.generalShader      = VK_SHADER_UNUSED_NV;
+		group.closestHitShader   = u32(shaderStages.size());
+		group.anyHitShader       = VK_SHADER_UNUSED_NV;
+		group.intersectionShader = VK_SHADER_UNUSED_NV;
+
+		shaderGroups.pushBack(group);
+
+		VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stage.stage                           = VK_SHADER_STAGE_CLOSEST_HIT_BIT_NV;
+		stage.module                          = result.closestHit;
+		stage.pName                           = "main";
+
+		shaderStages.pushBack(stage);
+	}
+
 	RUSH_ASSERT_MSG(result.anyHit == VK_NULL_HANDLE, "Any hit shaders are not implemented");
 
-	VkRayTracingPipelineCreateInfoNV createInfo = { VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV };
+	VkRayTracingPipelineCreateInfoNV createInfo = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV};
 
 	createInfo.stageCount = u32(shaderStages.size());
-	createInfo.pStages = shaderStages.data;
+	createInfo.pStages    = shaderStages.data;
 
 	createInfo.groupCount = u32(shaderGroups.size());
-	createInfo.pGroups = shaderGroups.data;
+	createInfo.pGroups    = shaderGroups.data;
 
 	createInfo.maxRecursionDepth = desc.maxRecursionDepth;
 
@@ -5548,15 +5582,14 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index)
 {
 	const RayTracingPipelineVK& pipeline = g_device->m_rayTracingPipelines[h];
+	const u32 stride = Gfx_GetCapability().rtShaderHandleSize;
 
 	switch (type)
 	{
-	case GfxRayTracingShaderType::RayGen:
-		return &pipeline.shaderHandles[pipeline.rayGenOffset];
-	case GfxRayTracingShaderType::Miss:
-		return &pipeline.shaderHandles[pipeline.missOffset];
-	default:
-		return nullptr;
+	case GfxRayTracingShaderType::RayGen: return &pipeline.shaderHandles[pipeline.rayGenOffset + index * stride];
+	case GfxRayTracingShaderType::Miss: return &pipeline.shaderHandles[pipeline.missOffset + index * stride];
+	case GfxRayTracingShaderType::HitGroup: return &pipeline.shaderHandles[pipeline.hitGroupOffset + index * stride];
+	default: RUSH_LOG_ERROR("Unexpected shader type"); return nullptr;
 	}
 }
 
@@ -5755,13 +5788,13 @@ void RayTracingPipelineVK::destroy()
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
 
-void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccelerationStructureArg tlas,
+void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, GfxAccelerationStructureArg tlas,
     GfxBufferArg sbt, u32 width, u32 height, u32 depth)
 {
-	if (ctx->m_pending.rayTracingPipeline != pipeline)
+	if (ctx->m_pending.rayTracingPipeline != pipelineHandle)
 	{
 		ctx->m_pending.technique = {};
-		ctx->m_pending.rayTracingPipeline = pipeline;
+		ctx->m_pending.rayTracingPipeline = pipelineHandle;
 		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
 	}
 
@@ -5782,13 +5815,16 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccele
 	const u32 sbtRaygenOffset = 0 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	const u32 sbtMissOffset   = 1 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	const u32 sbtMissStride   = 0; // only single shader is supported
+	const u32 sbtHitStride    = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+
+	RayTracingPipelineVK& pipeline = g_device->m_rayTracingPipelines[pipelineHandle];
 
 	vkCmdTraceRaysNV(ctx->m_commandBuffer,
-		sbtBuffer.info.buffer, sbtBuffer.info.offset + sbtRaygenOffset,
-		sbtBuffer.info.buffer, sbtBuffer.info.offset + sbtMissOffset, sbtMissStride,
-		VK_NULL_HANDLE, 0, 0, // hit group table
-		VK_NULL_HANDLE, 0, 0, // callable table
-		width, height, depth);
+		sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.rayGenOffset,                 // raygen
+	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.missOffset, sbtMissStride,    // miss
+	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.hitGroupOffset, sbtHitStride, // hit group
+	    VK_NULL_HANDLE, 0, 0,                                                                 // callable
+	    width, height, depth);
 }
 
 void AccelerationStructureVK::destroy()
