@@ -2494,7 +2494,9 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 
 			bufferInfo.buffer = buffer.info.buffer;
 			bufferInfo.offset = buffer.info.offset;
-			bufferInfo.range  = buffer.desc.stride;
+			bufferInfo.range  = buffer.info.range;
+
+			RUSH_ASSERT(bufferInfo.range != 0);
 		}
 	}
 
@@ -2689,10 +2691,10 @@ void GfxContext::applyState()
 	                                                           : static_cast<PipelineBaseVK&>(g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline]);
 	const GfxShaderBindingDesc& bindingDesc = pipelineBase.bindings;
 
-	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
-
 	if (m_dirtyState & DirtyStateFlag_Pipeline)
 	{
+		m_currentBindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
+
 		if (m_pending.technique.valid())
 		{
 			PipelineInfoVK info = {};
@@ -2714,18 +2716,20 @@ void GfxContext::applyState()
 			m_activePipeline = g_device->createPipeline(info);
 
 			const TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
-			bindPoint = technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+			m_currentBindPoint = technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 		}
 		else if (m_pending.rayTracingPipeline.valid())
 		{
 			m_activePipeline = g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline].pipeline;
-			bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_NV;
+			m_currentBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_NV;
 		}
 
-		vkCmdBindPipeline(m_commandBuffer, bindPoint, m_activePipeline);
+		vkCmdBindPipeline(m_commandBuffer, m_currentBindPoint, m_activePipeline);
 
 		m_dirtyState &= ~DirtyStateFlag_Pipeline;
 	}
+
+	RUSH_ASSERT(m_currentBindPoint < VK_PIPELINE_BIND_POINT_MAX_ENUM);
 
 	if ((m_dirtyState & DirtyStateFlag_VertexBuffer) && m_pending.technique.valid())
 	{
@@ -2741,8 +2745,8 @@ void GfxContext::applyState()
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
 		}
 
+		m_dirtyState &= ~DirtyStateFlag_VertexBuffer;
 	}
-	m_dirtyState &= ~DirtyStateFlag_VertexBuffer;
 
 	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer) && m_pending.technique.valid())
 	{
@@ -2753,8 +2757,8 @@ void GfxContext::applyState()
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
 			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 
+		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
-	m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 
 	VkDescriptorSet descriptorSets[MaxDescriptorSets];
 	u32             descriptorSetMask = 0;
@@ -2771,8 +2775,8 @@ void GfxContext::applyState()
 			descriptorSets[i] = ds.native;
 		}
 
+		m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
 	}
-	m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
 
 	if (m_dirtyState == DirtyStateFlag_ConstantBufferOffset)
 	{
@@ -2780,8 +2784,8 @@ void GfxContext::applyState()
 		    "Constant buffer offsets only implemented for default descriptor set");
 		descriptorSets[0] = m_currentDescriptorSet;
 		descriptorSetMask |= 1;
+		m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
 	}
-	m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
 
 	if (m_dirtyState & DirtyStateFlag_Descriptors)
 	{
@@ -2866,7 +2870,7 @@ void GfxContext::applyState()
 		u32 count              = bitCount(descriptorSetMask);
 		u32 dynamicOffsetCount = first == 0 ? bindingDesc.constantBuffers : 0;
 
-		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, pipelineBase.pipelineLayout, first, count,
+		vkCmdBindDescriptorSets(m_commandBuffer, m_currentBindPoint, pipelineBase.pipelineLayout, first, count,
 		    &descriptorSets[first], dynamicOffsetCount, m_pending.constantBufferOffsets);
 	}
 
@@ -5467,12 +5471,15 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 	// ray tracing pipeline
 
+	const u32 handleSize = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	static constexpr u32 MaxShaders = 4; // raygen + miss + chs + ahs
 	StaticArray<VkPipelineShaderStageCreateInfo, MaxShaders> shaderStages;
 	StaticArray<VkRayTracingShaderGroupCreateInfoNV, MaxShaders> shaderGroups;
 
 	if (result.rayGen != VK_NULL_HANDLE)
 	{
+		result.rayGenOffset = u32(shaderGroups.size() * handleSize);
+
 		VkRayTracingShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV };
 		group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
 		group.generalShader = u32(shaderStages.size());
@@ -5487,6 +5494,8 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 	if (result.miss != VK_NULL_HANDLE)
 	{
+		result.missOffset = u32(shaderGroups.size() * handleSize);
+
 		VkRayTracingShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV };
 		group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
 		group.generalShader = u32(shaderStages.size());
@@ -5517,7 +5526,6 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	V(vkCreateRayTracingPipelinesNV(
 	    g_vulkanDevice, g_device->m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &result.pipeline));
 
-	const u32 handleSize = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	result.shaderHandles.resize(handleSize * shaderGroups.size());
 
 	V(vkGetRayTracingShaderGroupHandlesNV(g_vulkanDevice, result.pipeline, 0, createInfo.groupCount,
@@ -5528,8 +5536,17 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index)
 {
-	// TODO
-	return nullptr;
+	const RayTracingPipelineVK& pipeline = g_device->m_rayTracingPipelines[h];
+
+	switch (type)
+	{
+	case GfxRayTracingShaderType::RayGen:
+		return &pipeline.shaderHandles[pipeline.rayGenOffset];
+	case GfxRayTracingShaderType::Miss:
+		return &pipeline.shaderHandles[pipeline.missOffset];
+	default:
+		return nullptr;
+	}
 }
 
 static VkMemoryRequirements2KHR getMemoryReq(

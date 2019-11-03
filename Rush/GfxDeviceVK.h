@@ -182,6 +182,10 @@ struct RayTracingPipelineVK : PipelineBaseVK
 
 	DynamicArray<u8> shaderHandles;
 
+	u32 rayGenOffset   = 0;
+	u32 missOffset     = 0;
+	u32 hitGroupOffset = 0;
+
 	void destroy();
 };
 
@@ -657,12 +661,13 @@ public:
 
 	void applyState();
 
-	VkFence         m_fence;
-	VkCommandBuffer m_commandBuffer;
-	VkDescriptorSet m_currentDescriptorSet;
+	VkFence             m_fence                = VK_NULL_HANDLE;
+	VkCommandBuffer     m_commandBuffer        = VK_NULL_HANDLE;
+	VkDescriptorSet     m_currentDescriptorSet = VK_NULL_HANDLE;
+	VkPipelineBindPoint m_currentBindPoint     = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 
-	bool            m_isActive = false;
-	const char*     m_name = "";
+	bool        m_isActive = false;
+	const char* m_name     = "";
 
 	enum DirtyStateFlag
 	{
