@@ -160,8 +160,8 @@ void PrimitiveBatch::flush()
 	Gfx_SetTechnique(m_context, nextTechnique);
 
 	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), (u32)m_vertices.sizeInBytes());
-	Gfx_SetTexture(m_context, GfxStage::Pixel, 0, m_currTexture);
-	Gfx_SetSampler(m_context, GfxStage::Pixel, 0, m_currSampler);
+	Gfx_SetTexture(m_context, 0, m_currTexture);
+	Gfx_SetSampler(m_context, 0, m_currSampler);
 	Gfx_SetVertexStream(m_context, 0, m_vertexBuffer);
 	Gfx_SetPrimitive(m_context, m_currPrim);
 

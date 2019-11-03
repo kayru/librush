@@ -2444,9 +2444,9 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSetDesc& desc,
     bool useDynamicUniformBuffers, bool allowTransientBuffers, const GfxBuffer* constantBuffers,
     const GfxSampler* samplers, const GfxTexture* textures, const GfxTexture* storageImages,
-    const GfxBuffer* storageBuffers)
+    const GfxBuffer* storageBuffers, const GfxAccelerationStructure* accelStructures)
 {
-	const u32 maxWriteDescriptorSetCount = 3 + desc.rwImages + desc.rwBuffers + desc.rwTypedBuffers;
+	const u32 maxWriteDescriptorSetCount = 3 + desc.rwImages + desc.rwBuffers + desc.rwTypedBuffers + desc.accelerationStructures;
 
 	InlineDynamicArray<VkWriteDescriptorSet, 16> writeDescriptorSets(maxWriteDescriptorSetCount);
 
@@ -2633,6 +2633,40 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		bindingIndex += writeDescriptorSet.descriptorCount;
 	}
 
+	// Acceleration structures
+
+	InlineDynamicArray<VkAccelerationStructureNV, 1> writeAccelStructures(desc.accelerationStructures);
+	VkWriteDescriptorSetAccelerationStructureNV writeDescriptorSetAccel;
+	if (desc.accelerationStructures)
+	{
+		writeDescriptorSetAccel.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_NV;
+		writeDescriptorSetAccel.pNext = nullptr;
+		writeDescriptorSetAccel.accelerationStructureCount = desc.accelerationStructures;
+		writeDescriptorSetAccel.pAccelerationStructures = writeAccelStructures.m_data;
+
+		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
+		VkWriteDescriptorSet& writeDescriptorSet = writeDescriptorSets[writeDescriptorSetCount++];
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = &writeDescriptorSetAccel;
+		writeDescriptorSet.dstSet = targetSet;
+		writeDescriptorSet.dstBinding = bindingIndex;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorCount = desc.accelerationStructures;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV;
+		writeDescriptorSet.pImageInfo = nullptr;
+		writeDescriptorSet.pBufferInfo = nullptr;
+		writeDescriptorSet.pTexelBufferView = nullptr;
+		bindingIndex += writeDescriptorSet.descriptorCount;
+
+		for (u32 i = 0; i < desc.accelerationStructures; ++i)
+		{
+			RUSH_ASSERT(accelStructures[i].valid());
+			AccelerationStructureVK& accel = g_device->m_accelerationStructures[accelStructures[i]];
+			writeAccelStructures[i] = accel.native;
+		}
+	}
+
 	vkUpdateDescriptorSets(g_vulkanDevice, writeDescriptorSetCount, writeDescriptorSets.m_data, 0, nullptr);
 }
 
@@ -2643,8 +2677,11 @@ void GfxContext::applyState()
 		return;
 	}
 
-	RUSH_ASSERT(m_pending.technique.valid());
-	TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
+	RUSH_ASSERT(m_pending.technique.valid() || m_pending.rayTracingPipeline.valid());
+
+	PipelineBaseVK& pipelineBase = m_pending.technique.valid() ? static_cast<PipelineBaseVK&>(g_device->m_techniques[m_pending.technique])
+	                                                           : static_cast<PipelineBaseVK&>(g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline]);
+	const GfxShaderBindingDesc& bindingDesc = pipelineBase.bindings;
 
 	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 
@@ -2669,12 +2706,14 @@ void GfxContext::applyState()
 			info.depthSampleCount = m_currentDepthSampleCount;
 
 			m_activePipeline = g_device->createPipeline(info);
+
+			const TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
 			bindPoint = technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 		}
 		else if (m_pending.rayTracingPipeline.valid())
 		{
 			m_activePipeline = g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline].pipeline;
-			bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_NV;
 		}
 
 		vkCmdBindPipeline(m_commandBuffer, bindPoint, m_activePipeline);
@@ -2682,8 +2721,9 @@ void GfxContext::applyState()
 		m_dirtyState &= ~DirtyStateFlag_Pipeline;
 	}
 
-	if (m_dirtyState & DirtyStateFlag_VertexBuffer)
+	if ((m_dirtyState & DirtyStateFlag_VertexBuffer) && m_pending.technique.valid())
 	{
+		const TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
 		for (u32 i = 0; i < technique.vertexStreamCount; ++i)
 		{
 			RUSH_ASSERT(m_pending.vertexBuffer[i].valid());
@@ -2695,10 +2735,10 @@ void GfxContext::applyState()
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
 		}
 
-		m_dirtyState &= ~DirtyStateFlag_VertexBuffer;
 	}
+	m_dirtyState &= ~DirtyStateFlag_VertexBuffer;
 
-	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer))
+	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer) && m_pending.technique.valid())
 	{
 		BufferVK& buffer = g_device->m_buffers[m_pending.indexBuffer];
 		validateBufferUse(buffer, true);
@@ -2707,17 +2747,17 @@ void GfxContext::applyState()
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
 			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 
-		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
+	m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 
 	VkDescriptorSet descriptorSets[MaxDescriptorSets];
 	u32             descriptorSetMask = 0;
 
 	if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 	{
-		const u32 firstDescriptorSet = technique.bindings.useDefaultDescriptorSet ? 1 : 0;
+		const u32 firstDescriptorSet = bindingDesc.useDefaultDescriptorSet ? 1 : 0;
 		static_assert(MaxDescriptorSets == GfxShaderBindingDesc::MaxDescriptorSets, "");
-		for (u32 i = firstDescriptorSet; i < technique.descriptorSetCount; ++i)
+		for (u32 i = firstDescriptorSet; i < u32(pipelineBase.setLayouts.currentSize); ++i)
 		{
 			RUSH_ASSERT(m_pending.descriptorSets[i].valid());
 			DescriptorSetVK& ds = g_device->m_descriptorSets[m_pending.descriptorSets[i]];
@@ -2725,17 +2765,17 @@ void GfxContext::applyState()
 			descriptorSets[i] = ds.native;
 		}
 
-		m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
 	}
+	m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
 
 	if (m_dirtyState == DirtyStateFlag_ConstantBufferOffset)
 	{
-		RUSH_ASSERT_MSG(technique.bindings.useDefaultDescriptorSet,
+		RUSH_ASSERT_MSG(bindingDesc.useDefaultDescriptorSet,
 		    "Constant buffer offsets only implemented for default descriptor set");
 		descriptorSets[0] = m_currentDescriptorSet;
 		descriptorSetMask |= 1;
-		m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
 	}
+	m_dirtyState &= ~DirtyStateFlag_ConstantBufferOffset;
 
 	if (m_dirtyState & DirtyStateFlag_Descriptors)
 	{
@@ -2745,13 +2785,13 @@ void GfxContext::applyState()
 		// assume the technique will be used many times and there will be a benefit from batching the allocations
 		// todo: cache descriptors by descriptor set layout, not simply by technique
 
-		if (technique.descriptorSetCacheFrame != g_device->m_frameCount)
+		if (pipelineBase.descriptorSetCacheFrame != g_device->m_frameCount)
 		{
-			technique.descriptorSetCache.clear();
-			technique.descriptorSetCacheFrame = g_device->m_frameCount;
+			pipelineBase.descriptorSetCache.clear();
+			pipelineBase.descriptorSetCacheFrame = g_device->m_frameCount;
 		}
 
-		if (technique.descriptorSetCache.empty())
+		if (pipelineBase.descriptorSetCache.empty())
 		{
 			static const u32 cacheBatchSize = 16;
 
@@ -2759,7 +2799,7 @@ void GfxContext::applyState()
 			VkDescriptorSetLayout setLayouts[cacheBatchSize];
 			for (u32 i = 0; i < cacheBatchSize; ++i)
 			{
-				setLayouts[i] = technique.descriptorSetLayout;
+				setLayouts[i] = pipelineBase.setLayouts[0]; // automatic/dynamic descriptor set is always in slot 0
 			}
 
 			VkResult                    allocResult = VK_RESULT_MAX_ENUM;
@@ -2779,14 +2819,14 @@ void GfxContext::applyState()
 
 			for (VkDescriptorSet it : cachedDescriptorSets)
 			{
-				technique.descriptorSetCache.push_back(it);
+				pipelineBase.descriptorSetCache.push_back(it);
 			}
 		}
 
-		m_currentDescriptorSet = technique.descriptorSetCache.back();
-		technique.descriptorSetCache.pop_back();
+		m_currentDescriptorSet = pipelineBase.descriptorSetCache.back();
+		pipelineBase.descriptorSetCache.pop_back();
 
-		for (u32 i = 0; i < technique.sampledImageCount; ++i)
+		for (u32 i = 0; i < bindingDesc.textures; ++i)
 		{
 			RUSH_ASSERT(m_pending.textures[i].valid());
 			TextureVK&              texture          = g_device->m_textures[m_pending.textures[i]];
@@ -2796,7 +2836,7 @@ void GfxContext::applyState()
 			    texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
 		}
 
-		for (u32 i = 0; i < technique.storageImageCount; ++i)
+		for (u32 i = 0; i < bindingDesc.rwImages; ++i)
 		{
 			RUSH_ASSERT(m_pending.storageImages[i].valid());
 			TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
@@ -2804,11 +2844,11 @@ void GfxContext::applyState()
 			    addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
 		}
 
-		updateDescriptorSet(m_currentDescriptorSet, technique.bindings,
+		updateDescriptorSet(m_currentDescriptorSet, bindingDesc,
 		    true, // use dynamic uniform buffers
 		    true, // allow transient buffers
 		    m_pending.constantBuffers, m_pending.samplers, m_pending.textures, m_pending.storageImages,
-		    m_pending.storageBuffers);
+		    m_pending.storageBuffers, &m_pending.accelerationStructure);
 
 		descriptorSets[0] = m_currentDescriptorSet;
 		descriptorSetMask |= 1;
@@ -2818,9 +2858,9 @@ void GfxContext::applyState()
 	{
 		u32 first              = bitScanForward(descriptorSetMask);
 		u32 count              = bitCount(descriptorSetMask);
-		u32 dynamicOffsetCount = first == 0 ? technique.constantBufferCount : 0;
+		u32 dynamicOffsetCount = first == 0 ? bindingDesc.constantBuffers : 0;
 
-		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, technique.pipelineLayout, first, count,
+		vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, pipelineBase.pipelineLayout, first, count,
 		    &descriptorSets[first], dynamicOffsetCount, m_pending.constantBufferOffsets);
 	}
 
@@ -3556,7 +3596,9 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	updateDescriptorSet(ds.native, ds.desc,
 	    false, // useDynamicUniformBuffers
 	    false, // allowTransientBuffers
-	    constantBuffers, samplers, textures, storageImages, storageBuffers);
+	    constantBuffers, samplers, textures, storageImages, storageBuffers,
+	    nullptr // acceleration structures
+	);
 }
 
 void DescriptorSetVK::destroy()
@@ -3705,15 +3747,9 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	res.pushConstantStageFlags  = convertStageFlags(desc.bindings.pushConstantStageFlags);
 	res.pushConstantsSize       = desc.bindings.pushConstants;
-	res.samplerCount            = desc.bindings.samplers;
-	res.sampledImageCount       = desc.bindings.textures;
-	res.constantBufferCount     = desc.bindings.constantBuffers;
-	res.storageImageCount       = desc.bindings.rwImages;
-	res.storageBufferCount      = desc.bindings.rwBuffers;
-	res.typedStorageBufferCount = desc.bindings.rwTypedBuffers;
 
-	RUSH_ASSERT(res.storageBufferCount <= GfxContext::MaxStorageBuffers);
-	RUSH_ASSERT(res.constantBufferCount <= GfxContext::MaxConstantBuffers);
+	RUSH_ASSERT(res.bindings.rwTypedBuffers + res.bindings.rwBuffers <= GfxContext::MaxStorageBuffers);
+	RUSH_ASSERT(res.bindings.constantBuffers <= GfxContext::MaxConstantBuffers);
 
 	u32 resourceStageFlags = 0;
 	if (desc.cs.valid())
@@ -3727,14 +3763,11 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	if (desc.ms.valid())
 		resourceStageFlags |= VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
 
-	auto setLayouts = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
-
-	res.descriptorSetLayout = setLayouts[0]; // default descriptor set layout
-	res.descriptorSetCount = u32(setLayouts.size());
+	res.setLayouts = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-	pipelineLayoutCreateInfo.setLayoutCount             = u32(setLayouts.size());
-	pipelineLayoutCreateInfo.pSetLayouts                = setLayouts.data;
+	pipelineLayoutCreateInfo.setLayoutCount             = u32(res.setLayouts.size());
+	pipelineLayoutCreateInfo.pSetLayouts                = res.setLayouts.data;
 
 	VkPushConstantRange pushConstantRange;
 	if (res.pushConstantsSize)
@@ -4823,6 +4856,8 @@ void Gfx_SetTechnique(GfxContext* ctx, GfxTechniqueArg h)
 		ctx->m_pending.rayTracingPipeline = {};
 		ctx->m_pending.technique = h;
 		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
 	}
 }
 
@@ -4892,9 +4927,8 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 	}
 }
 
-void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h)
+void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
-	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute);
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.textures));
 
 	if (rc->m_pending.textures[idx] != h)
@@ -4904,9 +4938,8 @@ void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h)
 	}
 }
 
-void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h)
+void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h)
 {
-	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute);
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.samplers));
 
 	if (rc->m_pending.samplers[idx] != h)
@@ -5691,9 +5724,9 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccele
 
 	// TODO: get offsets from pipeline metadata
 
-	const u32 sbtRaygenOffset = 0;
-	const u32 sbtMissOffset = 1;
-	const u32 sbtMissStride = 0; // only single shader is supported
+	const u32 sbtRaygenOffset = 0 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	const u32 sbtMissOffset   = 1 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	const u32 sbtMissStride   = 0; // only single shader is supported
 
 	vkCmdTraceRaysNV(ctx->m_commandBuffer,
 		sbtBuffer.info.buffer, sbtBuffer.info.offset + sbtRaygenOffset,

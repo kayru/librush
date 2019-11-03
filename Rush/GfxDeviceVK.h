@@ -47,36 +47,35 @@ struct ShaderVK : GfxResourceBase
 	void destroy();
 };
 
-struct TechniqueVK : GfxResourceBase
+using DescriptorSetLayoutArray = StaticArray<VkDescriptorSetLayout, GfxShaderBindingDesc::MaxDescriptorSets>;
+
+struct PipelineBaseVK : GfxResourceBase
+{
+	GfxShaderBindingDesc bindings;
+
+	DescriptorSetLayoutArray setLayouts; // lifetime managed by device
+	VkPipelineLayout         pipelineLayout = VK_NULL_HANDLE;
+
+	DynamicArray<VkDescriptorSet> descriptorSetCache;
+	u32                           descriptorSetCacheFrame = 0;
+
+};
+
+struct TechniqueVK : PipelineBaseVK
 {
 	DynamicArray<VkPipelineShaderStageCreateInfo> shaderStages;
-	GfxShaderBindingDesc                          bindings;
 	GfxRef<GfxVertexFormat>                       vf;
 	GfxRef<GfxVertexShader>                       vs;
 	GfxRef<GfxGeometryShader>                     gs;
 	GfxRef<GfxPixelShader>                        ps;
 	GfxRef<GfxComputeShader>                      cs;
 	GfxRef<GfxMeshShader>                         ms;
-	VkDescriptorSetLayout                         descriptorSetLayout = VK_NULL_HANDLE;
-	VkPipelineLayout                              pipelineLayout      = VK_NULL_HANDLE;
 
 	VkShaderStageFlags pushConstantStageFlags = VkShaderStageFlags(0);
 	u32                pushConstantsSize      = 0;
 
-	u32 samplerCount            = 0;
-	u32 sampledImageCount       = 0;
-	u32 constantBufferCount     = 0;
-	u32 storageImageCount       = 0;
-	u32 storageBufferCount      = 0;
-	u32 typedStorageBufferCount = 0; // last N storage buffers are typed
-
-	u32 descriptorSetCount = 0;
-
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
-
-	DynamicArray<VkDescriptorSet> descriptorSetCache;
-	u32                           descriptorSetCacheFrame = 0;
 
 	VkSpecializationInfo* specializationInfo = nullptr;
 
@@ -170,22 +169,16 @@ struct DescriptorSetVK : GfxResourceBase
 	void destroy();
 };
 
-using DescriptorSetLayoutArray = StaticArray<VkDescriptorSetLayout, GfxShaderBindingDesc::MaxDescriptorSets>;
-
-struct RayTracingPipelineVK : GfxResourceBase
+struct RayTracingPipelineVK : PipelineBaseVK
 {
 	VkShaderModule rayGen     = VK_NULL_HANDLE;
 	VkShaderModule miss       = VK_NULL_HANDLE;
 	VkShaderModule closestHit = VK_NULL_HANDLE;
 	VkShaderModule anyHit     = VK_NULL_HANDLE;
 
-	DescriptorSetLayoutArray setLayouts; // lifetime managed by device
-
-	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 	VkPipeline pipeline = VK_NULL_HANDLE;
 
 	u32                  maxRecursionDepth = 1;
-	GfxShaderBindingDesc bindings;
 
 	DynamicArray<u8> shaderHandles;
 

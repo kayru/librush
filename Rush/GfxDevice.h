@@ -269,8 +269,8 @@ void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h);
 void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type);
 void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h);
 void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h);
-void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h);
-void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h);
+void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h);
+void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h);
 void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h);
 void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h);
 void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState);
@@ -479,8 +479,8 @@ inline void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h) {}
 inline void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type) {}
 inline void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h) {}
 inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) {}
-inline void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h) {}
-inline void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h) {}
+inline void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h) {}
+inline void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h) {}
 inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h) {}
 inline void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h) {}
 inline void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState) {}
