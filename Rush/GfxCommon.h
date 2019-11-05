@@ -212,7 +212,7 @@ public:
 	}
 
 	GfxRef(GfxRef&& rhs) noexcept : m_handle(rhs.m_handle) { rhs.m_handle = InvalidResourceHandle(); }
-	~GfxRef() { Gfx_Release(m_handle); }
+	~GfxRef() { if(m_handle.valid()) Gfx_Release(m_handle); }
 
 	GfxRef& operator=(GfxRef<T>&& rhs)
 	{

@@ -483,14 +483,14 @@ static const u32 g_embeddedFontBitmap6x8[] =
 namespace {
 RUSH_FORCEINLINE u32 selectBit(u32 a, u32 b, u32 m) { return ((b ^ a) & m) ^ b; }
 
-RUSH_FORCEINLINE void blitColumn6x8(u32* output, u32 color, int m, int b)
+RUSH_FORCEINLINE void blitColumn6x8(u32* output, u32 color, u32 m, u32 b)
 {
-	output[0] = selectBit(output[0], color, u32((m << (31 - b)) >> 31));
-	output[1] = selectBit(output[1], color, u32((m << (30 - b)) >> 31));
-	output[2] = selectBit(output[2], color, u32((m << (29 - b)) >> 31));
-	output[3] = selectBit(output[3], color, u32((m << (28 - b)) >> 31));
-	output[4] = selectBit(output[4], color, u32((m << (27 - b)) >> 31));
-	output[5] = selectBit(output[5], color, u32((m << (26 - b)) >> 31));
+	output[0] = selectBit(output[0], color, u32(int(m << (31 - b)) >> 31));
+	output[1] = selectBit(output[1], color, u32(int(m << (30 - b)) >> 31));
+	output[2] = selectBit(output[2], color, u32(int(m << (29 - b)) >> 31));
+	output[3] = selectBit(output[3], color, u32(int(m << (28 - b)) >> 31));
+	output[4] = selectBit(output[4], color, u32(int(m << (27 - b)) >> 31));
+	output[5] = selectBit(output[5], color, u32(int(m << (26 - b)) >> 31));
 }
 }
 

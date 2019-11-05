@@ -913,10 +913,21 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 	BufferMTL& buffer = g_device->m_buffers[h];
 
-	[buffer.native release]; // TODO: queue release maybe?
+	[buffer.native release];
 	buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
 
 	// TODO: re-bind buffer if necessary
+}
+
+void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
+{
+	Log::error("Not implemented");
+	return nullptr;
+}
+
+void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
+{
+	Log::error("Not implemented");
 }
 
 void Gfx_Release(GfxBuffer h)
