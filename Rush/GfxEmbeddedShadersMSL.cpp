@@ -37,39 +37,53 @@ struct VSOutput
 	float4 col;
 };
 
+struct ResourcesPlain
+{
+	constant Constants* cb [[id(0)]];
+};
+
+struct ResourcesTextured
+{
+	constant Constants* cb [[id(0)]];
+	sampler             s  [[id(1)]];
+	texture2d<float>    t  [[id(2)]];
+};
+
 vertex VSOutput vsMain3D(
 	VSInput v [[stage_in]],
-	constant Constants& cb [[buffer(0)]])
+	constant ResourcesPlain& resources [[buffer(0)]])
 {
 	VSOutput res;
-    res.pos = float4(v.pos, 1) * cb.matViewProj;
-	res.col = v.col * cb.color;
+    res.pos = float4(v.pos, 1) * resources.cb->matViewProj;
+	res.col = v.col * resources.cb->color;
 	res.tex = v.tex;
 	return res;
 }
 
 vertex VSOutput vsMain2D(
 	VSInput v [[stage_in]],
-	constant Constants& cb [[buffer(0)]])
+	constant ResourcesPlain& resources [[buffer(0)]])
 {
 	VSOutput res;
-    res.pos.xy = v.pos.xy * cb.transform2D.xy + cb.transform2D.zw;
+    res.pos.xy = v.pos.xy * resources.cb->transform2D.xy + resources.cb->transform2D.zw;
 	res.pos.zw = float2(v.pos.z, 1);
-	res.col = v.col * cb.color;
+	res.col = v.col * resources.cb->color;
 	res.tex = v.tex;
 	return res;
 }
 
 fragment float4 psMain(
-	PSInput v [[stage_in]])
+	PSInput v [[stage_in]],
+	constant ResourcesPlain& resources [[buffer(0)]])
 {
 	return v.col;
 }
 
 fragment float4 psMainTextured(
-	PSInput v [[stage_in]], texture2d<float> t [[texture(2)]], sampler s [[sampler(1)]])
+	PSInput v [[stage_in]],
+	constant ResourcesTextured& resources [[buffer(0)]])
 {
-	return v.col * t.sample(s, v.tex);
+	return v.col * resources.t.sample(resources.s, v.tex);
 }
 )";
 

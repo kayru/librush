@@ -9,6 +9,15 @@
 namespace Rush
 {
 
+static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc);
+static void updateDescriptorSet(DescriptorSetMTL& ds,
+	const GfxBuffer* constantBuffers,
+	const u32* constantBufferOffsets,
+	const GfxSampler* samplers,
+	const GfxTexture* textures,
+	const GfxTexture* storageImages,
+	const GfxBuffer* storageBuffers);
+
 static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
 static id<MTLDevice> g_metalDevice = nil;
@@ -454,6 +463,7 @@ void Gfx_Release(GfxPixelShader h)
 
 void TechniqueMTL::destroy()
 {
+	defaultDescriptorSet.destroy();
 	vs.reset();
 	ps.reset();
 	[computePipeline release];
@@ -510,6 +520,8 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			result.descriptorSetCount = i+1;
 		}
 	}
+
+	result.defaultDescriptorSet = createDescriptorSet(desc.bindings);
 
 	return GfxDevice::makeOwn(retainResource(g_device->m_techniques, result));
 }
@@ -757,7 +769,9 @@ static MTLSamplerMipFilter convertMipFilter(GfxTextureFilter filter)
 GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 {
 	MTLSamplerDescriptor* samplerDescriptor = [MTLSamplerDescriptor new];
-	
+
+	samplerDescriptor.supportArgumentBuffers = YES;
+
 	samplerDescriptor.sAddressMode = convertSamplerAddressMode(desc.wrapU);
 	samplerDescriptor.tAddressMode = convertSamplerAddressMode(desc.wrapV);
 	samplerDescriptor.rAddressMode = convertSamplerAddressMode(desc.wrapW);
@@ -992,14 +1006,27 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 		 useResource:g_device->m_textures[ds.textures[j]].native
 		 usage:MTLResourceUsageSample];
 	}
+
+	for (u64 j=0; j<ds.storageImages.size(); ++j)
+	{
+		[commandEncoder
+		 useResource:g_device->m_textures[ds.storageImages[j]].native
+		 usage:MTLResourceUsageWrite];
+	}
+
+	for (u64 j=0; j<ds.storageBuffers.size(); ++j)
+	{
+		[commandEncoder
+		 useResource:g_device->m_buffers[ds.storageBuffers[j]].native
+		 usage:MTLResourceUsageWrite];
+	}
 }
 
 void GfxContext::applyState()
 {
 	// TODO: cache pipelines
 
-	const auto& technique = g_device->m_techniques[m_pendingTechnique.get()];
-	const auto& bindings = technique.desc.bindings;
+	TechniqueMTL& technique = g_device->m_techniques[m_pendingTechnique.get()];
 
 	if ((m_dirtyState & DirtyStateFlag_Pipeline) && technique.computePipeline)
 	{
@@ -1093,41 +1120,65 @@ void GfxContext::applyState()
 		[pipelineDescriptor release];
 	}
 
+	if (m_dirtyState & DirtyStateFlag_Descriptors)
+	{
+		GfxBuffer constantBuffers[RUSH_COUNTOF(m_constantBuffers)];
+		GfxSampler samplers[RUSH_COUNTOF(m_samplers)];
+		GfxTexture sampledImages[RUSH_COUNTOF(m_sampledImages)];
+		GfxTexture storageImages[RUSH_COUNTOF(m_storageImages)];
+		GfxBuffer storageBuffers[RUSH_COUNTOF(m_storageBuffers)];
+
+		for(u32 i=0; i<technique.desc.bindings.constantBuffers; ++i)
+		{
+			constantBuffers[i] = m_constantBuffers[i].get();
+		}
+		for(u32 i=0; i<technique.desc.bindings.samplers; ++i)
+		{
+			samplers[i] = m_samplers[i].get();
+		}
+		for(u32 i=0; i<technique.desc.bindings.textures; ++i)
+		{
+			sampledImages[i] = m_sampledImages[i].get();
+		}
+		for(u32 i=0; i<technique.desc.bindings.rwImages; ++i)
+		{
+			storageImages[i] = m_storageImages[i].get();
+		}
+		for(u32 i=0; i<technique.desc.bindings.rwBuffers; ++i)
+		{
+			storageBuffers[i] = m_storageBuffers[i].get();
+		}
+		for(u32 i=0; i<technique.desc.bindings.rwTypedBuffers; ++i)
+		{
+			//TODO: bind typed storage buffers
+		}
+
+		updateDescriptorSet(technique.defaultDescriptorSet,
+							constantBuffers,
+							m_constantBufferOffsets,
+							samplers,
+							sampledImages,
+							storageImages,
+							storageBuffers);
+
+		auto& ds = technique.defaultDescriptorSet;
+
+		if (m_commandEncoder)
+		{
+			// TODO: set the buffers to stages present in the current PSO
+			[m_commandEncoder setVertexBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:0];
+			[m_commandEncoder setFragmentBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:0];
+			useResources(m_commandEncoder, ds);
+		}
+		else if (m_computeCommandEncoder)
+		{
+			[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:0];
+			useResources(m_computeCommandEncoder, ds);
+		}
+	}
+
 	if (m_commandEncoder)
 	{
-		if (m_dirtyState & DirtyStateFlag_ConstantBuffer)
-		{
-			for (u32 i=0; i<bindings.constantBuffers; ++i)
-			{
-				u32 slot = technique.constantBufferOffset + i;
-				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
-				size_t offset = m_constantBufferOffsets[i];
-				// #todo: set buffers based on access flags
-				[m_commandEncoder setVertexBuffer:resource offset:offset atIndex:slot];
-				[m_commandEncoder setFragmentBuffer:resource offset:offset atIndex:slot];
-			}
-		}
-
-		if (m_dirtyState & DirtyStateFlag_Texture)
-		{
-			for (u32 i=0; i<bindings.textures; ++i)
-			{
-				u32 slot = technique.sampledImageOffset + i;
-				id resource = g_device->m_textures[m_sampledImages[u32(GfxStage::Pixel)][i].get()].native;
-				[m_commandEncoder setFragmentTexture:resource atIndex:slot];
-			}
-		}
-
-		if (m_dirtyState & DirtyStateFlag_Sampler)
-		{
-			for (u32 i=0; i<bindings.samplers; ++i)
-			{
-				u32 slot = technique.samplerOffset + i;
-				id resource = g_device->m_samplers[m_samplers[u32(GfxStage::Pixel)][i].get()].native;
-				[m_commandEncoder setFragmentSamplerState:resource atIndex:slot];
-			}
-		}
-
 		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 		{
 			u32 firstDescriptorSet = technique.desc.bindings.useDefaultDescriptorSet ? 1 : 0;
@@ -1136,67 +1187,20 @@ void GfxContext::applyState()
 				DescriptorSetMTL& ds = g_device->m_descriptorSets[m_descriptorSets[i].get()];
 				useResources(m_commandEncoder, ds);
 
-				// #todo: set buffers based on access flags
-				[m_commandEncoder setVertexBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
-				[m_commandEncoder setFragmentBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
+				if(!!(ds.desc.stageFlags & GfxStageFlags::Vertex))
+				{
+					[m_commandEncoder setVertexBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
+				}
+
+				if(!!(ds.desc.stageFlags & GfxStageFlags::Pixel))
+				{
+					[m_commandEncoder setFragmentBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
+				}
 			}
 		}
 	}
-
-	if (m_computeCommandEncoder)
+	else if (m_computeCommandEncoder)
 	{
-		const u32 stagIdx = u32(GfxStage::Compute);
-
-		if (m_dirtyState & DirtyStateFlag_ConstantBuffer)
-		{
-			for (u32 i=0; i<bindings.constantBuffers; ++i)
-			{
-				u32 slot = technique.constantBufferOffset + i;
-				id resource = g_device->m_buffers[m_constantBuffers[i].get()].native;
-				[m_computeCommandEncoder setBuffer:resource offset:m_constantBufferOffsets[i] atIndex:slot];
-			}
-		}
-
-		if (m_dirtyState & DirtyStateFlag_Texture)
-		{
-			for (u32 i=0; i<bindings.textures; ++i)
-			{
-				u32 slot = technique.sampledImageOffset + i;
-				id resource = g_device->m_textures[m_sampledImages[stagIdx][i].get()].native;
-				[m_computeCommandEncoder setTexture:resource atIndex:slot];
-			}
-		}
-
-		if (m_dirtyState & DirtyStateFlag_Sampler)
-		{
-			for (u32 i=0; i<bindings.samplers; ++i)
-			{
-				u32 slot = technique.samplerOffset + i;
-				id resource = g_device->m_samplers[m_samplers[stagIdx][i].get()].native;
-				[m_computeCommandEncoder setSamplerState:resource atIndex:slot];
-			}
-		}
-
-		if (m_dirtyState & DirtyStateFlag_StorageImage)
-		{
-			for (u32 i=0; i<bindings.rwImages; ++i)
-			{
-				id<MTLTexture> texture = g_device->m_textures[m_storageImages[i].get()].native;
-				u32 slot = technique.storageImageOffset + i;
-				[m_computeCommandEncoder setTexture:texture atIndex:slot];
-			}
-		}
-
-		if (m_dirtyState & DirtyStateFlag_StorageBuffer)
-		{
-			for (u32 i=0; i<bindings.rwBuffers; ++i)
-			{
-				id<MTLBuffer> buffer = g_device->m_buffers[m_storageBuffers[i].get()].native;
-				u32 slot = technique.storageBufferOffset + i;
-				[m_computeCommandEncoder setBuffer:buffer offset:0 atIndex:slot];
-			}
-		}
-
 		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 		{
 			u32 firstDescriptorSet = technique.desc.bindings.useDefaultDescriptorSet ? 1 : 0;
@@ -1204,11 +1208,10 @@ void GfxContext::applyState()
 			{
 				DescriptorSetMTL& ds = g_device->m_descriptorSets[m_descriptorSets[i].get()];
 				useResources(m_computeCommandEncoder, ds);
+
 				[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
 			}
 		}
-
-		// TODO: bind typed storage buffers
 	}
 
 	m_dirtyState = 0;
@@ -1342,11 +1345,10 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h)
 {
 	rc->m_pendingTechnique.retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline
 					 | GfxContext::DirtyStateFlag_VertexBuffer
-					 | GfxContext::DirtyStateFlag_ConstantBuffer
-					 | GfxContext::DirtyStateFlag_Texture
-					 | GfxContext::DirtyStateFlag_Sampler;
+					 | GfxContext::DirtyStateFlag_Descriptors
+					 | GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
 void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
@@ -1387,21 +1389,19 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 }
 
-void Gfx_SetTexture(GfxContext* rc, GfxStage stage, u32 idx, GfxTextureArg h)
+void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxSampledImages);
-	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute); // other stages not implemented
 
-	rc->m_sampledImages[u32(stage)][idx].retain(h);
+	rc->m_sampledImages[idx].retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
 }
 
-void Gfx_SetSampler(GfxContext* rc, GfxStage stage, u32 idx, GfxSamplerArg h)
+void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxSamplers);
-	RUSH_ASSERT(stage == GfxStage::Pixel || stage == GfxStage::Compute); // other stages not implemented
 
-	rc->m_samplers[u32(stage)][idx].retain(h);
+	rc->m_samplers[idx].retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
 }
 
@@ -1627,7 +1627,7 @@ void Gfx_Retain(GfxBuffer h)
 
 // Descriptor sets
 
-GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
+static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 {
 	DescriptorSetMTL res;
 
@@ -1708,9 +1708,6 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 
 	res.encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
 	res.argBufferSize = [res.encoder encodedLength];
-	res.argBuffer = [g_metalDevice newBufferWithLength:res.argBufferSize options:0];
-
-	[res.encoder setArgumentBuffer:res.argBuffer offset:0];
 
 	for(id obj in descriptors)
 	{
@@ -1718,7 +1715,14 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 	}
 	[descriptors release];
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_descriptorSets, res));
+	return res;
+}
+
+GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
+{
+	return GfxDevice::makeOwn(
+	  retainResource(g_device->m_descriptorSets,
+					 createDescriptorSet(desc)));
 }
 
 void Gfx_Retain(GfxDescriptorSet h)
@@ -1737,60 +1741,86 @@ void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
-void Gfx_SetConstantBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h, u32 offset)
+static void updateDescriptorSet(DescriptorSetMTL& ds,
+	 const GfxBuffer* constantBuffers,
+	 const u32* constantBufferOffsets,
+	 const GfxSampler* samplers,
+	 const GfxTexture* textures,
+	 const GfxTexture* storageImages,
+	 const GfxBuffer* storageBuffers)
 {
-	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
-	ds.constantBufferOffsets[idx] = offset;
-	ds.constantBuffers[idx] = h;
+	const GfxDescriptorSetDesc& desc = ds.desc;
 
-	BufferMTL& buf = g_device->m_buffers[h];
-	[ds.encoder setBuffer:buf.native offset:offset atIndex:idx];
+	[ds.argBuffer release];
 
-	ds.isDirty = true;
+	ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
+
+	[ds.encoder setArgumentBuffer:ds.argBuffer offset:0];
+
+	u32 idxOffset = 0;
+
+	for(u32 i=0; i<desc.constantBuffers; ++i)
+	{
+		BufferMTL& buf = g_device->m_buffers[constantBuffers[i]];
+		u32 offset = constantBufferOffsets ? constantBufferOffsets[i] : 0;
+		ds.constantBufferOffsets[i] = offset;
+		ds.constantBuffers[i] = constantBuffers[i];
+		[ds.encoder setBuffer:buf.native offset:offset atIndex:idxOffset+i];
+	}
+	idxOffset += desc.constantBuffers;
+
+	for(u32 i=0; i<desc.samplers; ++i)
+	{
+		SamplerMTL& smp = g_device->m_samplers[samplers[i]];
+		ds.samplers[i] = samplers[i];
+		[ds.encoder setSamplerState:smp.native atIndex:idxOffset + i];
+	}
+	idxOffset += desc.samplers;
+
+	for(u32 i=0; i<desc.textures; ++i)
+	{
+		TextureMTL& tex = g_device->m_textures[textures[i]];
+		//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
+		ds.textures[i] = textures[i];
+		[ds.encoder setTexture:tex.native atIndex:idxOffset+i];
+	}
+	idxOffset += desc.textures;
+
+	for(u32 i=0; i<desc.rwImages; ++i)
+	{
+		TextureMTL& tex = g_device->m_textures[storageImages[i]];
+		//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
+		ds.storageImages[i] = storageImages[i];
+		[ds.encoder setTexture:tex.native atIndex:idxOffset+i];
+	}
+	idxOffset += desc.rwImages;
+
+	for(u32 i=0; i<desc.rwBuffers; ++i)
+	{
+		BufferMTL& buf = g_device->m_buffers[storageBuffers[i]];
+		ds.storageBuffers[i] = storageBuffers[i];
+		[ds.encoder setBuffer:buf.native offset:0 atIndex:idxOffset+i];
+	}
+	idxOffset += desc.rwBuffers;
+
+	for(u32 i=0; i<desc.rwTypedBuffers; ++i)
+	{
+		BufferMTL& buf = g_device->m_buffers[storageBuffers[i]];
+		ds.storageBuffers[i] = storageBuffers[i];
+		[ds.encoder setBuffer:buf.native offset:0 atIndex:idxOffset+i];
+	}
+	idxOffset += desc.rwTypedBuffers;
 }
 
-void Gfx_SetTexture(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
+void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
+	 const GfxBuffer* constantBuffers,
+	 const GfxSampler* samplers,
+	 const GfxTexture* textures,
+	 const GfxTexture* storageImages,
+	 const GfxBuffer* storageBuffers)
 {
 	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
-	ds.textures[idx] = h;
-	u32 idxOffset = ds.desc.constantBuffers + ds.desc.samplers;
-	TextureMTL& tex = g_device->m_textures[h];
-	RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
-	[ds.encoder setTexture:tex.native atIndex:idxOffset+idx];
-
-	ds.isDirty = true;
-}
-
-void Gfx_SetSampler(GfxDescriptorSetArg d, u32 idx, GfxSamplerArg h)
-{
-	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
-	ds.samplers[idx] = h;
-
-	u32 idxOffset = ds.desc.constantBuffers;
-	SamplerMTL& smp = g_device->m_samplers[h];
-	[ds.encoder setSamplerState:smp.native atIndex:idxOffset + idx];
-
-	ds.isDirty = true;
-}
-
-void Gfx_SetStorageImage(GfxDescriptorSetArg d, u32 idx, GfxTextureArg h)
-{
-	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
-	TextureMTL& tex = g_device->m_textures[h];
-	RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
-	ds.storageImages[idx] = h;
-	ds.isDirty = true;
-
-	RUSH_LOG_FATAL("Not implemented");
-}
-
-void Gfx_SetStorageBuffer(GfxDescriptorSetArg d, u32 idx, GfxBufferArg h)
-{
-	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
-	ds.storageBuffers[idx] = h;
-	ds.isDirty = true;
-
-	RUSH_LOG_FATAL("Not implemented");
+	updateDescriptorSet(ds, constantBuffers, 0, samplers, textures, storageImages, storageBuffers);
 }
 
 void DescriptorSetMTL::destroy()

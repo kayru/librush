@@ -44,6 +44,25 @@ struct BufferMTL : GfxRefCount
 	void destroy();
 };
 
+struct DescriptorSetMTL : GfxRefCount
+{
+	u32                      uniqueId = 0;
+	GfxDescriptorSetDesc     desc;
+	DynamicArray<u32>        constantBufferOffsets;
+	DynamicArray<GfxBuffer>  constantBuffers;
+	DynamicArray<GfxTexture> textures;
+	DynamicArray<GfxSampler> samplers;
+	DynamicArray<GfxTexture> storageImages;
+	DynamicArray<GfxBuffer>  storageBuffers;
+
+	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc
+	id<MTLBuffer> argBuffer = nil;
+	u32 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
+	u32 argBufferSize = 0;
+
+	void destroy();
+};
+
 struct TechniqueMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
@@ -64,6 +83,8 @@ struct TechniqueMTL : GfxRefCount
 	u32 descriptorSetCount = 0;
 
 	Tuple3<u16> workGroupSize = {};
+
+	DescriptorSetMTL defaultDescriptorSet;
 	
 	void destroy();
 };
@@ -102,27 +123,6 @@ struct SamplerMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 	id<MTLSamplerState> native = nil;
-	void destroy();
-};
-
-struct DescriptorSetMTL : GfxRefCount
-{
-	u32                      uniqueId = 0;
-	GfxDescriptorSetDesc     desc;
-	DynamicArray<u32>        constantBufferOffsets;
-	DynamicArray<GfxBuffer>  constantBuffers;
-	DynamicArray<GfxTexture> textures;
-	DynamicArray<GfxSampler> samplers;
-	DynamicArray<GfxTexture> storageImages;
-	DynamicArray<GfxBuffer>  storageBuffers;
-
-	bool isDirty = false;
-
-	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc
-	id<MTLBuffer> argBuffer = nil;
-	u32 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
-	u32 argBufferSize = 0;
-
 	void destroy();
 };
 
@@ -226,9 +226,9 @@ public:
 	GfxRef<GfxRasterizerState> m_pendingRasterizerState;
 	GfxRef<GfxDepthStencilState> m_pendingDepthStencilState;
 	GfxRef<GfxBuffer> m_constantBuffers[MaxConstantBuffers];
-	size_t m_constantBufferOffsets[MaxConstantBuffers] = {};
-	GfxRef<GfxSampler> m_samplers[u32(GfxStage::count)][MaxSamplers];
-	GfxRef<GfxTexture> m_sampledImages[u32(GfxStage::count)][MaxSampledImages];
+	u32 m_constantBufferOffsets[MaxConstantBuffers] = {};
+	GfxRef<GfxSampler> m_samplers[MaxSamplers];
+	GfxRef<GfxTexture> m_sampledImages[MaxSampledImages];
 	GfxRef<GfxTexture> m_storageImages[MaxStorageImages];
 	GfxRef<GfxBuffer> m_storageBuffers[MaxStorageBuffers];
 	GfxRef<GfxDescriptorSet> m_descriptorSets[MaxDescriptorSets];
