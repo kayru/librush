@@ -4384,7 +4384,7 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		void* mappedBuffer = nullptr;
 		V(vkMapMemory(g_vulkanDevice, stagingMemory, 0, stagingAllocInfo.allocationSize, 0, &mappedBuffer));
 
-		memcpy(mappedBuffer, data, (size_t)stagingAllocInfo.allocationSize);
+		memcpy(mappedBuffer, data, stagingBufferCreateInfo.size);
 
 		vkUnmapMemory(g_vulkanDevice, stagingMemory);
 
