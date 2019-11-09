@@ -1035,6 +1035,9 @@ struct GfxRayTracingGeometryDesc
 	u32       indexCount        = 0;
 	GfxFormat indexFormat       = GfxFormat_Unknown;
 
+	GfxBuffer transformBuffer;
+	u32       transformBufferOffset = 0;
+
 	bool isOpaque = false;
 };
 

@@ -5679,8 +5679,17 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 			triangles.indexType =
 			    geometryDesc.indexFormat == GfxFormat_R32_Uint ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
 
-			triangles.transformData   = VK_NULL_HANDLE;
-			triangles.transformOffset = 0;
+			if (geometryDesc.transformBuffer.valid())
+			{
+				const BufferVK& transformBufferVK = g_device->m_buffers[geometryDesc.transformBuffer];
+				triangles.transformData   = transformBufferVK.info.buffer;
+				triangles.transformOffset = transformBufferVK.info.offset + geometryDesc.transformBufferOffset;
+			}
+			else
+			{
+				triangles.transformData   = VK_NULL_HANDLE;
+				triangles.transformOffset = 0;
+			}
 		}
 
 		result.info               = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV};
@@ -5840,10 +5849,13 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, Gfx
 	BufferVK& sbtBuffer = pipeline.systemSbt;
 	BufferVK& hitGroupBuffer = g_device->m_buffers[hitGroups];
 
+	// Disable hit group indexing if SBT contains just one entry
+	const u32 hitGroupStride = hitGroupBuffer.desc.count == 1 ? 0 : hitGroupBuffer.desc.stride;
+
 	vkCmdTraceRaysNV(ctx->m_commandBuffer,
 	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.rayGenOffset,               // raygen
 	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.missOffset, sbtMissStride,  // miss
-	    hitGroupBuffer.info.buffer, hitGroupBuffer.info.offset, hitGroupBuffer.desc.stride, // hit group
+	    hitGroupBuffer.info.buffer, hitGroupBuffer.info.offset, hitGroupStride,             // hit group
 	    VK_NULL_HANDLE, 0, 0,                                                               // callable
 	    width, height, depth);
 }
