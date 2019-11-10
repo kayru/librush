@@ -2488,6 +2488,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		writeDescriptorSet.pTexelBufferView = nullptr;
 		bindingIndex += writeDescriptorSet.descriptorCount;
 
+		const VkDeviceSize maxBufferSize = g_device->m_physicalDeviceProps.limits.maxUniformBufferRange;
 		for (u32 i = 0; i < desc.constantBuffers; ++i)
 		{
 			RUSH_ASSERT(constantBuffers[i].valid());
@@ -2499,7 +2500,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 
 			bufferInfo.buffer = buffer.info.buffer;
 			bufferInfo.offset = buffer.info.offset;
-			bufferInfo.range  = buffer.info.range;
+			bufferInfo.range  = min(buffer.info.range, maxBufferSize);
 
 			RUSH_ASSERT(bufferInfo.range != 0);
 		}
@@ -3059,6 +3060,10 @@ void Gfx_BeginFrame()
 		g_device->m_currentFrame->timestampIssuedCount = 0;
 	}
 
+	vkCmdResetQueryPool(g_context->m_commandBuffer,
+		g_device->m_currentFrame->timestampPool,
+		0, u32(g_device->m_currentFrame->timestampPoolData.size()));
+
 	for (u16& it : g_device->m_currentFrame->timestampSlotMap)
 	{
 		it = InvalidTimestampSlotIndex;
@@ -3426,6 +3431,19 @@ void Gfx_Release(GfxMeshShader h) { releaseResource(g_device->m_shaders, h); }
 
 // descriptor set
 
+inline u32 getBindingSlotCount(const GfxDescriptorSetDesc& desc)
+{
+	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
+
+	return desc.constantBuffers
+		+ desc.samplers
+		+ (isTextureArray ? 1 : desc.textures)
+		+ desc.rwImages
+		+ desc.rwBuffers
+		+ desc.rwTypedBuffers
+		+ desc.accelerationStructures;
+}
+
 VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
     const GfxDescriptorSetDesc& desc, u32 resourceStageFlags, bool useDynamicUniformBuffers)
 {
@@ -3469,12 +3487,13 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		layoutBindings.push_back(layoutBinding);
 	}
 
-	for (u32 i = 0; i < desc.textures; ++i)
+	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
+	for (u32 i = 0; i < (isTextureArray ? 1u : desc.textures); ++i)
 	{
 		VkDescriptorSetLayoutBinding layoutBinding = {};
 		layoutBinding.binding                      = bindingSlot++;
 		layoutBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		layoutBinding.descriptorCount              = 1;
+		layoutBinding.descriptorCount              = isTextureArray ? desc.textures : 1;
 		layoutBinding.stageFlags                   = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
 	}
@@ -3513,7 +3532,7 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 	}
 
 	RUSH_ASSERT(bindingSlot == layoutBindings.size());
-	RUSH_ASSERT(bindingSlot == desc.getResourceCount());
+	RUSH_ASSERT(bindingSlot == getBindingSlotCount(desc));
 
 	descriptorSetLayoutCreateInfo.bindingCount = (u32)layoutBindings.size();
 	descriptorSetLayoutCreateInfo.pBindings    = layoutBindings.data();

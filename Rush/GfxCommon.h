@@ -851,16 +851,24 @@ struct GfxShaderSource : public DynamicArray<char>
 	const char*         entry = "main";
 };
 
+enum class GfxDescriptorSetFlags : u8
+{
+	None  = 0,
+	TextureArray = 1 << 0,
+};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxDescriptorSetFlags, u8)
+
 struct GfxDescriptorSetDesc
 {
-	u8            constantBuffers        = 0;
-	u8            samplers               = 0;
-	u8            textures               = 0;
-	u8            rwImages               = 0;
-	u8            rwBuffers              = 0;
-	u8            rwTypedBuffers         = 0;
-	u8            accelerationStructures = 0;
-	GfxStageFlags stageFlags      = GfxStageFlags::All;
+	u16                   constantBuffers        = 0;
+	u16                   samplers               = 0;
+	u16                   textures               = 0;
+	u16                   rwImages               = 0;
+	u16                   rwBuffers              = 0;
+	u16                   rwTypedBuffers         = 0;
+	u16                   accelerationStructures = 0;
+	GfxStageFlags         stageFlags             = GfxStageFlags::All;
+	GfxDescriptorSetFlags flags                  = GfxDescriptorSetFlags::None;
 
 	u32 getResourceCount() const
 	{
