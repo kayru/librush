@@ -48,7 +48,7 @@ struct ColorRGBA8
 
 	ColorRGBA8() = default;
 
-	explicit ColorRGBA8(u32 col) { *this = *reinterpret_cast<ColorRGBA8*>(&col); }
+	explicit ColorRGBA8(u32 col) { memcpy(this, &col, 4); }
 
 	ColorRGBA8(u8 _r, u8 _g, u8 _b, u8 _a = 255) : r(_r), g(_g), b(_b), a(_a) {}
 

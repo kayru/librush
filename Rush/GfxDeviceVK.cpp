@@ -5860,8 +5860,8 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, Gfx
 
 	// TODO: get offsets from pipeline metadata
 
-	const u32 sbtRaygenOffset = 0 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
-	const u32 sbtMissOffset   = 1 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	//const u32 sbtRaygenOffset = 0 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	//const u32 sbtMissOffset   = 1 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
 	const u32 sbtMissStride   = 0; // only single shader is supported
 
 	RayTracingPipelineVK& pipeline = g_device->m_rayTracingPipelines[pipelineHandle];
