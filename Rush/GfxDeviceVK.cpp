@@ -536,7 +536,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	VkApplicationInfo appInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
 	appInfo.pApplicationName  = "Rush";
 	appInfo.pEngineName       = "Rush";
-	appInfo.apiVersion        = VK_MAKE_VERSION(1, 0, VK_HEADER_VERSION);
+	appInfo.apiVersion        = VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION);
 
 	VkInstanceCreateInfo instanceCreateInfo    = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
 	instanceCreateInfo.pApplicationInfo        = &appInfo;
@@ -4385,6 +4385,10 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		res.info.range  = bufferCreateInfo.size;
 	}
 
+	const VkFlags memoryProperties = desc.hostVisible
+		? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+		: VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
 	if (data)
 	{
 		VkBufferCreateInfo stagingBufferCreateInfo = bufferCreateInfo;
@@ -4417,12 +4421,18 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		VkMemoryAllocateInfo allocInfo = stagingAllocInfo;
 		allocInfo.allocationSize       = memoryReq.size;
 		allocInfo.memoryTypeIndex =
-		    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
 
 		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 		res.ownsMemory = true;
 
 		V(vkBindBufferMemory(g_vulkanDevice, res.info.buffer, res.memory, 0));
+
+		if (desc.hostVisible)
+		{
+			V(vkMapMemory(g_vulkanDevice, res.memory, 0, allocInfo.allocationSize, 0, &res.mappedMemory));
+			RUSH_ASSERT(res.mappedMemory);
+		}
 
 		GfxContext*  uploadContext = getUploadContext();
 		VkBufferCopy region        = {};
@@ -4440,12 +4450,6 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 	{
 		VkMemoryRequirements memoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
-
-		VkFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		if (desc.hostVisible)
-		{
-			memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-		}
 
 		VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 		allocInfo.allocationSize       = max(memoryReq.size, bufferCreateInfo.size);
