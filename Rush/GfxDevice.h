@@ -147,7 +147,7 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxPassFlags, u32)
 
 struct GfxPassDesc
 {
-	static const u32 MaxTargets = 8;
+	static constexpr u32 MaxTargets = 8;
 
 	GfxTexture   color[MaxTargets];
 	GfxTexture   depth;
