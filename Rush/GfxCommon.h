@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Rush.h"
+#include "RushC.h"
 
 #include "MathTypes.h"
 #include "UtilResourcePool.h"
@@ -321,13 +322,13 @@ inline bool isArrayTexture(TextureType type)
 
 enum GfxShaderSourceType : u8
 {
-	GfxShaderSourceType_Unknown = 0,
-	GfxShaderSourceType_SPV     = 1, // binary
-	GfxShaderSourceType_GLSL    = 2, // text
-	GfxShaderSourceType_HLSL    = 3, // text
-	GfxShaderSourceType_DXBC    = 4, // binary
-	GfxShaderSourceType_DXIL    = 5, // binary
-	GfxShaderSourceType_MSL     = 6, // text
+	GfxShaderSourceType_Unknown = RUSH_GFX_SHADER_SOURCE_UNKNOWN,
+	GfxShaderSourceType_SPV     = RUSH_GFX_SHADER_SOURCE_SPV,  // binary
+	GfxShaderSourceType_GLSL    = RUSH_GFX_SHADER_SOURCE_GLSL, // text
+	GfxShaderSourceType_HLSL    = RUSH_GFX_SHADER_SOURCE_HLSL, // text
+	GfxShaderSourceType_DXBC    = RUSH_GFX_SHADER_SOURCE_DXBC, // binary
+	GfxShaderSourceType_DXIL    = RUSH_GFX_SHADER_SOURCE_DXIL, // binary
+	GfxShaderSourceType_MSL     = RUSH_GFX_SHADER_SOURCE_MSL,  // text
 };
 
 enum GfxFormatType : u8
@@ -446,11 +447,6 @@ enum class GfxUsageFlags : u8
 	RenderTarget_ShaderResource = ShaderResource | RenderTarget,
 	DepthStencil_ShaderResource = ShaderResource | DepthStencil,
 	StorageImage_ShaderResource = ShaderResource | StorageImage,
-};
-
-enum class GfxSampleCount : u8
-{
-
 };
 
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxUsageFlags, u8);

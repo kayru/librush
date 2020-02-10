@@ -51,6 +51,9 @@ struct rush_window* rush_platform_get_window();
 
 // Graphics
 
+typedef struct { float x, y; }       rush_vec2;
+typedef struct { float x, y, z; }    rush_vec3;
+typedef struct { float x, y, z, w; } rush_vec4;
 typedef struct { float r, g, b, a; } rush_color_rgba;
 
 struct rush_gfx_device*  rush_platform_get_device();
@@ -81,6 +84,55 @@ enum rush_gfx_pass_flags
 	RUSH_GFX_PASS_DISCARD_COLOR = 1 << 2,
 };
 
+enum rush_gfx_shader_source_type
+{
+	RUSH_GFX_SHADER_SOURCE_UNKNOWN = 0,
+	RUSH_GFX_SHADER_SOURCE_SPV     = 1, // binary
+	RUSH_GFX_SHADER_SOURCE_GLSL    = 2, // text
+	RUSH_GFX_SHADER_SOURCE_HLSL    = 3, // text
+	RUSH_GFX_SHADER_SOURCE_DXBC    = 4, // binary
+	RUSH_GFX_SHADER_SOURCE_DXIL    = 5, // binary
+	RUSH_GFX_SHADER_SOURCE_MSL     = 6, // text
+};
+
+enum rush_gfx_format
+{
+	RUSH_GFX_FORMAT_UNKNOWN,
+
+	RUSH_GFX_FORMAT_D24_UNORM_S8_UINT,
+	RUSH_GFX_FORMAT_D24_UNORM_X8,
+	RUSH_GFX_FORMAT_D32_FLOAT,
+	RUSH_GFX_FORMAT_D32_FLOAT_S8_UINT,
+	RUSH_GFX_FORMAT_R8_UNORM,
+	RUSH_GFX_FORMAT_R16_FLOAT,
+	RUSH_GFX_FORMAT_R16_UINT,
+	RUSH_GFX_FORMAT_R32_FLOAT,
+	RUSH_GFX_FORMAT_R32_UINT,
+	RUSH_GFX_FORMAT_RG8_UNORM,
+	RUSH_GFX_FORMAT_RG16_FLOAT,
+	RUSH_GFX_FORMAT_RG32_FLOAT,
+	RUSH_GFX_FORMAT_RGB32_FLOAT,
+	RUSH_GFX_FORMAT_RGB8_UNORM,
+	RUSH_GFX_FORMAT_RGBA16_FLOAT,
+	RUSH_GFX_FORMAT_RGBA16_UNORM,
+	RUSH_GFX_FORMAT_RGBA32_FLOAT,
+	RUSH_GFX_FORMAT_RGBA8_UNORM,
+	RUSH_GFX_FORMAT_RGBA8_SRGB,
+	RUSH_GFX_FORMAT_BGRA8_UNORM,
+	RUSH_GFX_FORMAT_BGRA8_SRGB,
+
+	RUSH_GFX_FORMAT_BC1_UNORM,
+	RUSH_GFX_FORMAT_BC1_UNORM_SRGB,
+	RUSH_GFX_FORMAT_BC3_UNORM,
+	RUSH_GFX_FORMAT_BC3_UNORM_SRGB,
+	RUSH_GFX_FORMAT_BC4_UNORM,
+	RUSH_GFX_FORMAT_BC5_UNORM,
+	RUSH_GFX_FORMAT_BC6H_UFLOAT,
+	RUSH_GFX_FORMAT_BC6H_SFLOAT,
+	RUSH_GFX_FORMAT_BC7_UNORM,
+	RUSH_GFX_FORMAT_BC7_UNORM_SRGB,
+};
+
 typedef struct
 {
 	rush_gfx_texture target;
@@ -102,6 +154,8 @@ void rush_gfx_begin_pass(
 	enum rush_gfx_pass_flags flags
 );
 void rush_gfx_end_pass(struct rush_gfx_context* ctx);
+
+void rush_gfx_draw(struct rush_gfx_context* ctx, uint32_t first_vertex, uint32_t vertex_count);
 
 #ifdef __cplusplus
 } // extern "C"

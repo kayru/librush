@@ -9,46 +9,89 @@ using namespace Rush;
 
 namespace {
 
-void convert(const AppConfig* cfg, rush_app_config* out_cfg)
+rush_app_config convert(const AppConfig* cfg)
 {
-    out_cfg->name = cfg->name;
-    out_cfg->vsync = cfg->vsync;
-    out_cfg->width = cfg->width;
-    out_cfg->height = cfg->height;
-    out_cfg->max_width = cfg->maxWidth;
-    out_cfg->max_height = cfg->maxHeight;
-    out_cfg->fullscreen = cfg->fullScreen;
-    out_cfg->resizable = cfg->resizable;
-    out_cfg->debug = cfg->debug;
-    out_cfg->warp = cfg->warp;
-    out_cfg->minimize_latency = cfg->minimizeLatency;
-    out_cfg->argc = cfg->argc;
-    out_cfg->argv = cfg->argv;
-    out_cfg->user_data = cfg->userData;
-    out_cfg->on_startup = cfg->onStartup;
-    out_cfg->on_update = cfg->onUpdate;
-    out_cfg->on_shutdown = cfg->onShutdown;
+    rush_app_config result;
+    result.name = cfg->name;
+    result.vsync = cfg->vsync;
+    result.width = cfg->width;
+    result.height = cfg->height;
+    result.max_width = cfg->maxWidth;
+    result.max_height = cfg->maxHeight;
+    result.fullscreen = cfg->fullScreen;
+    result.resizable = cfg->resizable;
+    result.debug = cfg->debug;
+    result.warp = cfg->warp;
+    result.minimize_latency = cfg->minimizeLatency;
+    result.argc = cfg->argc;
+    result.argv = cfg->argv;
+    result.user_data = cfg->userData;
+    result.on_startup = cfg->onStartup;
+    result.on_update = cfg->onUpdate;
+    result.on_shutdown = cfg->onShutdown;
+    return result;
 }
 
-void convert(const rush_app_config* cfg, AppConfig* out_cfg)
+AppConfig convert(const rush_app_config* cfg)
 {
-    out_cfg->name = cfg->name;
-    out_cfg->vsync = cfg->vsync;
-    out_cfg->width = cfg->width;
-    out_cfg->height = cfg->height;
-    out_cfg->maxWidth = cfg->max_width;
-    out_cfg->maxHeight = cfg->max_height;
-    out_cfg->fullScreen = cfg->fullscreen;
-    out_cfg->resizable = cfg->resizable;
-    out_cfg->debug = cfg->debug;
-    out_cfg->warp = cfg->warp;
-    out_cfg->minimizeLatency = cfg->minimize_latency;
-    out_cfg->argc = cfg->argc;
-    out_cfg->argv = cfg->argv;
-    out_cfg->userData = cfg->user_data;
-    out_cfg->onStartup = cfg->on_startup;
-    out_cfg->onUpdate = cfg->on_update;
-    out_cfg->onShutdown = cfg->on_shutdown;
+    AppConfig result;
+    result.name = cfg->name;
+    result.vsync = cfg->vsync;
+    result.width = cfg->width;
+    result.height = cfg->height;
+    result.maxWidth = cfg->max_width;
+    result.maxHeight = cfg->max_height;
+    result.fullScreen = cfg->fullscreen;
+    result.resizable = cfg->resizable;
+    result.debug = cfg->debug;
+    result.warp = cfg->warp;
+    result.minimizeLatency = cfg->minimize_latency;
+    result.argc = cfg->argc;
+    result.argv = cfg->argv;
+    result.userData = cfg->user_data;
+    result.onStartup = cfg->on_startup;
+    result.onUpdate = cfg->on_update;
+    result.onShutdown = cfg->on_shutdown;
+    return result;
+}
+
+GfxFormat convert(rush_gfx_format fmt)
+{
+    switch(fmt)
+    {
+    case RUSH_GFX_FORMAT_UNKNOWN: return GfxFormat_Unknown;
+    case RUSH_GFX_FORMAT_D24_UNORM_S8_UINT: return GfxFormat_D24_Unorm_S8_Uint;
+    case RUSH_GFX_FORMAT_D24_UNORM_X8: return GfxFormat_D24_Unorm_X8;
+    case RUSH_GFX_FORMAT_D32_FLOAT: return GfxFormat_D32_Float;
+    case RUSH_GFX_FORMAT_D32_FLOAT_S8_UINT: return GfxFormat_D32_Float_S8_Uint;
+    case RUSH_GFX_FORMAT_R8_UNORM: return GfxFormat_R8_Unorm;
+    case RUSH_GFX_FORMAT_R16_FLOAT: return GfxFormat_R16_Float;
+    case RUSH_GFX_FORMAT_R16_UINT: return GfxFormat_R16_Uint;
+    case RUSH_GFX_FORMAT_R32_FLOAT: return GfxFormat_R32_Float;
+    case RUSH_GFX_FORMAT_R32_UINT: return GfxFormat_R32_Uint;
+    case RUSH_GFX_FORMAT_RG8_UNORM: return GfxFormat_RGB8_Unorm;
+    case RUSH_GFX_FORMAT_RG16_FLOAT: return GfxFormat_RG16_Float;
+    case RUSH_GFX_FORMAT_RG32_FLOAT: return GfxFormat_RG32_Float;
+    case RUSH_GFX_FORMAT_RGB32_FLOAT: return GfxFormat_RGB32_Float;
+    case RUSH_GFX_FORMAT_RGB8_UNORM: return GfxFormat_RGB8_Unorm;
+    case RUSH_GFX_FORMAT_RGBA16_FLOAT: return GfxFormat_RGBA16_Float;
+    case RUSH_GFX_FORMAT_RGBA16_UNORM: return GfxFormat_RGBA16_Unorm;
+    case RUSH_GFX_FORMAT_RGBA32_FLOAT: return GfxFormat_RGBA32_Float;
+    case RUSH_GFX_FORMAT_RGBA8_UNORM: return GfxFormat_RGBA8_Unorm;
+    case RUSH_GFX_FORMAT_RGBA8_SRGB: return GfxFormat_RGBA8_sRGB;
+    case RUSH_GFX_FORMAT_BGRA8_UNORM: return GfxFormat_BGRA8_Unorm;
+    case RUSH_GFX_FORMAT_BGRA8_SRGB: return GfxFormat_BGRA8_sRGB;
+    case RUSH_GFX_FORMAT_BC1_UNORM: return GfxFormat_BC1_Unorm;
+    case RUSH_GFX_FORMAT_BC1_UNORM_SRGB: return GfxFormat_BC1_Unorm_sRGB;
+    case RUSH_GFX_FORMAT_BC3_UNORM: return GfxFormat_BC3_Unorm;
+    case RUSH_GFX_FORMAT_BC3_UNORM_SRGB: return GfxFormat_BC3_Unorm_sRGB;
+    case RUSH_GFX_FORMAT_BC4_UNORM: return GfxFormat_BC4_Unorm;
+    case RUSH_GFX_FORMAT_BC5_UNORM: return GfxFormat_BC5_Unorm;
+    case RUSH_GFX_FORMAT_BC6H_UFLOAT: return GfxFormat_BC6H_UFloat;
+    case RUSH_GFX_FORMAT_BC6H_SFLOAT: return GfxFormat_BC6H_SFloat;
+    case RUSH_GFX_FORMAT_BC7_UNORM: return GfxFormat_BC7_Unorm;
+    case RUSH_GFX_FORMAT_BC7_UNORM_SRGB: return GfxFormat_BC7_Unorm_sRGB;
+    }
 }
 
 ColorRGBA convert(const rush_color_rgba& c)
@@ -61,13 +104,12 @@ ColorRGBA convert(const rush_color_rgba& c)
 void rush_app_config_init(rush_app_config* out_cfg)
 {
     AppConfig cfg;
-    convert(&cfg, out_cfg);
+    *out_cfg = convert(&cfg);
 }
 
 int rush_platform_main(const rush_app_config* in_cfg)
 {
-    AppConfig cfg;
-    convert(in_cfg, &cfg);
+    AppConfig cfg = convert(in_cfg);
     return Platform_Main(cfg);
 }
 
@@ -110,3 +152,9 @@ void rush_gfx_end_pass(struct rush_gfx_context* ctx)
 {
     Gfx_EndPass((GfxContext*)ctx);
 }
+
+void rush_gfx_draw(struct rush_gfx_context* ctx, uint32_t first_vertex, uint32_t vertex_count)
+{
+    Gfx_Draw((GfxContext*)ctx, first_vertex, vertex_count);
+}
+
