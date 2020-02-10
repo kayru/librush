@@ -128,7 +128,7 @@ void rush_gfx_begin_pass(
 	uint32_t color_count,
 	const rush_gfx_color_target* color,
 	const rush_gfx_depth_target* depth,
-	enum rush_gfx_pass_flags flags
+	rush_gfx_pass_flags flags
 )
 {
     GfxPassDesc desc;
