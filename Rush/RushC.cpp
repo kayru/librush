@@ -153,6 +153,55 @@ rush_gfx_context* rush_platform_get_context()
     return (rush_gfx_context*)Platform_GetGfxContext();
 }
 
+void rush_gfx_release_vertex_format(rush_gfx_vertex_format h)
+{
+    Gfx_Release(convertHandle<GfxVertexFormat>(h));
+}
+void rush_gfx_release_vertex_shader(rush_gfx_vertex_shader h)
+{
+    Gfx_Release(convertHandle<GfxVertexShader>(h));
+}
+void rush_gfx_release_pixel_shader(rush_gfx_pixel_shader h)
+{
+    Gfx_Release(convertHandle<GfxPixelShader>(h));
+}
+void rush_gfx_release_geometry_shader(rush_gfx_geometry_shader h)
+{
+    Gfx_Release(convertHandle<GfxGeometryShader>(h));
+}
+void rush_gfx_release_compute_shader(rush_gfx_compute_shader h)
+{
+    Gfx_Release(convertHandle<GfxComputeShader>(h));
+}
+void rush_gfx_release_technique(rush_gfx_technique h)
+{
+    Gfx_Release(convertHandle<GfxTechnique>(h));
+}
+void rush_gfx_release_texture(rush_gfx_texture h)
+{
+    Gfx_Release(convertHandle<GfxTexture>(h));
+}
+void rush_gfx_release_blend_state(rush_gfx_blend_state h)
+{
+    Gfx_Release(convertHandle<GfxBlendState>(h));
+}
+void rush_gfx_release_sampler(rush_gfx_sampler h)
+{
+    Gfx_Release(convertHandle<GfxSampler>(h));
+}
+void rush_gfx_release_depth_stencil_state(rush_gfx_depth_stencil_state h)
+{
+    Gfx_Release(convertHandle<GfxDepthStencilState>(h));
+}
+void rush_gfx_release_rasterizer_state(rush_gfx_rasterizer_state h)
+{
+    Gfx_Release(convertHandle<GfxRasterizerState>(h));
+}
+void rush_gfx_release_buffer(rush_gfx_buffer h)
+{
+    Gfx_Release(convertHandle<GfxBuffer>(h));
+}
+
 void rush_gfx_begin_pass(
 	struct rush_gfx_context* ctx, 
 	uint32_t color_count,
@@ -322,3 +371,4 @@ void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, ru
 {
     Gfx_SetConstantBuffer((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
 }
+
