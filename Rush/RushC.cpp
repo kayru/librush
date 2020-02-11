@@ -193,8 +193,6 @@ rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_typ
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_3D_VS:
             return {RUSH_GFX_SHADER_SOURCE_MSL, "vsMain3D", MSL_EmbeddedShaders, 0u};
 #else // RUSH_RENDER_API==RUSH_RENDER_API_MTL
-        default:
-            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", nullptr, 0u};
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_PLAIN_PS:
             return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_psMain_data, (uint32_t)SPV_psMain_size};
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_TEXTURED_PS:
