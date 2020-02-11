@@ -453,29 +453,29 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxUsageFlags, u8);
 
 enum class GfxStage : u8
 {
-	Vertex      = 0,
-	Geometry    = 1,
-	Pixel       = 2,
-	Hull        = 3,
-	Domain      = 4,
-	Compute     = 5,
-	Mesh        = 6,
-	RayTracing  = 7,
+	Vertex      = RUSH_GFX_STAGE_VERTEX,
+	Geometry    = RUSH_GFX_STAGE_GEOMETRY,
+	Pixel       = RUSH_GFX_STAGE_PIXEL,
+	Hull        = RUSH_GFX_STAGE_HULL,
+	Domain      = RUSH_GFX_STAGE_DOMAIN,
+	Compute     = RUSH_GFX_STAGE_COMPUTE,
+	Mesh        = RUSH_GFX_STAGE_MESH,
+	RayTracing  = RUSH_GFX_STAGE_RAYTRACING,
 	count
 };
 
 enum class GfxStageFlags : u8
 {
-	None = 0,
+	None = RUSH_GFX_STAGE_FLAG_NONE,
 
-	Vertex     = 1u << (u32)GfxStage::Vertex,
-	Geometry   = 1u << (u32)GfxStage::Geometry,
-	Pixel      = 1u << (u32)GfxStage::Pixel,
-	Hull       = 1u << (u32)GfxStage::Hull,
-	Domain     = 1u << (u32)GfxStage::Domain,
-	Compute    = 1u << (u32)GfxStage::Compute,
-	Mesh       = 1u << (u32)GfxStage::Mesh,
-	RayTracing = 1u << (u32)GfxStage::RayTracing,
+	Vertex     = RUSH_GFX_STAGE_FLAG_VERTEX,
+	Geometry   = RUSH_GFX_STAGE_FLAG_GEOMETRY,
+	Pixel      = RUSH_GFX_STAGE_FLAG_PIXEL,
+	Hull       = RUSH_GFX_STAGE_FLAG_HULL,
+	Domain     = RUSH_GFX_STAGE_FLAG_DOMAIN,
+	Compute    = RUSH_GFX_STAGE_FLAG_COMPUTE,
+	Mesh       = RUSH_GFX_STAGE_FLAG_MESH,
+	RayTracing = RUSH_GFX_STAGE_FLAG_RAYTRACING,
 
 	VertexPixel = Vertex | Pixel,
 	All         = 0xFF,
@@ -485,11 +485,11 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxStageFlags, u8);
 
 enum class GfxPrimitive : u8
 {
-	PointList,
-	LineList,
-	LineStrip,
-	TriangleList,
-	TriangleStrip,
+	PointList = RUSH_GFX_PRIMITIVE_POINT_LIST,
+	LineList = RUSH_GFX_PRIMITIVE_LINE_LIST,
+	LineStrip = RUSH_GFX_PRIMITIVE_LINE_STRIP,
+	TriangleList = RUSH_GFX_PRIMITIVE_TRIANGLE_LIST,
+	TriangleStrip = RUSH_GFX_PRIMITIVE_TRIANGLE_STRIP,
 	count
 };
 
@@ -513,16 +513,16 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxClearFlags, u8);
 
 enum class GfxBufferFlags : u32
 {
-	None         = 0u,
-	Vertex       = 1u << 0,
-	Index        = 1u << 1,
-	Constant     = 1u << 2,
-	Storage      = 1u << 3,
-	Texel        = 1u << 4,
-	IndirectArgs = 1u << 5,
-	RayTracing   = 1u << 6,
+	None         = RUSH_GFX_BUFFER_FLAG_NONE,
+	Vertex       = RUSH_GFX_BUFFER_FLAG_VERTEX,
+	Index        = RUSH_GFX_BUFFER_FLAG_INDEX,
+	Constant     = RUSH_GFX_BUFFER_FLAG_CONSTANT,
+	Storage      = RUSH_GFX_BUFFER_FLAG_STORAGE,
+	Texel        = RUSH_GFX_BUFFER_FLAG_TEXEL,
+	IndirectArgs = RUSH_GFX_BUFFER_FLAG_INDIRECT_ARGS,
+	RayTracing   = RUSH_GFX_BUFFER_FLAG_RAYTRACING,
 
-	Transient = 1u << 31,
+	Transient    = RUSH_GFX_BUFFER_FLAG_TRANSIENT,
 
 	TransientVertex   = Transient | Vertex,
 	TransientIndex    = Transient | Index,
@@ -768,16 +768,16 @@ public:
 
 	enum class Semantic : u8
 	{
-		Unused       = 0,
-		Position     = 1,
-		Texcoord     = 2,
-		Color        = 3,
-		Normal       = 4,
-		TangentU     = 5,
-		TangentV     = 6,
-		InstanceData = 7,
-		BoneIndex    = 8,
-		BoneWeight   = 9,
+		Unused       = RUSH_GFX_VERTEX_SEMANTIC_UNUSED,
+		Position     = RUSH_GFX_VERTEX_SEMANTIC_POSITION,
+		Texcoord     = RUSH_GFX_VERTEX_SEMANTIC_TEXCOORD,
+		Color        = RUSH_GFX_VERTEX_SEMANTIC_COLOR,
+		Normal       = RUSH_GFX_VERTEX_SEMANTIC_NORMAL,
+		TangentU     = RUSH_GFX_VERTEX_SEMANTIC_TANGENTU,
+		TangentV     = RUSH_GFX_VERTEX_SEMANTIC_TANGENTV,
+		InstanceData = RUSH_GFX_VERTEX_SEMANTIC_INSTANCEDATA,
+		BoneIndex    = RUSH_GFX_VERTEX_SEMANTIC_BONEINDEX,
+		BoneWeight   = RUSH_GFX_VERTEX_SEMANTIC_BONEWEIGHT,
 
 		Tangent   = TangentU, // backwards-compatible name
 		Bitangent = TangentV, // backwards-compatible name
@@ -893,7 +893,7 @@ struct GfxSpecializationConstant
 {
 	u32    id;
 	u32    offset;
-	size_t size;
+	u32    size;
 };
 
 struct GfxTechniqueDesc

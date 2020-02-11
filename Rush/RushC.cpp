@@ -105,6 +105,27 @@ GfxShaderSource convert(const rush_gfx_shader_source* code)
     return GfxShaderSource((GfxShaderSourceType)code->type, (const char*)code->data, code->size_bytes, code->entry);
 }
 
+GfxDescriptorSetDesc convert(const rush_gfx_descriptor_set_desc& desc)
+{
+    GfxDescriptorSetDesc result;
+    result.constantBuffers        = desc.constant_buffers;
+	result.samplers               = desc.samplers;
+	result.textures               = desc.textures;
+	result.rwImages               = desc.rw_images;
+	result.rwBuffers              = desc.rw_buffers;
+	result.rwTypedBuffers         = desc.rw_typed_buffers;
+	result.accelerationStructures = desc.acceleration_structures;
+	result.stageFlags             = (GfxStageFlags)desc.stage_flags;
+	result.flags                  = (GfxDescriptorSetFlags)desc.flags;
+    return result;
+}
+
+template <typename T, typename H>
+T convertHandle(H h)
+{
+    return T(UntypedResourceHandle(h.handle));
+}
+
 } // namespace
 
 void rush_app_config_init(rush_app_config* out_cfg)
@@ -116,6 +137,9 @@ void rush_app_config_init(rush_app_config* out_cfg)
 int rush_platform_main(const rush_app_config* in_cfg)
 {
     AppConfig cfg = convert(in_cfg);
+    GfxConfig gfx_cfg(cfg);
+    gfx_cfg.preferredCoordinateSystem = GfxConfig::PreferredCoordinateSystem_Direct3D;
+    cfg.gfxConfig = &gfx_cfg;
     return Platform_Main(cfg);
 }
 
@@ -141,12 +165,12 @@ void rush_gfx_begin_pass(
     color_count = min<u32>(color_count, GfxPassDesc::MaxTargets);
     for (u32 i=0; i<color_count; ++i)
     {
-        desc.color[i] = GfxTexture(UntypedResourceHandle(color[i].target.handle));
+        desc.color[i] = convertHandle<GfxTexture>(color[i].target);
         desc.clearColors[i] = convert(color[i].clear_color);
     }
     if (depth)
     {
-        desc.depth = GfxTexture(UntypedResourceHandle(depth->target.handle));
+        desc.depth = convertHandle<GfxTexture>(depth->target);
         desc.clearDepth = depth->clear_depth;
         desc.clearStencil = depth->clear_stencil;
     }
@@ -194,13 +218,13 @@ rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_typ
             return {RUSH_GFX_SHADER_SOURCE_MSL, "vsMain3D", MSL_EmbeddedShaders, 0u};
 #else // RUSH_RENDER_API==RUSH_RENDER_API_MTL
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_PLAIN_PS:
-            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_psMain_data, (uint32_t)SPV_psMain_size};
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "psMain", SPV_psMain_data, (uint32_t)SPV_psMain_size};
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_TEXTURED_PS:
-            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_psMainTextured_data, (uint32_t)SPV_psMainTextured_size};
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "psMainTextured", SPV_psMainTextured_data, (uint32_t)SPV_psMainTextured_size};
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_2D_VS:
-            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_vsMain2D_data, (uint32_t)SPV_vsMain2D_size};
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "vsMain2D", SPV_vsMain2D_data, (uint32_t)SPV_vsMain2D_size};
         case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_3D_VS:
-            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_vsMain3D_data, (uint32_t)SPV_vsMain3D_size};
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "vsMain3D", SPV_vsMain3D_data, (uint32_t)SPV_vsMain3D_size};
 #endif // RUSH_RENDER_API==RUSH_RENDER_API_MTL
     }
 }
@@ -213,4 +237,88 @@ rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_sourc
 rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source* in_code)
 {
     return {Gfx_CreatePixelShader(convert(in_code)).detach().index()};
+}
+
+rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_element* elements, uint32_t count)
+{
+    GfxVertexFormatDesc desc;
+    for (u32 i=0; i<count; ++i)
+    {
+        const rush_gfx_vertex_element& elem = elements[i];
+        // TODO: just use GfxFormat everywhere instead of GfxVertexFormatDesc::DataType
+        GfxVertexFormatDesc::DataType type = GfxVertexFormatDesc::DataType::Unused;
+        switch(convert(elem.format))
+        {
+            case GfxFormat_R32_Float:    type = GfxVertexFormatDesc::DataType::Float1; break;
+		    case GfxFormat_RG32_Float:   type = GfxVertexFormatDesc::DataType::Float2; break;
+		    case GfxFormat_RGB32_Float:  type = GfxVertexFormatDesc::DataType::Float3; break;
+            case GfxFormat_RGBA32_Float: type = GfxVertexFormatDesc::DataType::Float4; break;
+		    case GfxFormat_RGBA8_Unorm:  type = GfxVertexFormatDesc::DataType::Color; break;
+            case GfxFormat_R32_Uint:     type = GfxVertexFormatDesc::DataType::UInt; break;
+        }
+        desc.add(elem.stream, type, (GfxVertexFormatDesc::Semantic)elem.semantic, elem.index);
+    }
+    return {Gfx_CreateVertexFormat(desc).detach().index()};
+}
+
+rush_gfx_technique rush_gfx_create_technique(const rush_gfx_technique_desc* in_desc)
+{
+    GfxShaderBindingDesc bindings;
+    bindings.useDefaultDescriptorSet = in_desc->bindings.use_default_descriptor_set;
+
+    for (u32 i=0; i<in_desc->bindings.descriptor_set_count && i <GfxShaderBindingDesc::MaxDescriptorSets; ++i)
+    {
+        if (i==0 && bindings.useDefaultDescriptorSet)
+        {
+            (GfxDescriptorSetDesc&)bindings = convert(in_desc->bindings.descriptor_sets[0]);
+        }
+        else
+        {
+            bindings.descriptorSets[i] = convert(in_desc->bindings.descriptor_sets[i]);            
+        }
+        
+    }
+
+    GfxTechniqueDesc desc;
+	desc.cs = convertHandle<GfxComputeShader>(in_desc->cs);
+	desc.ps = convertHandle<GfxPixelShader>(in_desc->ps);
+	desc.gs = convertHandle<GfxGeometryShader>(in_desc->gs);
+	desc.vs = convertHandle<GfxVertexShader>(in_desc->vs);
+	desc.ms = convertHandle<GfxMeshShader>(in_desc->ms);
+	desc.vf = convertHandle<GfxVertexFormat>(in_desc->vf);
+	desc.bindings = bindings;
+	desc.workGroupSize.x = in_desc->work_group_size[0];
+    desc.workGroupSize.y = in_desc->work_group_size[1];
+    desc.workGroupSize.z = in_desc->work_group_size[2];
+	desc.specializationConstantCount = in_desc->spec_constant_count;
+	desc.specializationConstants     = (const GfxSpecializationConstant*)in_desc->spec_constants;
+	desc.specializationData          = in_desc->spec_data;
+	desc.specializationDataSize      = in_desc->spec_data_size;
+
+    return {Gfx_CreateTechnique(desc).detach().index()};
+}
+
+void rush_gfx_set_technique(struct rush_gfx_context* ctx, rush_gfx_technique h)
+{
+    Gfx_SetTechnique((GfxContext*)ctx, convertHandle<GfxTechnique>(h));
+}
+
+void rush_gfx_set_primitive(struct rush_gfx_context* ctx, enum rush_gfx_primitive_type type)
+{
+    Gfx_SetPrimitive((GfxContext*)ctx, (GfxPrimitive)type);
+}
+
+void rush_gfx_set_index_stream(struct rush_gfx_context* ctx, rush_gfx_buffer h)
+{
+    Gfx_SetIndexStream((GfxContext*)ctx, convertHandle<GfxBuffer>(h));
+}
+
+void rush_gfx_set_vertex_stream(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h)
+{
+    Gfx_SetVertexStream((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
+}
+
+void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h, uint32_t offset)
+{
+    Gfx_SetConstantBuffer((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
 }

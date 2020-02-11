@@ -181,9 +181,25 @@ typedef struct {
 	uint32_t size_bytes;
 } rush_gfx_shader_source;
 
+typedef enum {
+	RUSH_GFX_VERTEX_SEMANTIC_UNUSED       = 0,
+	RUSH_GFX_VERTEX_SEMANTIC_POSITION     = 1,
+	RUSH_GFX_VERTEX_SEMANTIC_TEXCOORD     = 2,
+	RUSH_GFX_VERTEX_SEMANTIC_COLOR        = 3,
+	RUSH_GFX_VERTEX_SEMANTIC_NORMAL       = 4,
+	RUSH_GFX_VERTEX_SEMANTIC_TANGENTU     = 5,
+	RUSH_GFX_VERTEX_SEMANTIC_TANGENTV     = 6,
+	RUSH_GFX_VERTEX_SEMANTIC_INSTANCEDATA = 7,
+	RUSH_GFX_VERTEX_SEMANTIC_BONEINDEX    = 8,
+	RUSH_GFX_VERTEX_SEMANTIC_BONEWEIGHT   = 9,
+} rush_gfx_vertex_semantic;
+
 typedef struct {
-	int todo;
-} rush_gfx_vertex_format_desc;
+	rush_gfx_vertex_semantic semantic;
+	uint32_t index;
+	rush_gfx_format format;
+	uint32_t stream;
+} rush_gfx_vertex_element;
 
 typedef struct {
 	int todo;
@@ -270,6 +286,7 @@ typedef struct {
 typedef struct {
 	const rush_gfx_descriptor_set_desc* descriptor_sets;
 	uint32_t descriptor_set_count;
+	bool use_default_descriptor_set;
 } rush_gfx_shader_bindings_desc;
 
 typedef struct {
@@ -304,7 +321,7 @@ void rush_gfx_finish();
 const rush_gfx_capability* rush_gfx_get_capability();
 const rush_gfx_stats* rush_gfx_get_stats();
 void rush_gfx_reset_stats();
-rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_format_desc* fmt);
+rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_element* elements, uint32_t count);
 rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_source* code);
 rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source* code);
 rush_gfx_geometry_shader rush_gfx_create_geometry_sshader(const rush_gfx_shader_source* code);
@@ -369,7 +386,7 @@ void rush_gfx_set_storage_buffer(struct rush_gfx_context* ctx, uint32_t idx, rus
 void rush_gfx_set_blend_state(struct rush_gfx_context* ctx, rush_gfx_blend_state h);
 void rush_gfx_set_depth_stencil_state(struct rush_gfx_context* ctx, rush_gfx_depth_stencil_state h);
 void rush_gfx_set_rasterizer_state(struct rush_gfx_context* ctx, rush_gfx_rasterizer_state h);
-void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t index, rush_gfx_buffer h, uint32_t offset);
+void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h, uint32_t offset);
 void rush_gfx_resolve_image(struct rush_gfx_context* ctx, rush_gfx_texture src, rush_gfx_texture dst);
 void rush_gfx_dispatch(struct rush_gfx_context* ctx, uint32_t size_x, uint32_t size_y, uint32_t size_z);
 void rush_gfx_dispatch2(struct rush_gfx_context* ctx, uint32_t size_x, uint32_t size_y, uint32_t size_z, const void* push_constants, uint32_t push_constants_size);
