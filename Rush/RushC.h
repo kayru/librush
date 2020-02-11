@@ -9,6 +9,11 @@ extern "C" {
 
 // Platform
 
+typedef struct {
+	const void* ptr;
+	uint64_t size;
+} rush_memory_view;
+
 typedef void (*rush_platform_callback_startup)  (void* user_data);
 typedef void (*rush_platform_callback_update)   (void* user_data);
 typedef void (*rush_platform_callback_shutdown) (void* user_data);
@@ -172,7 +177,7 @@ typedef struct {
 typedef struct {
 	rush_gfx_shader_source_type type;
 	const char* entry;
-	const char* data;
+	const void* data;
 	uint32_t size_bytes;
 } rush_gfx_shader_source;
 
@@ -378,6 +383,17 @@ void rush_gfx_push_marker(struct rush_gfx_context* ctx, const char* marker);
 void rush_gfx_pop_marker(struct rush_gfx_context* ctx);
 void rush_gfx_begin_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id);
 void rush_gfx_end_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id);
+
+// Embedded shaders
+
+typedef enum {
+	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_PLAIN_PS,
+	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_TEXTURED_PS,
+	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_2D_VS,
+	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_3D_VS,
+} rush_gfx_embedded_shader_type;
+
+rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_type type);
 
 #ifdef __cplusplus
 } // extern "C"

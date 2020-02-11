@@ -1,6 +1,7 @@
 #include "RushC.h"
 #include "Platform.h"
 #include "GfxDevice.h"
+#include "GfxEmbeddedShaders.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -99,6 +100,11 @@ ColorRGBA convert(const rush_color_rgba& c)
     return ColorRGBA(c.r, c.g, c.b, c.a);
 }
 
+GfxShaderSource convert(const rush_gfx_shader_source* code)
+{
+    return GfxShaderSource((GfxShaderSourceType)code->type, (const char*)code->data, code->size_bytes, code->entry);
+}
+
 } // namespace
 
 void rush_app_config_init(rush_app_config* out_cfg)
@@ -167,4 +173,46 @@ rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* in_desc, cons
 	desc.count       = in_desc->count;
 	desc.hostVisible = in_desc->host_visible;
     return {Gfx_CreateBuffer(desc, data).detach().index()};
+}
+
+namespace Rush { extern const char* MSL_EmbeddedShaders; }
+
+rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_type type)
+{
+    switch(type)
+    {
+        default:
+            return {RUSH_GFX_SHADER_SOURCE_UNKNOWN, "main", nullptr, 0u};
+#if RUSH_RENDER_API==RUSH_RENDER_API_MTL
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_PLAIN_PS:
+            return {RUSH_GFX_SHADER_SOURCE_MSL, "psMain", MSL_EmbeddedShaders, 0u};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_TEXTURED_PS:
+            return {RUSH_GFX_SHADER_SOURCE_MSL, "psMainTextured", MSL_EmbeddedShaders, 0u};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_2D_VS:
+            return {RUSH_GFX_SHADER_SOURCE_MSL, "vsMain2D", MSL_EmbeddedShaders, 0u};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_3D_VS:
+            return {RUSH_GFX_SHADER_SOURCE_MSL, "vsMain3D", MSL_EmbeddedShaders, 0u};
+#else // RUSH_RENDER_API==RUSH_RENDER_API_MTL
+        default:
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", nullptr, 0u};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_PLAIN_PS:
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_psMain_data, (uint32_t)SPV_psMain_size};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_TEXTURED_PS:
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_psMainTextured_data, (uint32_t)SPV_psMainTextured_size};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_2D_VS:
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_vsMain2D_data, (uint32_t)SPV_vsMain2D_size};
+        case RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_3D_VS:
+            return {RUSH_GFX_SHADER_SOURCE_SPV, "main", SPV_vsMain3D_data, (uint32_t)SPV_vsMain3D_size};
+#endif // RUSH_RENDER_API==RUSH_RENDER_API_MTL
+    }
+}
+
+rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_source* in_code)
+{
+    return {Gfx_CreateVertexShader(convert(in_code)).detach().index()};
+}
+
+rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source* in_code)
+{
+    return {Gfx_CreatePixelShader(convert(in_code)).detach().index()};
 }
