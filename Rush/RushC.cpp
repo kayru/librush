@@ -158,3 +158,13 @@ void rush_gfx_draw(struct rush_gfx_context* ctx, uint32_t first_vertex, uint32_t
     Gfx_Draw((GfxContext*)ctx, first_vertex, vertex_count);
 }
 
+rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* in_desc, const void* data)
+{
+    GfxBufferDesc desc;
+    desc.format      = convert(in_desc->format);
+    desc.flags       = (GfxBufferFlags)in_desc->flags;
+    desc.stride      = in_desc->stride;
+	desc.count       = in_desc->count;
+	desc.hostVisible = in_desc->host_visible;
+    return {Gfx_CreateBuffer(desc, data).detach().index()};
+}

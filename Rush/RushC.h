@@ -100,7 +100,7 @@ typedef enum {
 	RUSH_GFX_SHADER_SOURCE_MSL     = 6, // text
 } rush_gfx_shader_source_type;
 
-enum rush_gfx_format {
+typedef enum {
 	RUSH_GFX_FORMAT_UNKNOWN,
 
 	RUSH_GFX_FORMAT_D24_UNORM_S8_UINT,
@@ -135,7 +135,7 @@ enum rush_gfx_format {
 	RUSH_GFX_FORMAT_BC6H_SFLOAT,
 	RUSH_GFX_FORMAT_BC7_UNORM,
 	RUSH_GFX_FORMAT_BC7_UNORM_SRGB,
-};
+} rush_gfx_format;
 
 typedef struct {
 	rush_gfx_texture target;
@@ -192,8 +192,24 @@ typedef struct {
 	int todo;
 } rush_gfx_rasterizer_desc;
 
+typedef enum {
+	RUSH_GFX_BUFFER_FLAG_NONE          = 0U,
+	RUSH_GFX_BUFFER_FLAG_VERTEX        = 1U << 0,
+	RUSH_GFX_BUFFER_FLAG_INDEX         = 1U << 1,
+	RUSH_GFX_BUFFER_FLAG_CONSTANT      = 1U << 2,
+	RUSH_GFX_BUFFER_FLAG_STORAGE       = 1U << 3,
+	RUSH_GFX_BUFFER_FLAG_TEXEL         = 1U << 4,
+	RUSH_GFX_BUFFER_FLAG_INDIRECT_ARGS = 1U << 5,
+	RUSH_GFX_BUFFER_FLAG_RAYTRACING    = 1U << 6,
+	RUSH_GFX_BUFFER_FLAG_TRANSIENT     = 1U << 31,
+} rush_gfx_buffer_flags;
+
 typedef struct {
-	int todo;
+	rush_gfx_buffer_flags flags;
+	rush_gfx_format       format;
+	uint32_t              stride;
+	uint32_t              count;
+	bool                  host_visible;
 } rush_gfx_buffer_desc;
 
 typedef struct {
