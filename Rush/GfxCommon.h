@@ -175,7 +175,7 @@ public:
 	T    get() const { return m_handle; }
 	bool valid() const { return m_handle.valid(); }
 
-	T detach() const
+	T detach()
 	{
 		T result = m_handle;
 		m_handle = InvalidResourceHandle();
