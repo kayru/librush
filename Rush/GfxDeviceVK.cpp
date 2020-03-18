@@ -13,6 +13,10 @@
 #define _strdup strdup
 #endif
 
+#if defined(RUSH_PLATFORM_WINDOWS)
+#include <Windows.h> // only needed for GetModuleHandle()
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 
