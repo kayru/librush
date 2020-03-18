@@ -222,7 +222,7 @@ typedef enum {
 	RUSH_GFX_BUFFER_FLAG_TEXEL         = 1U << 4,
 	RUSH_GFX_BUFFER_FLAG_INDIRECT_ARGS = 1U << 5,
 	RUSH_GFX_BUFFER_FLAG_RAYTRACING    = 1U << 6,
-	RUSH_GFX_BUFFER_FLAG_TRANSIENT     = 1U << 31,
+	RUSH_GFX_BUFFER_FLAG_TRANSIENT     = 1U << 30,
 } rush_gfx_buffer_flags;
 
 typedef struct {
