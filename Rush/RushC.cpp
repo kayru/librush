@@ -372,3 +372,20 @@ void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, ru
     Gfx_SetConstantBuffer((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
 }
 
+void rush_gfx_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h, const void* data, uint32_t size)
+{
+    void* write_ptr = Gfx_BeginUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h), size);
+    memcpy(write_ptr, data, size);
+    Gfx_EndUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h));
+}
+
+void* rush_gfx_begin_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h, uint32_t size)
+{
+    return Gfx_BeginUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h), size);
+}
+
+void rush_gfx_end_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h)
+{
+    Gfx_EndUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h));
+}
+
