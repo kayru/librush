@@ -545,74 +545,74 @@ enum class GfxShaderType : u8
 
 enum class GfxBlendParam : u8
 {
-	Zero,
-	One,
-	SrcColor,
-	InvSrcColor,
-	SrcAlpha,
-	InvSrcAlpha,
-	DestAlpha,
-	InvDestAlpha,
-	DestColor,
-	InvDestColor,
+	Zero = RUSH_GFX_BLEND_PARAM_ZERO,
+	One = RUSH_GFX_BLEND_PARAM_ONE,
+	SrcColor = RUSH_GFX_BLEND_PARAM_SRC_COLOR,
+	InvSrcColor = RUSH_GFX_BLEND_PARAM_INV_SRC_COLOR,
+	SrcAlpha = RUSH_GFX_BLEND_PARAM_SRC_ALPHA,
+	InvSrcAlpha = RUSH_GFX_BLEND_PARAM_INV_SRC_ALPHA,
+	DestAlpha = RUSH_GFX_BLEND_PARAM_DEST_ALPHA,
+	InvDestAlpha = RUSH_GFX_BLEND_PARAM_INV_DEST_ALPHA,
+	DestColor = RUSH_GFX_BLEND_PARAM_DEST_COLOR,
+	InvDestColor = RUSH_GFX_BLEND_PARAM_INV_DEST_COLOR,
 
 	count
 };
 
 enum class GfxBlendOp : u8
 {
-	Add,
-	Subtract,
-	RevSubtract,
-	Min,
-	Max,
+	Add = RUSH_GFX_BLEND_OP_ADD,
+	Subtract = RUSH_GFX_BLEND_OP_SUBTRACT,
+	RevSubtract = RUSH_GFX_BLEND_OP_REV_SUBTRACT,
+	Min = RUSH_GFX_BLEND_OP_MIN,
+	Max = RUSH_GFX_BLEND_OP_MAX,
 
 	count
 };
 
 enum class GfxTextureFilter : u8
 {
-	Point,
-	Linear,
-	Anisotropic,
+	Point = RUSH_GFX_TEXTURE_FILTER_POINT,
+	Linear = RUSH_GFX_TEXTURE_FILTER_LINEAR,
+	Anisotropic = RUSH_GFX_TEXTURE_FILTER_ANISOTROPIC,
 
 	count
 };
 
 enum class GfxTextureWrap : u8
 {
-	Wrap,
-	Mirror,
-	Clamp,
+	Wrap = RUSH_GFX_TEXTURE_WRAP_REPEAT,
+	Mirror = RUSH_GFX_TEXTURE_WRAP_MIRROR,
+	Clamp = RUSH_GFX_TEXTURE_WRAP_CLAMP,
 
 	count
 };
 
 enum class GfxCompareFunc : u8
 {
-	Never,
-	Less,
-	Equal,
-	LessEqual,
-	Greater,
-	NotEqual,
-	GreaterEqual,
-	Always,
+	Never = RUSH_GFX_COMPARE_FUNC_NEVER,
+	Less = RUSH_GFX_COMPARE_FUNC_LESS,
+	Equal = RUSH_GFX_COMPARE_FUNC_EQUAL,
+	LessEqual = RUSH_GFX_COMPARE_FUNC_LESS_EQUAL,
+	Greater = RUSH_GFX_COMPARE_FUNC_GREATER,
+	NotEqual = RUSH_GFX_COMPARE_FUNC_NOT_EQUAL,
+	GreaterEqual = RUSH_GFX_COMPARE_FUNC_GREATER_EQUAL,
+	Always = RUSH_GFX_COMPARE_FUNC_ALWAYS,
 
 	count
 };
 
 enum class GfxFillMode : u8
 {
-	Solid,
-	Wireframe
+	Solid = RUSH_GFX_FILL_MODE_SOLID,
+	Wireframe = RUSH_GFX_FILL_MODE_WIREFRAME,
 };
 
 enum class GfxCullMode : u8
 {
-	None,
-	CW,
-	CCW,
+	None = RUSH_GFX_CULL_MODE_NONE,
+	CW = RUSH_GFX_CULL_MODE_CW,
+	CCW = RUSH_GFX_CULL_MODE_CCW,
 };
 
 inline GfxFormatType      getGfxFormatType(GfxFormat fmt) { return (GfxFormatType)(fmt & 0x000000FF); }
