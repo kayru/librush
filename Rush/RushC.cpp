@@ -2,6 +2,7 @@
 #include "Platform.h"
 #include "GfxDevice.h"
 #include "GfxEmbeddedShaders.h"
+#include "GfxBitmapFont.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -248,6 +249,40 @@ rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* in_desc, cons
     return {Gfx_CreateBuffer(desc, data).detach().index()};
 }
 
+rush_gfx_texture rush_gfx_create_texture(const rush_gfx_texture_desc* in_desc, const rush_gfx_texture_data* in_data, uint32_t count, const void* pixels)
+{
+    GfxTextureDesc desc;
+    desc.width     = in_desc->width;
+	desc.height    = in_desc->height;
+	desc.depth     = in_desc->depth;
+	desc.mips      = in_desc->mips;
+	desc.samples   = in_desc->samples;
+	desc.format    = convert(in_desc->format);
+	desc.type      = TextureType(in_desc->texture_type);
+	desc.usage     = GfxUsageFlags(in_desc->usage);
+	desc.debugName = nullptr;
+    
+    GfxTextureData* data = (GfxTextureData*)alloca(sizeof(GfxTextureData) * count);
+    for (uint32_t i=0; i<count; ++i)
+    {
+        if (pixels)
+        {
+            data[i].offset = in_data[i].offset;
+        }
+        else
+        {
+            data[i].pixels = in_data[i].pixels;
+        }
+        data[i].mip    = in_data[i].mip;
+	    data[i].slice  = in_data[i].slice;
+	    data[i].width  = in_data[i].width;
+	    data[i].height = in_data[i].height;
+	    data[i].depth  = in_data[i].depth;
+    }
+
+    return {Gfx_CreateTexture(desc, data, count, pixels).detach().index()};
+}
+
 namespace Rush { extern const char* MSL_EmbeddedShaders; }
 
 rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_type type)
@@ -389,3 +424,7 @@ void rush_gfx_end_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h)
     Gfx_EndUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h));
 }
 
+void rush_embedded_font_blit_6x8(uint32_t* output, uint32_t output_offset_pixels, uint32_t width, uint32_t color, const char* text)
+{
+    EmbeddedFont_Blit6x8(output+output_offset_pixels, width, color, text);
+}

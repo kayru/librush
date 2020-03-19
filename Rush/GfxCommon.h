@@ -301,13 +301,13 @@ enum class GfxContextType : u8
 
 enum class TextureType : u8
 {
-	Tex1D,
-	Tex1DArray,
-	Tex2D,
-	Tex2DArray,
-	Tex3D,
-	TexCube,
-	TexCubeArray,
+	Tex1D = RUSH_GFX_TEXTURE_TYPE_1D,
+	Tex1DArray = RUSH_GFX_TEXTURE_TYPE_1D_ARRAY,
+	Tex2D = RUSH_GFX_TEXTURE_TYPE_2D,
+	Tex2DArray = RUSH_GFX_TEXTURE_TYPE_2D_ARRAY,
+	Tex3D = RUSH_GFX_TEXTURE_TYPE_3D,
+	TexCube = RUSH_GFX_TEXTURE_TYPE_CUBE,
+	TexCubeArray = RUSH_GFX_TEXTURE_TYPE_CUBE_ARRAY,
 };
 
 inline bool isCubeTexture(TextureType type)
@@ -437,12 +437,12 @@ enum class GfxUsageFlags : u8
 {
 	None = 0,
 
-	ShaderResource = 1 << 0,
-	RenderTarget   = 1 << 1,
-	DepthStencil   = 1 << 2,
-	StorageImage   = 1 << 3,
-	TransferSrc    = 1 << 4,
-	TransferDst    = 1 << 5,
+	ShaderResource = RUSH_GFX_USAGE_SHADER_RESOURCE,
+	RenderTarget   = RUSH_GFX_USAGE_RENDER_TARGET,
+	DepthStencil   = RUSH_GFX_USAGE_DEPTH_STENCIL,
+	StorageImage   = RUSH_GFX_USAGE_STORAGE_IMAGE,
+	TransferSrc    = RUSH_GFX_USAGE_TRANSFER_SRC,
+	TransferDst    = RUSH_GFX_USAGE_TRANSFER_DST,
 
 	RenderTarget_ShaderResource = ShaderResource | RenderTarget,
 	DepthStencil_ShaderResource = ShaderResource | DepthStencil,
