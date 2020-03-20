@@ -20,26 +20,19 @@ typedef void (*rush_platform_callback_shutdown) (void* user_data);
 
 typedef struct {
 	const char* name;
-
 	int vsync;
-
 	int width;
 	int height;
-
 	int max_width;
 	int max_height;
-
 	bool fullscreen;
 	bool resizable;
 	bool debug;
 	bool warp;
 	bool minimize_latency;
-
 	int    argc;
 	char** argv;
-
 	void* user_data;
-
 	rush_platform_callback_startup  on_startup;
 	rush_platform_callback_update   on_update;
 	rush_platform_callback_shutdown on_shutdown;
@@ -244,9 +237,9 @@ typedef struct {
 
 typedef struct {
 	rush_gfx_shader_source_type type;
-	const char* entry;
-	const void* data;
-	uint32_t size_bytes;
+	const char*                 entry;
+	const void*                 data;
+	uint32_t                    size_bytes;
 } rush_gfx_shader_source;
 
 typedef enum {
@@ -264,9 +257,9 @@ typedef enum {
 
 typedef struct {
 	rush_gfx_vertex_semantic semantic;
-	uint32_t index;
-	rush_gfx_format format;
-	uint32_t stream;
+	uint32_t                 index;
+	rush_gfx_format          format;
+	uint32_t                 stream;
 } rush_gfx_vertex_element;
 
 typedef enum {
@@ -301,11 +294,16 @@ typedef struct {
 } rush_gfx_texture_desc;
 
 typedef struct {
-	int todo;
+	rush_gfx_compare_func compare_func;
+	bool                  enable;
+	bool                  write_enable;
 } rush_gfx_depth_stencil_desc;
 
 typedef struct {
-	int todo;
+	rush_gfx_fill_mode fill_mode;
+	rush_gfx_cull_mode cull_mode;
+	float              depth_bias;
+	float              depth_bias_slope_scale;
 } rush_gfx_rasterizer_desc;
 
 typedef enum {
@@ -329,8 +327,16 @@ typedef struct {
 } rush_gfx_buffer_desc;
 
 typedef struct {
-	int todo;
+	void*           data;
+	uint32_t        size;
+	rush_gfx_buffer handle;
 } rush_gfx_mapped_buffer;
+
+typedef struct {
+	void*            data;
+	uint32_t         size;
+	rush_gfx_texture handle;
+} rush_gfx_mapped_texture;
 
 typedef struct {
 	uint32_t id;
@@ -410,11 +416,27 @@ typedef struct {
 } rush_gfx_texture_data;
 
 typedef struct {
-	int todo;
+	rush_gfx_blend_param src;
+	rush_gfx_blend_param dst;
+	rush_gfx_blend_op    op;
+	rush_gfx_blend_param alpha_src;
+	rush_gfx_blend_param alpha_dst;
+	rush_gfx_blend_op    alpha_op;
+	bool                 alpha_separate;
+	bool                 enable;
 } rush_gfx_blend_state_desc;
 
 typedef struct {
-	int todo;
+	rush_gfx_texture_filter filter_min;
+	rush_gfx_texture_filter filter_mag;
+	rush_gfx_texture_filter filter_mip;
+	rush_gfx_texture_wrap   wrap_u;
+	rush_gfx_texture_wrap   wrap_v;
+	rush_gfx_texture_wrap   wrap_w;
+	rush_gfx_compare_func   compare_func;
+	bool                    compare_enable;
+	float                   anisotropy;
+	float                   mip_lod_bias;
 } rush_gfx_sampler_desc;
 
 // void rush_gfx_set_present_interval(uint32_t interval);
@@ -430,27 +452,18 @@ rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source*
 rush_gfx_technique rush_gfx_create_technique(const rush_gfx_technique_desc* desc);
 rush_gfx_texture rush_gfx_create_texture(const rush_gfx_texture_desc* tex, const rush_gfx_texture_data* data, uint32_t count, const void* pixels);
 // rush_gfx_blend_state rush_gfx_create_blend_state(const rush_gfx_blend_state_desc* desc);
-// rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* desc);
+rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* desc);
 // rush_gfx_depth_stencil_state rush_gfx_create_depth_stencil_state(const rush_gfx_depth_stencil_desc* desc);
 // rush_gfx_rasterizer_state rush_gfx_create_rasterizer_state(const rush_gfx_rasterizer_desc* desc);
 rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* desc, const void* data);
-// void rush_gfx_retain_vertex_format(rush_gfx_vertex_format h);
-// void rush_gfx_retain_vertex_shader(rush_gfx_vertex_shader h);
-// void rush_gfx_retain_pixel_shader(rush_gfx_pixel_shader h);
-// void rush_gfx_retain_geometry_shader(rush_gfx_geometry_shader h);
-// void rush_gfx_retain_compute_shader(rush_gfx_compute_shader h);
-// void rush_gfx_retain_technique(rush_gfx_technique h);
-// void rush_gfx_retain_texture(rush_gfx_texture h);
-// void rush_gfx_retain_blend_state(rush_gfx_blend_state h);
-// void rush_gfx_retain_sampler(rush_gfx_sampler h);
-// void rush_gfx_retain_depth_stencil_state(rush_gfx_depth_stencil_state h);
-// void rush_gfx_retain_rasterizer_state(rush_gfx_rasterizer_state h);
-// void rush_gfx_retain_buffer(rush_gfx_buffer h);
 void rush_gfx_release_vertex_format(rush_gfx_vertex_format h);
 void rush_gfx_release_vertex_shader(rush_gfx_vertex_shader h);
 void rush_gfx_release_pixel_shader(rush_gfx_pixel_shader h);
 void rush_gfx_release_geometry_shader(rush_gfx_geometry_shader h);
 void rush_gfx_release_compute_shader(rush_gfx_compute_shader h);
+void rush_gfx_release_mesh_shader(rush_gfx_mesh_shader h);
+void rush_gfx_release_ray_tracing_pipeline(rush_gfx_ray_tracing_pipeline h);
+void rush_gfx_release_acceleration_structure(rush_gfx_acceleration_structure h);
 void rush_gfx_release_technique(rush_gfx_technique h);
 void rush_gfx_release_texture(rush_gfx_texture h);
 void rush_gfx_release_blend_state(rush_gfx_blend_state h);
@@ -458,6 +471,7 @@ void rush_gfx_release_sampler(rush_gfx_sampler h);
 void rush_gfx_release_depth_stencil_state(rush_gfx_depth_stencil_state h);
 void rush_gfx_release_rasterizer_state(rush_gfx_rasterizer_state h);
 void rush_gfx_release_buffer(rush_gfx_buffer h);
+void rush_gfx_release_descriptor_set(rush_gfx_descriptor_set h);
 // const rush_gfx_texture_desc* gfx_get_texture_desc(rush_gfx_texture h);
 // rush_gfx_texture gfx_get_back_buffer_color_texture();
 // rush_gfx_texture gfx_get_back_buffer_depth_texture();
@@ -480,8 +494,8 @@ void rush_gfx_set_technique(struct rush_gfx_context* ctx, rush_gfx_technique h);
 void rush_gfx_set_primitive(struct rush_gfx_context* ctx, enum rush_gfx_primitive_type type);
 void rush_gfx_set_index_stream(struct rush_gfx_context* ctx, rush_gfx_buffer h);
 void rush_gfx_set_vertex_stream(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h);
-// void rush_gfx_set_texture(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_texture h);
-// void rush_gfx_set_sampler(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_sampler h);
+void rush_gfx_set_texture(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_texture h);
+void rush_gfx_set_sampler(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_sampler h);
 // void rush_gfx_set_storage_image(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_texture h);
 // void rush_gfx_set_storage_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h);
 // void rush_gfx_set_blend_state(struct rush_gfx_context* ctx, rush_gfx_blend_state h);

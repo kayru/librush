@@ -174,6 +174,18 @@ void rush_gfx_release_compute_shader(rush_gfx_compute_shader h)
 {
     Gfx_Release(convertHandle<GfxComputeShader>(h));
 }
+void rush_gfx_release_mesh_shader(rush_gfx_mesh_shader h)
+{
+    Gfx_Release(convertHandle<GfxMeshShader>(h));
+}
+void rush_gfx_release_ray_tracing_pipeline(rush_gfx_ray_tracing_pipeline h)
+{
+    Gfx_Release(convertHandle<GfxRayTracingPipeline>(h));
+}
+void rush_gfx_release_acceleration_structure(rush_gfx_acceleration_structure h)
+{
+    Gfx_Release(convertHandle<GfxAccelerationStructure>(h));
+}
 void rush_gfx_release_technique(rush_gfx_technique h)
 {
     Gfx_Release(convertHandle<GfxTechnique>(h));
@@ -202,7 +214,10 @@ void rush_gfx_release_buffer(rush_gfx_buffer h)
 {
     Gfx_Release(convertHandle<GfxBuffer>(h));
 }
-
+void rush_gfx_release_descriptor_set(rush_gfx_descriptor_set h)
+{
+    Gfx_Release(convertHandle<GfxDescriptorSet>(h));
+}
 void rush_gfx_begin_pass(
 	struct rush_gfx_context* ctx, 
 	uint32_t color_count,
@@ -281,6 +296,24 @@ rush_gfx_texture rush_gfx_create_texture(const rush_gfx_texture_desc* in_desc, c
     }
 
     return {Gfx_CreateTexture(desc, data, count, pixels).detach().index()};
+}
+
+rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* in_desc)
+{
+    GfxSamplerDesc desc;
+
+    desc.filterMin     = GfxTextureFilter(in_desc->filter_min);
+    desc.filterMag     = GfxTextureFilter(in_desc->filter_mag);
+    desc.filterMip     = GfxTextureFilter(in_desc->filter_mip);
+    desc.wrapU         = GfxTextureWrap(in_desc->wrap_u);
+    desc.wrapV         = GfxTextureWrap(in_desc->wrap_v);
+    desc.wrapW         = GfxTextureWrap(in_desc->wrap_w);
+    desc.compareFunc   = GfxCompareFunc(in_desc->compare_func);
+    desc.compareEnable = in_desc->compare_enable;
+    desc.anisotropy    = in_desc->anisotropy;
+    desc.mipLodBias    = in_desc->mip_lod_bias;
+
+    return { Gfx_CreateSamplerState(desc).detach().index() };
 }
 
 namespace Rush { extern const char* MSL_EmbeddedShaders; }
@@ -400,6 +433,16 @@ void rush_gfx_set_index_stream(struct rush_gfx_context* ctx, rush_gfx_buffer h)
 void rush_gfx_set_vertex_stream(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h)
 {
     Gfx_SetVertexStream((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
+}
+
+void rush_gfx_set_texture(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_texture h)
+{
+    Gfx_SetTexture((GfxContext*)ctx, idx, convertHandle<GfxTexture>(h));
+}
+
+void rush_gfx_set_sampler(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_sampler h)
+{
+    Gfx_SetSampler((GfxContext*)ctx, idx, convertHandle<GfxSampler>(h));
 }
 
 void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h, uint32_t offset)
