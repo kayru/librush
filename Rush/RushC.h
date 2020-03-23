@@ -490,20 +490,20 @@ typedef struct rush_gfx_sampler_desc
 
 // void rush_gfx_set_present_interval(uint32_t interval);
 // void rush_gfx_finish();
-// const rush_gfx_capability* rush_gfx_get_capability();
-// const rush_gfx_stats* rush_gfx_get_stats();
+// rush_gfx_capability rush_gfx_get_capability();
+// rush_gfx_stats rush_gfx_get_stats();
 // void rush_gfx_reset_stats();
 rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_element* elements, uint32_t count);
 rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_source* code);
 rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source* code);
-// rush_gfx_geometry_shader rush_gfx_create_geometry_shader(const rush_gfx_shader_source* code);
-// rush_gfx_compute_shader rush_gfx_create_compute_shader(const rush_gfx_shader_source* code);
+rush_gfx_geometry_shader rush_gfx_create_geometry_shader(const rush_gfx_shader_source* code);
+rush_gfx_compute_shader rush_gfx_create_compute_shader(const rush_gfx_shader_source* code);
 rush_gfx_technique rush_gfx_create_technique(const rush_gfx_technique_desc* desc);
 rush_gfx_texture rush_gfx_create_texture(const rush_gfx_texture_desc* tex, const rush_gfx_texture_data* data, uint32_t count, const void* pixels);
-// rush_gfx_blend_state rush_gfx_create_blend_state(const rush_gfx_blend_state_desc* desc);
+rush_gfx_blend_state rush_gfx_create_blend_state(const rush_gfx_blend_state_desc* desc);
 rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* desc);
-// rush_gfx_depth_stencil_state rush_gfx_create_depth_stencil_state(const rush_gfx_depth_stencil_desc* desc);
-// rush_gfx_rasterizer_state rush_gfx_create_rasterizer_state(const rush_gfx_rasterizer_desc* desc);
+rush_gfx_depth_stencil_state rush_gfx_create_depth_stencil_state(const rush_gfx_depth_stencil_desc* desc);
+rush_gfx_rasterizer_state rush_gfx_create_rasterizer_state(const rush_gfx_rasterizer_desc* desc);
 rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* desc, const void* data);
 void rush_gfx_release_vertex_format(rush_gfx_vertex_format h);
 void rush_gfx_release_vertex_shader(rush_gfx_vertex_shader h);
@@ -521,7 +521,7 @@ void rush_gfx_release_depth_stencil_state(rush_gfx_depth_stencil_state h);
 void rush_gfx_release_rasterizer_state(rush_gfx_rasterizer_state h);
 void rush_gfx_release_buffer(rush_gfx_buffer h);
 void rush_gfx_release_descriptor_set(rush_gfx_descriptor_set h);
-// const rush_gfx_texture_desc* gfx_get_texture_desc(rush_gfx_texture h);
+// const rush_gfx_texture_desc gfx_get_texture_desc(rush_gfx_texture h);
 // rush_gfx_texture gfx_get_back_buffer_color_texture();
 // rush_gfx_texture gfx_get_back_buffer_depth_texture();
 // rush_gfx_mapped_buffer gfx_map_buffer(rush_gfx_buffer h, uint32_t offset, uint32_t size);
@@ -537,8 +537,8 @@ void rush_gfx_begin_pass(
 	rush_gfx_pass_flags flags
 );
 void rush_gfx_end_pass(struct rush_gfx_context* ctx);
-// void rush_gfx_set_viewport(struct rush_gfx_context* ctx, const rush_gfx_viewport* _viewport);
-// void rush_gfx_set_scissor_rect(struct rush_gfx_context* ctx, const rush_gfx_rect* rect);
+void rush_gfx_set_viewport(struct rush_gfx_context* ctx, const rush_gfx_viewport* _viewport);
+void rush_gfx_set_scissor_rect(struct rush_gfx_context* ctx, const rush_gfx_rect* rect);
 void rush_gfx_set_technique(struct rush_gfx_context* ctx, rush_gfx_technique h);
 void rush_gfx_set_primitive(struct rush_gfx_context* ctx, enum rush_gfx_primitive_type type);
 void rush_gfx_set_index_stream(struct rush_gfx_context* ctx, rush_gfx_buffer h);

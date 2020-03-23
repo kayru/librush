@@ -248,6 +248,32 @@ void rush_gfx_end_pass(struct rush_gfx_context* ctx)
     Gfx_EndPass((GfxContext*)ctx);
 }
 
+void rush_gfx_set_viewport(struct rush_gfx_context* ctx, const rush_gfx_viewport* in_viewport)
+{
+    GfxViewport viewport;
+
+    viewport.x = in_viewport->x;
+	viewport.y = in_viewport->y;
+	viewport.w = in_viewport->w;
+	viewport.h = in_viewport->h;
+	viewport.depthMin = in_viewport->depth_min;
+	viewport.depthMax = in_viewport->depth_max;
+
+    Gfx_SetViewport((GfxContext*)ctx, viewport);
+}
+
+void rush_gfx_set_scissor_rect(struct rush_gfx_context* ctx, const rush_gfx_rect* in_rect)
+{
+    GfxRect rect;
+
+	rect.left   = in_rect->left;
+    rect.top    = in_rect->top;
+    rect.right  = in_rect->right;
+    rect.bottom = in_rect->bottom;
+
+    Gfx_SetScissorRect((GfxContext*)ctx, rect);
+}
+
 void rush_gfx_draw(struct rush_gfx_context* ctx, uint32_t first_vertex, uint32_t vertex_count)
 {
     Gfx_Draw((GfxContext*)ctx, first_vertex, vertex_count);
@@ -298,6 +324,22 @@ rush_gfx_texture rush_gfx_create_texture(const rush_gfx_texture_desc* in_desc, c
     return {Gfx_CreateTexture(desc, data, count, pixels).detach().index()};
 }
 
+rush_gfx_blend_state rush_gfx_create_blend_state(const rush_gfx_blend_state_desc* in_desc)
+{
+    GfxBlendStateDesc desc;
+
+	desc.src           = GfxBlendParam(in_desc->src);
+	desc.dst           = GfxBlendParam(in_desc->dst);
+    desc.op            = GfxBlendOp(in_desc->op);
+	desc.alphaSrc      = GfxBlendParam(in_desc->alpha_src);
+	desc.alphaDst      = GfxBlendParam(in_desc->alpha_dst);
+	desc.alphaOp       = GfxBlendOp(in_desc->alpha_op);
+	desc.alphaSeparate = in_desc->alpha_separate;
+	desc.enable        = in_desc->enable;
+
+    return { Gfx_CreateBlendState(desc).detach().index() };
+}
+
 rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* in_desc)
 {
     GfxSamplerDesc desc;
@@ -314,6 +356,29 @@ rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* in_d
     desc.mipLodBias    = in_desc->mip_lod_bias;
 
     return { Gfx_CreateSamplerState(desc).detach().index() };
+}
+
+rush_gfx_depth_stencil_state rush_gfx_create_depth_stencil_state(const rush_gfx_depth_stencil_desc* in_desc)
+{
+    GfxDepthStencilDesc desc;
+
+	desc.compareFunc = GfxCompareFunc(in_desc->compare_func);
+	desc.enable      = in_desc->enable;
+	desc.writeEnable = in_desc->write_enable;
+
+    return { Gfx_CreateDepthStencilState(desc).detach().index() };
+}
+
+rush_gfx_rasterizer_state rush_gfx_create_rasterizer_state(const rush_gfx_rasterizer_desc* in_desc)
+{
+    GfxRasterizerDesc desc;
+
+	desc.fillMode            = GfxFillMode(in_desc->fill_mode);
+	desc.cullMode            = GfxCullMode(in_desc->cull_mode);
+	desc.depthBias           = in_desc->depth_bias;
+	desc.depthBiasSlopeScale = in_desc->depth_bias_slope_scale;
+
+    return { Gfx_CreateRasterizerState(desc).detach().index() };
 }
 
 namespace Rush { extern const char* MSL_EmbeddedShaders; }
@@ -354,6 +419,16 @@ rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_sourc
 rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source* in_code)
 {
     return {Gfx_CreatePixelShader(convert(in_code)).detach().index()};
+}
+
+rush_gfx_geometry_shader rush_gfx_create_geometry_shader(const rush_gfx_shader_source* in_code)
+{
+    return {Gfx_CreateGeometryShader(convert(in_code)).detach().index()};
+}
+
+rush_gfx_compute_shader rush_gfx_create_compute_shader(const rush_gfx_shader_source* in_code)
+{
+    return {Gfx_CreateComputeShader(convert(in_code)).detach().index()};
 }
 
 rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_element* elements, uint32_t count)
@@ -452,9 +527,7 @@ void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, ru
 
 void rush_gfx_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h, const void* data, uint32_t size)
 {
-    void* write_ptr = Gfx_BeginUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h), size);
-    memcpy(write_ptr, data, size);
-    Gfx_EndUpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h));
+    Gfx_UpdateBuffer((GfxContext*) ctx, convertHandle<GfxBuffer>(h), data, size);
 }
 
 void* rush_gfx_begin_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h, uint32_t size)
