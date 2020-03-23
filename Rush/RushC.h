@@ -9,7 +9,7 @@ extern "C" {
 
 // Platform
 
-typedef struct {
+typedef struct rush_memory_view {
 	const void* ptr;
 	uint64_t size;
 } rush_memory_view;
@@ -18,7 +18,7 @@ typedef void (*rush_platform_callback_startup)  (void* user_data);
 typedef void (*rush_platform_callback_update)   (void* user_data);
 typedef void (*rush_platform_callback_shutdown) (void* user_data);
 
-typedef struct {
+typedef struct rush_app_config {
 	const char* name;
 	int vsync;
 	int width;
@@ -48,32 +48,48 @@ struct rush_window* rush_platform_get_window();
 
 // Graphics
 
-typedef struct { float x, y; }       rush_vec2;
-typedef struct { float x, y, z; }    rush_vec3;
-typedef struct { float x, y, z, w; } rush_vec4;
-typedef struct { float r, g, b, a; } rush_color_rgba;
+typedef struct rush_vec2 { float x, y; }       rush_vec2;
+typedef struct rush_vec3 { float x, y, z; }    rush_vec3;
+typedef struct rush_vec4 { float x, y, z, w; } rush_vec4;
+typedef struct rush_color_rgba { float r, g, b, a; } rush_color_rgba;
 
 struct rush_gfx_device*  rush_platform_get_device();
 struct rush_gfx_context* rush_platform_get_context();
 
-typedef struct { uint16_t handle; } rush_gfx_vertex_format;
-typedef struct { uint16_t handle; } rush_gfx_vertex_shader;
-typedef struct { uint16_t handle; } rush_gfx_pixel_shader;
-typedef struct { uint16_t handle; } rush_gfx_geometry_shader;
-typedef struct { uint16_t handle; } rush_gfx_compute_shader;
-typedef struct { uint16_t handle; } rush_gfx_mesh_shader;
-typedef struct { uint16_t handle; } rush_gfx_ray_tracing_pipeline;
-typedef struct { uint16_t handle; } rush_gfx_acceleration_structure;
-typedef struct { uint16_t handle; } rush_gfx_texture;
-typedef struct { uint16_t handle; } rush_gfx_buffer;
-typedef struct { uint16_t handle; } rush_gfx_sampler;
-typedef struct { uint16_t handle; } rush_gfx_blend_state;
-typedef struct { uint16_t handle; } rush_gfx_depth_stencil_state;
-typedef struct { uint16_t handle; } rush_gfx_rasterizer_state;
-typedef struct { uint16_t handle; } rush_gfx_technique;
-typedef struct { uint16_t handle; } rush_gfx_descriptor_set;
+typedef struct rush_gfx_vertex_format 
+{ uint16_t handle; } rush_gfx_vertex_format;
+typedef struct rush_gfx_vertex_shader 
+{ uint16_t handle; } rush_gfx_vertex_shader;
+typedef struct rush_gfx_pixel_shader 
+{ uint16_t handle; } rush_gfx_pixel_shader;
+typedef struct rush_gfx_geometry_shader 
+{ uint16_t handle; } rush_gfx_geometry_shader;
+typedef struct rush_gfx_compute_shader 
+{ uint16_t handle; } rush_gfx_compute_shader;
+typedef struct rush_gfx_mesh_shader 
+{ uint16_t handle; } rush_gfx_mesh_shader;
+typedef struct rush_gfx_ray_tracing_pipeline 
+{ uint16_t handle; } rush_gfx_ray_tracing_pipeline;
+typedef struct rush_gfx_acceleration_structure 
+{ uint16_t handle; } rush_gfx_acceleration_structure;
+typedef struct rush_gfx_texture 
+{ uint16_t handle; } rush_gfx_texture;
+typedef struct rush_gfx_buffer 
+{ uint16_t handle; } rush_gfx_buffer;
+typedef struct rush_gfx_sampler 
+{ uint16_t handle; } rush_gfx_sampler;
+typedef struct rush_gfx_blend_state 
+{ uint16_t handle; } rush_gfx_blend_state;
+typedef struct rush_gfx_depth_stencil_state 
+{ uint16_t handle; } rush_gfx_depth_stencil_state;
+typedef struct rush_gfx_rasterizer_state 
+{ uint16_t handle; } rush_gfx_rasterizer_state;
+typedef struct rush_gfx_technique 
+{ uint16_t handle; } rush_gfx_technique;
+typedef struct rush_gfx_descriptor_set 
+{ uint16_t handle; } rush_gfx_descriptor_set;
 
-typedef enum
+typedef enum rush_gfx_blend_param
 {
 	RUSH_GFX_BLEND_PARAM_ZERO,
 	RUSH_GFX_BLEND_PARAM_ONE,
@@ -87,7 +103,7 @@ typedef enum
 	RUSH_GFX_BLEND_PARAM_INV_DEST_COLOR,
 } rush_gfx_blend_param;
 
-typedef enum
+typedef enum rush_gfx_blend_op
 {
 	RUSH_GFX_BLEND_OP_ADD,
 	RUSH_GFX_BLEND_OP_SUBTRACT,
@@ -96,21 +112,21 @@ typedef enum
 	RUSH_GFX_BLEND_OP_MAX,
 } rush_gfx_blend_op;
 
-typedef enum
+typedef enum rush_gfx_texture_filter
 {
 	RUSH_GFX_TEXTURE_FILTER_POINT,
 	RUSH_GFX_TEXTURE_FILTER_LINEAR,
 	RUSH_GFX_TEXTURE_FILTER_ANISOTROPIC,
 } rush_gfx_texture_filter;
 
-typedef enum
+typedef enum rush_gfx_texture_wrap
 {
 	RUSH_GFX_TEXTURE_WRAP_REPEAT,
 	RUSH_GFX_TEXTURE_WRAP_MIRROR,
 	RUSH_GFX_TEXTURE_WRAP_CLAMP,
 } rush_gfx_texture_wrap;
 
-typedef enum
+typedef enum rush_gfx_compare_func
 {
 	RUSH_GFX_COMPARE_FUNC_NEVER,
 	RUSH_GFX_COMPARE_FUNC_LESS,
@@ -122,42 +138,46 @@ typedef enum
 	RUSH_GFX_COMPARE_FUNC_ALWAYS,
 } rush_gfx_compare_func;
 
-typedef enum
+typedef enum rush_gfx_fill_mode
 {
 	RUSH_GFX_FILL_MODE_SOLID,
 	RUSH_GFX_FILL_MODE_WIREFRAME
 } rush_gfx_fill_mode;
 
-typedef enum
+typedef enum rush_gfx_cull_mode
 {
 	RUSH_GFX_CULL_MODE_NONE,
 	RUSH_GFX_CULL_MODE_CW,
 	RUSH_GFX_CULL_MODE_CCW,
 } rush_gfx_cull_mode;
 
-typedef enum {
+typedef enum rush_gfx_embedded_shader_type 
+{
 	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_PLAIN_PS,
 	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_TEXTURED_PS,
 	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_2D_VS,
 	RUSH_GFX_EMBEDDED_SHADER_PRIMITIVE_3D_VS,
 } rush_gfx_embedded_shader_type;
 
-enum rush_gfx_primitive_type {
+typedef enum rush_gfx_primitive_type 
+{
 	RUSH_GFX_PRIMITIVE_POINT_LIST,
 	RUSH_GFX_PRIMITIVE_LINE_LIST,
 	RUSH_GFX_PRIMITIVE_LINE_STRIP,
 	RUSH_GFX_PRIMITIVE_TRIANGLE_LIST,
 	RUSH_GFX_PRIMITIVE_TRIANGLE_STRIP,
-};
+} rush_gfx_primitive_type;
 
-typedef enum {
+typedef enum rush_gfx_pass_flags 
+{
 	RUSH_GFX_PASS_NONE = 0,
 	RUSH_GFX_PASS_CLEAR_COLOR = 1 << 0,
 	RUSH_GFX_PASS_CLEAR_DEPTH_STENCIL = 1 << 1,
 	RUSH_GFX_PASS_DISCARD_COLOR = 1 << 2,
 } rush_gfx_pass_flags;
 
-typedef enum {
+typedef enum rush_gfx_shader_source_type
+{
 	RUSH_GFX_SHADER_SOURCE_UNKNOWN = 0,
 	RUSH_GFX_SHADER_SOURCE_SPV     = 1, // binary
 	RUSH_GFX_SHADER_SOURCE_GLSL    = 2, // text
@@ -167,7 +187,8 @@ typedef enum {
 	RUSH_GFX_SHADER_SOURCE_MSL     = 6, // text
 } rush_gfx_shader_source_type;
 
-typedef enum {
+typedef enum rush_gfx_format
+{
 	RUSH_GFX_FORMAT_UNKNOWN,
 
 	RUSH_GFX_FORMAT_D24_UNORM_S8_UINT,
@@ -203,26 +224,31 @@ typedef enum {
 	RUSH_GFX_FORMAT_BC7_UNORM_SRGB,
 } rush_gfx_format;
 
-typedef struct {
+typedef struct rush_gfx_color_target
+{
 	rush_gfx_texture target;
 	rush_color_rgba  clear_color;
 } rush_gfx_color_target;
 
-typedef struct {
+typedef struct rush_gfx_depth_target
+{
 	rush_gfx_texture target;
 	float    clear_depth;
 	uint8_t  clear_stencil;
 } rush_gfx_depth_target;
 
-typedef struct {
+typedef struct rush_gfx_capability
+{
 	const char* api_name;
 } rush_gfx_capability;
 
-typedef struct {
+typedef struct rush_gfx_stats
+{
 	uint32_t draw_calls;
 } rush_gfx_stats;
 
-typedef struct {
+typedef struct rush_gfx_viewport
+{
 	float x; // top left x
 	float y; // top left y
 	float w; // width
@@ -231,18 +257,21 @@ typedef struct {
 	float depth_max;
 } rush_gfx_viewport;
 
-typedef struct {
+typedef struct rush_gfx_rect
+{
 	int left, top, right, bottom;
 } rush_gfx_rect;
 
-typedef struct {
+typedef struct rush_gfx_shader_source
+{
 	rush_gfx_shader_source_type type;
 	const char*                 entry;
 	const void*                 data;
 	uint32_t                    size_bytes;
 } rush_gfx_shader_source;
 
-typedef enum {
+typedef enum rush_gfx_vertex_semantic
+{
 	RUSH_GFX_VERTEX_SEMANTIC_UNUSED       = 0,
 	RUSH_GFX_VERTEX_SEMANTIC_POSITION     = 1,
 	RUSH_GFX_VERTEX_SEMANTIC_TEXCOORD     = 2,
@@ -255,14 +284,16 @@ typedef enum {
 	RUSH_GFX_VERTEX_SEMANTIC_BONEWEIGHT   = 9,
 } rush_gfx_vertex_semantic;
 
-typedef struct {
+typedef struct rush_gfx_vertex_element
+{
 	rush_gfx_vertex_semantic semantic;
 	uint32_t                 index;
 	rush_gfx_format          format;
 	uint32_t                 stream;
 } rush_gfx_vertex_element;
 
-typedef enum {
+typedef enum rush_gfx_usage_flags
+{
 	RUSH_GFX_USAGE_SHADER_RESOURCE = 1 << 0,
 	RUSH_GFX_USAGE_RENDER_TARGET   = 1 << 1,
 	RUSH_GFX_USAGE_DEPTH_STENCIL   = 1 << 2,
@@ -271,7 +302,8 @@ typedef enum {
 	RUSH_GFX_USAGE_TRANSFER_DST    = 1 << 5,
 } rush_gfx_usage_flags;
 
-typedef enum {
+typedef enum rush_gfx_texture_type
+{
 	RUSH_GFX_TEXTURE_TYPE_1D,
 	RUSH_GFX_TEXTURE_TYPE_2D,
 	RUSH_GFX_TEXTURE_TYPE_3D,
@@ -281,7 +313,8 @@ typedef enum {
 	RUSH_GFX_TEXTURE_TYPE_CUBE_ARRAY,
 } rush_gfx_texture_type;
 
-typedef struct {
+typedef struct rush_gfx_texture_desc
+{
 	uint32_t               width;
 	uint32_t               height;
 	uint32_t               depth;
@@ -293,20 +326,23 @@ typedef struct {
 	const char*            debug_name;
 } rush_gfx_texture_desc;
 
-typedef struct {
+typedef struct rush_gfx_depth_stencil_desc
+{
 	rush_gfx_compare_func compare_func;
 	bool                  enable;
 	bool                  write_enable;
 } rush_gfx_depth_stencil_desc;
 
-typedef struct {
+typedef struct rush_gfx_rasterizer_desc
+{
 	rush_gfx_fill_mode fill_mode;
 	rush_gfx_cull_mode cull_mode;
 	float              depth_bias;
 	float              depth_bias_slope_scale;
 } rush_gfx_rasterizer_desc;
 
-typedef enum {
+typedef enum rush_gfx_buffer_flags
+{
 	RUSH_GFX_BUFFER_FLAG_NONE          = 0U,
 	RUSH_GFX_BUFFER_FLAG_VERTEX        = 1U << 0,
 	RUSH_GFX_BUFFER_FLAG_INDEX         = 1U << 1,
@@ -318,7 +354,8 @@ typedef enum {
 	RUSH_GFX_BUFFER_FLAG_TRANSIENT     = 1U << 30,
 } rush_gfx_buffer_flags;
 
-typedef struct {
+typedef struct rush_gfx_buffer_desc
+{
 	rush_gfx_buffer_flags flags;
 	rush_gfx_format       format;
 	uint32_t              stride;
@@ -326,25 +363,29 @@ typedef struct {
 	bool                  host_visible;
 } rush_gfx_buffer_desc;
 
-typedef struct {
+typedef struct rush_gfx_mapped_buffer
+{
 	void*           data;
 	uint32_t        size;
 	rush_gfx_buffer handle;
 } rush_gfx_mapped_buffer;
 
-typedef struct {
+typedef struct rush_gfx_mapped_texture
+{
 	void*            data;
 	uint32_t         size;
 	rush_gfx_texture handle;
 } rush_gfx_mapped_texture;
 
-typedef struct {
+typedef struct rush_gfx_spec_constant
+{
 	uint32_t id;
 	uint32_t offset;
 	uint32_t size;
 } rush_gfx_spec_constant;
 
-typedef enum {
+typedef enum rush_gfx_stage_type
+{
 	RUSH_GFX_STAGE_VERTEX      = 0,
 	RUSH_GFX_STAGE_GEOMETRY    = 1,
 	RUSH_GFX_STAGE_PIXEL       = 2,
@@ -355,7 +396,8 @@ typedef enum {
 	RUSH_GFX_STAGE_RAYTRACING  = 7,
 } rush_gfx_stage_type;
 
-typedef enum {
+typedef enum rush_gfx_stage_flags
+{
 	RUSH_GFX_STAGE_FLAG_NONE        = 0U,
 	RUSH_GFX_STAGE_FLAG_VERTEX      = 1U << RUSH_GFX_STAGE_VERTEX,
 	RUSH_GFX_STAGE_FLAG_GEOMETRY    = 1U << RUSH_GFX_STAGE_GEOMETRY,
@@ -367,12 +409,14 @@ typedef enum {
 	RUSH_GFX_STAGE_FLAG_RAYTRACING  = 1U << RUSH_GFX_STAGE_RAYTRACING,
 } rush_gfx_stage_flags;
 
-typedef enum  {
+typedef enum rush_gfx_descriptor_set_flags
+{
 	RUSH_GFX_DESCRIPTOR_SET_FLAG_NONE  = 0,
 	RUSH_GFX_DESCRIPTOR_SET_FLAG_TEXTURE_ARRAY = 1 << 0,
 } rush_gfx_descriptor_set_flags;
 
-typedef struct {
+typedef struct rush_gfx_descriptor_set_desc
+{
 	uint16_t                      constant_buffers;
 	uint16_t                      samplers;
 	uint16_t                      textures;
@@ -384,13 +428,15 @@ typedef struct {
 	rush_gfx_descriptor_set_flags flags;
 } rush_gfx_descriptor_set_desc;
 
-typedef struct {
+typedef struct rush_gfx_shader_bindings_desc
+{
 	const rush_gfx_descriptor_set_desc* descriptor_sets;
 	uint32_t descriptor_set_count;
 	bool use_default_descriptor_set;
 } rush_gfx_shader_bindings_desc;
 
-typedef struct {
+typedef struct rush_gfx_technique_desc
+{
 	rush_gfx_compute_shader        cs;
 	rush_gfx_pixel_shader          ps;
 	rush_gfx_geometry_shader       gs;
@@ -405,7 +451,8 @@ typedef struct {
 	uint32_t                       spec_data_size;
 } rush_gfx_technique_desc;
 
-typedef struct {
+typedef struct rush_gfx_texture_data
+{
 	uint64_t    offset;
 	const void* pixels;
 	uint32_t    mip;
@@ -415,7 +462,8 @@ typedef struct {
 	uint32_t    depth;
 } rush_gfx_texture_data;
 
-typedef struct {
+typedef struct rush_gfx_blend_state_desc
+{
 	rush_gfx_blend_param src;
 	rush_gfx_blend_param dst;
 	rush_gfx_blend_op    op;
@@ -426,7 +474,8 @@ typedef struct {
 	bool                 enable;
 } rush_gfx_blend_state_desc;
 
-typedef struct {
+typedef struct rush_gfx_sampler_desc
+{
 	rush_gfx_texture_filter filter_min;
 	rush_gfx_texture_filter filter_mag;
 	rush_gfx_texture_filter filter_mip;
