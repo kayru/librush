@@ -71,7 +71,7 @@ GfxFormat convert(rush_gfx_format fmt)
     case RUSH_GFX_FORMAT_R16_UINT: return GfxFormat_R16_Uint;
     case RUSH_GFX_FORMAT_R32_FLOAT: return GfxFormat_R32_Float;
     case RUSH_GFX_FORMAT_R32_UINT: return GfxFormat_R32_Uint;
-    case RUSH_GFX_FORMAT_RG8_UNORM: return GfxFormat_RGB8_Unorm;
+    case RUSH_GFX_FORMAT_RG8_UNORM: return GfxFormat_RG8_Unorm;
     case RUSH_GFX_FORMAT_RG16_FLOAT: return GfxFormat_RG16_Float;
     case RUSH_GFX_FORMAT_RG32_FLOAT: return GfxFormat_RG32_Float;
     case RUSH_GFX_FORMAT_RGB32_FLOAT: return GfxFormat_RGB32_Float;
@@ -93,6 +93,45 @@ GfxFormat convert(rush_gfx_format fmt)
     case RUSH_GFX_FORMAT_BC6H_SFLOAT: return GfxFormat_BC6H_SFloat;
     case RUSH_GFX_FORMAT_BC7_UNORM: return GfxFormat_BC7_Unorm;
     case RUSH_GFX_FORMAT_BC7_UNORM_SRGB: return GfxFormat_BC7_Unorm_sRGB;
+    }
+}
+
+rush_gfx_format convert(GfxFormat fmt)
+{
+    switch(fmt)
+    {
+    case GfxFormat_Unknown: return RUSH_GFX_FORMAT_UNKNOWN;
+    case GfxFormat_D24_Unorm_S8_Uint: return RUSH_GFX_FORMAT_D24_UNORM_S8_UINT;
+    case GfxFormat_D24_Unorm_X8: return RUSH_GFX_FORMAT_D24_UNORM_X8;
+    case GfxFormat_D32_Float: return RUSH_GFX_FORMAT_D32_FLOAT;
+    case GfxFormat_D32_Float_S8_Uint: return RUSH_GFX_FORMAT_D32_FLOAT_S8_UINT;
+    case GfxFormat_R8_Unorm: return RUSH_GFX_FORMAT_R8_UNORM;
+    case GfxFormat_R16_Float: return RUSH_GFX_FORMAT_R16_FLOAT;
+    case GfxFormat_R16_Uint: return RUSH_GFX_FORMAT_R16_UINT;
+    case GfxFormat_R32_Float: return RUSH_GFX_FORMAT_R32_FLOAT;
+    case GfxFormat_R32_Uint: return RUSH_GFX_FORMAT_R32_UINT;
+    case GfxFormat_RG8_Unorm: return RUSH_GFX_FORMAT_RG8_UNORM;
+    case GfxFormat_RG16_Float: return RUSH_GFX_FORMAT_RG16_FLOAT;
+    case GfxFormat_RG32_Float: return RUSH_GFX_FORMAT_RG32_FLOAT;
+    case GfxFormat_RGB32_Float: return RUSH_GFX_FORMAT_RGB32_FLOAT;
+    case GfxFormat_RGB8_Unorm: return RUSH_GFX_FORMAT_RGB8_UNORM;
+    case GfxFormat_RGBA16_Float: return RUSH_GFX_FORMAT_RGBA16_FLOAT;
+    case GfxFormat_RGBA16_Unorm: return RUSH_GFX_FORMAT_RGBA16_UNORM;
+    case GfxFormat_RGBA32_Float: return RUSH_GFX_FORMAT_RGBA32_FLOAT;
+    case GfxFormat_RGBA8_Unorm: return RUSH_GFX_FORMAT_RGBA8_UNORM;
+    case GfxFormat_RGBA8_sRGB: return RUSH_GFX_FORMAT_RGBA8_SRGB;
+    case GfxFormat_BGRA8_Unorm: return RUSH_GFX_FORMAT_BGRA8_UNORM;
+    case GfxFormat_BGRA8_sRGB: return RUSH_GFX_FORMAT_BGRA8_SRGB;
+    case GfxFormat_BC1_Unorm: return RUSH_GFX_FORMAT_BC1_UNORM;
+    case GfxFormat_BC1_Unorm_sRGB: return RUSH_GFX_FORMAT_BC1_UNORM_SRGB;
+    case GfxFormat_BC3_Unorm: return RUSH_GFX_FORMAT_BC3_UNORM;
+    case GfxFormat_BC3_Unorm_sRGB: return RUSH_GFX_FORMAT_BC3_UNORM_SRGB;
+    case GfxFormat_BC4_Unorm: return RUSH_GFX_FORMAT_BC4_UNORM;
+    case GfxFormat_BC5_Unorm: return RUSH_GFX_FORMAT_BC5_UNORM;
+    case GfxFormat_BC6H_UFloat: return RUSH_GFX_FORMAT_BC6H_UFLOAT;
+    case GfxFormat_BC6H_SFloat: return RUSH_GFX_FORMAT_BC6H_SFLOAT;
+    case GfxFormat_BC7_Unorm: return RUSH_GFX_FORMAT_BC7_UNORM;
+    case GfxFormat_BC7_Unorm_sRGB: return RUSH_GFX_FORMAT_BC7_UNORM_SRGB;
     }
 }
 
@@ -279,6 +318,51 @@ void rush_gfx_draw(struct rush_gfx_context* ctx, uint32_t first_vertex, uint32_t
     Gfx_Draw((GfxContext*)ctx, first_vertex, vertex_count);
 }
 
+void rush_gfx_draw_indexed(struct rush_gfx_context* ctx, uint32_t index_count, uint32_t first_index, uint32_t base_vertex, uint32_t vertex_count)
+{
+    Gfx_DrawIndexed((GfxContext*)ctx, index_count, first_index, base_vertex, vertex_count);
+}
+
+void rush_gfx_draw_indexed2(struct rush_gfx_context* ctx, uint32_t index_count, uint32_t first_index, uint32_t base_vertex, uint32_t vertex_count, const void* push_constants, uint32_t push_constants_size)
+{
+    Gfx_DrawIndexed((GfxContext*)ctx, index_count, first_index, base_vertex, vertex_count, push_constants, push_constants_size);
+}
+
+void rush_gfx_draw_indexed_instanced(struct rush_gfx_context* ctx, uint32_t index_count, uint32_t first_index, uint32_t base_vertex, uint32_t vertex_count, uint32_t instance_count, uint32_t instance_offset)
+{
+    Gfx_DrawIndexedInstanced((GfxContext*)ctx, index_count, first_index, base_vertex, vertex_count, instance_count, instance_offset);
+}
+
+void rush_gfx_draw_indexed_indirect(struct rush_gfx_context* ctx, rush_gfx_buffer args_buffer, uint32_t args_buffer_offset, uint32_t draw_count)
+{
+    Gfx_DrawIndexedIndirect((GfxContext*)ctx, convertHandle<GfxBuffer>(args_buffer), args_buffer_offset, draw_count);
+}
+
+void rush_gfx_dispatch_indirect(struct rush_gfx_context* ctx, rush_gfx_buffer args_buffer, uint32_t args_buffer_offset, const void* push_constants, uint32_t push_constants_size)
+{
+    Gfx_DispatchIndirect((GfxContext*)ctx, convertHandle<GfxBuffer>(args_buffer), args_buffer_offset);
+}
+
+void rush_gfx_push_marker(struct rush_gfx_context* ctx, const char* marker)
+{
+    Gfx_PushMarker((GfxContext*)ctx, marker);
+}
+
+void rush_gfx_pop_marker(struct rush_gfx_context* ctx)
+{
+    Gfx_PopMarker((GfxContext*)ctx);
+}
+
+void rush_gfx_begin_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id)
+{
+    Gfx_BeginTimer((GfxContext*)ctx, timestamp_id);
+}
+
+void rush_gfx_end_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id)
+{
+    Gfx_EndTimer((GfxContext*)ctx, timestamp_id);
+}
+
 rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* in_desc, const void* data)
 {
     GfxBufferDesc desc;
@@ -411,6 +495,42 @@ rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_typ
     }
 }
 
+void rush_gfx_set_present_interval(uint32_t interval)
+{
+    Gfx_SetPresentInterval(interval);
+}
+
+void rush_gfx_finish()
+{
+    Gfx_Finish();
+}
+
+rush_gfx_capability rush_gfx_get_capability()
+{
+    const GfxCapability& caps = Gfx_GetCapability();
+    rush_gfx_capability result = {};
+
+    result.api_name = caps.apiName;
+
+    return result;
+}
+
+rush_gfx_stats rush_gfx_get_stats()
+{
+    const GfxStats& stats = Gfx_Stats();
+    rush_gfx_stats result = {};
+
+    result.draw_calls = stats.drawCalls;
+
+    return result;
+}
+
+void rush_gfx_reset_stats()
+{
+    Gfx_ResetStats();
+}
+
+
 rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_source* in_code)
 {
     return {Gfx_CreateVertexShader(convert(in_code)).detach().index()};
@@ -520,9 +640,101 @@ void rush_gfx_set_sampler(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_s
     Gfx_SetSampler((GfxContext*)ctx, idx, convertHandle<GfxSampler>(h));
 }
 
+void rush_gfx_set_storage_image(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_texture h)
+{
+    Gfx_SetStorageImage((GfxContext*)ctx, idx, convertHandle<GfxTexture>(h));
+}
+
+void rush_gfx_set_storage_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h)
+{
+    Gfx_SetStorageBuffer((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
+}
+
+void rush_gfx_set_blend_state(struct rush_gfx_context* ctx, rush_gfx_blend_state h)
+{
+    Gfx_SetBlendState((GfxContext*)ctx, convertHandle<GfxBlendState>(h));
+}
+
+void rush_gfx_set_depth_stencil_state(struct rush_gfx_context* ctx, rush_gfx_depth_stencil_state h)
+{
+    Gfx_SetDepthStencilState((GfxContext*)ctx, convertHandle<GfxDepthStencilState>(h));
+}
+
+void rush_gfx_set_rasterizer_state(struct rush_gfx_context* ctx, rush_gfx_rasterizer_state h)
+{
+    Gfx_SetRasterizerState((GfxContext*)ctx, convertHandle<GfxRasterizerState>(h));
+}
+
 void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h, uint32_t offset)
 {
     Gfx_SetConstantBuffer((GfxContext*)ctx, idx, convertHandle<GfxBuffer>(h));
+}
+
+void rush_gfx_resolve_image(struct rush_gfx_context* ctx, rush_gfx_texture src, rush_gfx_texture dst)
+{
+    Gfx_ResolveImage((GfxContext*)ctx, convertHandle<GfxTexture>(src), convertHandle<GfxTexture>(dst));
+}
+
+void rush_gfx_dispatch(struct rush_gfx_context* ctx, uint32_t size_x, uint32_t size_y, uint32_t size_z)
+{
+    Gfx_Dispatch((GfxContext*)ctx, size_x, size_y, size_z);
+}
+
+void rush_gfx_dispatch2(struct rush_gfx_context* ctx, uint32_t size_x, uint32_t size_y, uint32_t size_z, const void* push_constants, uint32_t push_constants_size)
+{
+    Gfx_Dispatch((GfxContext*)ctx, size_x, size_y, size_z, push_constants, push_constants_size);
+}
+
+rush_gfx_texture_desc gfx_get_texture_desc(rush_gfx_texture h)
+{
+    rush_gfx_texture_desc result = {};
+
+    const GfxTextureDesc& desc = Gfx_GetTextureDesc(convertHandle<GfxTexture>(h));
+
+    result.width = desc.width;
+	result.height = desc.height;
+	result.depth = desc.depth;
+	result.mips = desc.mips;
+	result.samples = desc.samples;
+	result.format = convert(desc.format);
+	result.texture_type = (rush_gfx_texture_type)desc.type;
+	result.usage = (rush_gfx_usage_flags)desc.usage;
+	result.debug_name = desc.debugName;
+
+    return result;
+}
+
+rush_gfx_texture gfx_get_back_buffer_color_texture()
+{
+    return { Gfx_GetBackBufferColorTexture().index() };
+}
+
+rush_gfx_texture gfx_get_back_buffer_depth_texture()
+{
+    return { Gfx_GetBackBufferDepthTexture().index() };
+}
+
+rush_gfx_mapped_buffer gfx_map_buffer(rush_gfx_buffer h, uint32_t offset, uint32_t size)
+{
+    rush_gfx_mapped_buffer result;
+    GfxMappedBuffer mapped_buffer = Gfx_MapBuffer(convertHandle<GfxBuffer>(h), offset, size);
+
+    result.data = mapped_buffer.data;
+	result.size = mapped_buffer.size;
+	result.handle = rush_gfx_buffer{mapped_buffer.handle.index()};
+
+    return result;
+}
+
+void rush_gfx_unmap_buffer(const rush_gfx_mapped_buffer* in_mapped_buffer)
+{
+    GfxMappedBuffer mapped_buffer;
+
+    mapped_buffer.data = in_mapped_buffer->data;
+	mapped_buffer.size = in_mapped_buffer->size;
+	mapped_buffer.handle = convertHandle<GfxBuffer>(in_mapped_buffer->handle);
+
+    Gfx_UnmapBuffer(mapped_buffer);
 }
 
 void rush_gfx_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h, const void* data, uint32_t size)
