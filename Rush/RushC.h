@@ -7,12 +7,19 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-// Platform
+// Common
+
+typedef struct rush_vec2 { float x, y; }       rush_vec2;
+typedef struct rush_vec3 { float x, y, z; }    rush_vec3;
+typedef struct rush_vec4 { float x, y, z, w; } rush_vec4;
+typedef struct rush_color_rgba { float r, g, b, a; } rush_color_rgba;
 
 typedef struct rush_memory_view {
 	const void* ptr;
 	uint64_t size;
 } rush_memory_view;
+
+// Platform
 
 typedef void (*rush_platform_callback_startup)  (void* user_data);
 typedef void (*rush_platform_callback_update)   (void* user_data);
@@ -44,14 +51,200 @@ int rush_platform_main(const rush_app_config* cfg);
 
 // Window
 
-struct rush_window* rush_platform_get_window();
+typedef enum rush_key
+{
+	RUSH_KEY_UNKNOWN       = 0,
+	RUSH_KEY_SPACE         = ' ',
+	RUSH_KEY_APOSTROPHE    = '\'',
+	RUSH_KEY_COMMA         = ',',
+	RUSH_KEY_MINUS         = '-',
+	RUSH_KEY_PERIOD        = '.',
+	RUSH_KEY_SLASH         = '/',
+	RUSH_KEY_0             = '0',
+	RUSH_KEY_1             = '1',
+	RUSH_KEY_2             = '2',
+	RUSH_KEY_3             = '3',
+	RUSH_KEY_4             = '4',
+	RUSH_KEY_5             = '5',
+	RUSH_KEY_6             = '6',
+	RUSH_KEY_7             = '7',
+	RUSH_KEY_8             = '8',
+	RUSH_KEY_9             = '9',
+	RUSH_KEY_SEMICOLON     = ';',
+	RUSH_KEY_EQUAL         = '=',
+	RUSH_KEY_A             = 'A',
+	RUSH_KEY_B             = 'B',
+	RUSH_KEY_C             = 'C',
+	RUSH_KEY_D             = 'D',
+	RUSH_KEY_E             = 'E',
+	RUSH_KEY_F             = 'F',
+	RUSH_KEY_G             = 'G',
+	RUSH_KEY_H             = 'H',
+	RUSH_KEY_I             = 'I',
+	RUSH_KEY_J             = 'J',
+	RUSH_KEY_K             = 'K',
+	RUSH_KEY_L             = 'L',
+	RUSH_KEY_M             = 'M',
+	RUSH_KEY_N             = 'N',
+	RUSH_KEY_O             = 'O',
+	RUSH_KEY_P             = 'P',
+	RUSH_KEY_Q             = 'Q',
+	RUSH_KEY_R             = 'R',
+	RUSH_KEY_S             = 'S',
+	RUSH_KEY_T             = 'T',
+	RUSH_KEY_U             = 'U',
+	RUSH_KEY_V             = 'V',
+	RUSH_KEY_W             = 'W',
+	RUSH_KEY_X             = 'X',
+	RUSH_KEY_Y             = 'Y',
+	RUSH_KEY_Z             = 'Z',
+	RUSH_KEY_LEFT_BRACKET  = '[',
+	RUSH_KEY_BACKSLASH     = '\\',
+	RUSH_KEY_RIGHT_BRACKET = ']',
+	RUSH_KEY_BACKQUOTE     = '`',
+	RUSH_KEY_ESCAPE,
+	RUSH_KEY_ENTER,
+	RUSH_KEY_TAB,
+	RUSH_KEY_BACKSPACE,
+	RUSH_KEY_INSERT,
+	RUSH_KEY_DELETE,
+	RUSH_KEY_RIGHT,
+	RUSH_KEY_LEFT,
+	RUSH_KEY_DOWN,
+	RUSH_KEY_UP,
+	RUSH_KEY_PAGE_UP,
+	RUSH_KEY_PAGE_DOWN,
+	RUSH_KEY_HOME,
+	RUSH_KEY_END,
+	RUSH_KEY_CAPS_LOCK,
+	RUSH_KEY_SCROLL_LOCK,
+	RUSH_KEY_NUM_LOCK,
+	RUSH_KEY_PRINT_SCREEN,
+	RUSH_KEY_PAUSE,
+	RUSH_KEY_F1,
+	RUSH_KEY_F2,
+	RUSH_KEY_F3,
+	RUSH_KEY_F4,
+	RUSH_KEY_F5,
+	RUSH_KEY_F6,
+	RUSH_KEY_F7,
+	RUSH_KEY_F8,
+	RUSH_KEY_F9,
+	RUSH_KEY_F10,
+	RUSH_KEY_F11,
+	RUSH_KEY_F12,
+	RUSH_KEY_F13,
+	RUSH_KEY_F14,
+	RUSH_KEY_F15,
+	RUSH_KEY_F16,
+	RUSH_KEY_F17,
+	RUSH_KEY_F18,
+	RUSH_KEY_F19,
+	RUSH_KEY_F20,
+	RUSH_KEY_F21,
+	RUSH_KEY_F22,
+	RUSH_KEY_F23,
+	RUSH_KEY_F24,
+	RUSH_KEY_F25,
+	RUSH_KEY_KP0,
+	RUSH_KEY_KP1,
+	RUSH_KEY_KP2,
+	RUSH_KEY_KP3,
+	RUSH_KEY_KP4,
+	RUSH_KEY_KP5,
+	RUSH_KEY_KP6,
+	RUSH_KEY_KP7,
+	RUSH_KEY_KP8,
+	RUSH_KEY_KP9,
+	RUSH_KEY_KP_DECIMAL,
+	RUSH_KEY_KP_DIVIDE,
+	RUSH_KEY_KP_MULTIPLY,
+	RUSH_KEY_KP_SUBTRACT,
+	RUSH_KEY_KP_ADD,
+	RUSH_KEY_KP_ENTER,
+	RUSH_KEY_KP_EQUAL,
+	RUSH_KEY_LEFT_SHIFT,
+	RUSH_KEY_LEFT_CONTROL,
+	RUSH_KEY_LEFT_ALT,
+	RUSH_KEY_RIGHT_SHIFT,
+	RUSH_KEY_RIGHT_CONTROL,
+	RUSH_KEY_RIGHT_ALT,
+
+	RUSH_KEY_COUNT,
+} rush_key;
+
+typedef struct rush_window_keyboard_state
+{
+	bool keys[RUSH_KEY_COUNT];
+} rush_window_keyboard_state;
+
+typedef struct rush_window_mouse_state
+{
+	bool    buttons[10];
+	bool    double_click;
+	float   pos[2];
+	int32_t wheel[2];
+} rush_window_mouse_state;
+
+typedef enum rush_window_event_type
+{
+	RUSH_WINDOW_EVENT_TYPE_UNKNOWN,
+	RUSH_WINDOW_EVENT_TYPE_KEY_DOWN,
+	RUSH_WINDOW_EVENT_TYPE_KEY_UP,
+	RUSH_WINDOW_EVENT_TYPE_RESIZE,
+	RUSH_WINDOW_EVENT_TYPE_CHAR,
+	RUSH_WINDOW_EVENT_TYPE_MOUSE_DOWN,
+	RUSH_WINDOW_EVENT_TYPE_MOUSE_UP,
+	RUSH_WINDOW_EVENT_TYPE_MOUSE_MOVE,
+	RUSH_WINDOW_EVENT_TYPE_SCROLL,
+	RUSH_WINDOW_EVENT_TYPE_COUNT
+} rush_window_event_type;
+
+typedef enum rush_window_event_mask
+{
+	RUSH_WINDOW_EVENT_MASK_KEY_DOWN   = 1 << RUSH_WINDOW_EVENT_TYPE_KEY_DOWN,
+	RUSH_WINDOW_EVENT_MASK_KEY_UP     = 1 << RUSH_WINDOW_EVENT_TYPE_KEY_UP,
+	RUSH_WINDOW_EVENT_MASK_RESIZE     = 1 << RUSH_WINDOW_EVENT_TYPE_RESIZE,
+	RUSH_WINDOW_EVENT_MASK_CHAR       = 1 << RUSH_WINDOW_EVENT_TYPE_CHAR,
+	RUSH_WINDOW_EVENT_MASK_MOUSE_DOWN = 1 << RUSH_WINDOW_EVENT_TYPE_MOUSE_DOWN,
+	RUSH_WINDOW_EVENT_MASK_MOUSE_UP   = 1 << RUSH_WINDOW_EVENT_TYPE_MOUSE_UP,
+	RUSH_WINDOW_EVENT_MASK_MOUSE_MOVE = 1 << RUSH_WINDOW_EVENT_TYPE_MOUSE_MOVE,
+	RUSH_WINDOW_EVENT_MASK_SCROLL     = 1 << RUSH_WINDOW_EVENT_TYPE_SCROLL,
+	RUSH_WINDOW_EVENT_MASK_KEY        = RUSH_WINDOW_EVENT_MASK_KEY_DOWN | RUSH_WINDOW_EVENT_MASK_KEY_UP,
+	RUSH_WINDOW_EVENT_MASK_MOUSE      = RUSH_WINDOW_EVENT_MASK_MOUSE_DOWN | RUSH_WINDOW_EVENT_MASK_MOUSE_UP | RUSH_WINDOW_EVENT_MASK_MOUSE_MOVE,
+	RUSH_WINDOW_EVENT_MASK_ALL        = 0XFFFF
+} rush_window_event_mask;
+
+typedef struct rush_window_event
+{
+	rush_window_event_type event_type;
+	rush_key key;
+	uint32_t character;
+	uint32_t modifiers;
+	uint32_t width;
+	uint32_t height;
+	float pos[2];
+	uint32_t  button;
+	bool double_click;
+	float scroll[2];
+} rush_window_event;
+
+struct rush_window* rush_platform_get_main_window();
+
+const rush_window_keyboard_state* rush_window_get_keyboard_state(struct rush_window* window);
+const rush_window_mouse_state*    rush_window_get_mouse_state(struct rush_window* window);
+rush_vec2 rush_window_get_size(struct rush_window* window);
+rush_vec2 rush_window_get_framebuffer_size(struct rush_window* window);
+rush_vec2 rush_window_get_resolution_sclae(struct rush_window* window);
+float rush_window_get_aspect(struct rush_window* window);
+
+struct rush_window_event_listener* rush_window_create_listener(struct rush_window* window, rush_window_event_mask event_mask);
+void rush_window_destroy_listener(struct rush_window_event_listener* listener);
+uint32_t rush_window_event_listener_count(struct rush_window_event_listener* listener);
+uint32_t rush_window_event_listener_receive(struct rush_window_event_listener* listener, uint32_t max_count, rush_window_event* out_events);
+void rush_window_event_listener_clear(struct rush_window_event_listener* listener);
 
 // Graphics
-
-typedef struct rush_vec2 { float x, y; }       rush_vec2;
-typedef struct rush_vec3 { float x, y, z; }    rush_vec3;
-typedef struct rush_vec4 { float x, y, z, w; } rush_vec4;
-typedef struct rush_color_rgba { float r, g, b, a; } rush_color_rgba;
 
 struct rush_gfx_device*  rush_platform_get_device();
 struct rush_gfx_context* rush_platform_get_context();
@@ -170,10 +363,10 @@ typedef enum rush_gfx_primitive_type
 
 typedef enum rush_gfx_pass_flags 
 {
-	RUSH_GFX_PASS_NONE = 0,
-	RUSH_GFX_PASS_CLEAR_COLOR = 1 << 0,
+	RUSH_GFX_PASS_NONE                = 0,
+	RUSH_GFX_PASS_CLEAR_COLOR         = 1 << 0,
 	RUSH_GFX_PASS_CLEAR_DEPTH_STENCIL = 1 << 1,
-	RUSH_GFX_PASS_DISCARD_COLOR = 1 << 2,
+	RUSH_GFX_PASS_DISCARD_COLOR       = 1 << 2,
 } rush_gfx_pass_flags;
 
 typedef enum rush_gfx_shader_source_type
@@ -190,7 +383,6 @@ typedef enum rush_gfx_shader_source_type
 typedef enum rush_gfx_format
 {
 	RUSH_GFX_FORMAT_UNKNOWN,
-
 	RUSH_GFX_FORMAT_D24_UNORM_S8_UINT,
 	RUSH_GFX_FORMAT_D24_UNORM_X8,
 	RUSH_GFX_FORMAT_D32_FLOAT,

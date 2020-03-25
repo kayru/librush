@@ -6,6 +6,8 @@
 #include "UtilTuple.h"
 #include "UtilArray.h"
 
+#include "RushC.h"
+
 #include <string.h>
 
 namespace Rush
@@ -15,124 +17,124 @@ class WindowEventListener;
 
 enum Key
 {
-	Key_Unknown      = 0,
-	Key_Space        = ' ',
-	Key_Apostrophe   = '\'',
-	Key_Comma        = ',',
-	Key_Minus        = '-',
-	Key_Period       = '.',
-	Key_Slash        = '/',
-	Key_0            = '0',
-	Key_1            = '1',
-	Key_2            = '2',
-	Key_3            = '3',
-	Key_4            = '4',
-	Key_5            = '5',
-	Key_6            = '6',
-	Key_7            = '7',
-	Key_8            = '8',
-	Key_9            = '9',
-	Key_Semicolon    = ';',
-	Key_Equal        = '=',
-	Key_A            = 'A',
-	Key_B            = 'B',
-	Key_C            = 'C',
-	Key_D            = 'D',
-	Key_E            = 'E',
-	Key_F            = 'F',
-	Key_G            = 'G',
-	Key_H            = 'H',
-	Key_I            = 'I',
-	Key_J            = 'J',
-	Key_K            = 'K',
-	Key_L            = 'L',
-	Key_M            = 'M',
-	Key_N            = 'N',
-	Key_O            = 'O',
-	Key_P            = 'P',
-	Key_Q            = 'Q',
-	Key_R            = 'R',
-	Key_S            = 'S',
-	Key_T            = 'T',
-	Key_U            = 'U',
-	Key_V            = 'V',
-	Key_W            = 'W',
-	Key_X            = 'X',
-	Key_Y            = 'Y',
-	Key_Z            = 'Z',
-	Key_LeftBracket  = '[',
-	Key_Backslash    = '\\',
-	Key_RightBracket = ']',
-	Key_Backquote    = '`',
-	Key_Escape,
-	Key_Enter,
-	Key_Tab,
-	Key_Backspace,
-	Key_Insert,
-	Key_Delete,
-	Key_Right,
-	Key_Left,
-	Key_Down,
-	Key_Up,
-	Key_PageUp,
-	Key_PageDown,
-	Key_Home,
-	Key_End,
-	Key_CapsLock,
-	Key_ScrollLock,
-	Key_NumLock,
-	Key_PrintScreen,
-	Key_Pause,
-	Key_F1,
-	Key_F2,
-	Key_F3,
-	Key_F4,
-	Key_F5,
-	Key_F6,
-	Key_F7,
-	Key_F8,
-	Key_F9,
-	Key_F10,
-	Key_F11,
-	Key_F12,
-	Key_F13,
-	Key_F14,
-	Key_F15,
-	Key_F16,
-	Key_F17,
-	Key_F18,
-	Key_F19,
-	Key_F20,
-	Key_F21,
-	Key_F22,
-	Key_F23,
-	Key_F24,
-	Key_F25,
-	Key_KP0,
-	Key_KP1,
-	Key_KP2,
-	Key_KP3,
-	Key_KP4,
-	Key_KP5,
-	Key_KP6,
-	Key_KP7,
-	Key_KP8,
-	Key_KP9,
-	Key_KPDecimal,
-	Key_KPDivide,
-	Key_KPMultiply,
-	Key_KPSubtract,
-	Key_KPAdd,
-	Key_KPEnter,
-	Key_KPEqual,
-	Key_LeftShift,
-	Key_LeftControl,
-	Key_LeftAlt,
-	Key_RightShift,
-	Key_RightControl,
-	Key_RightAlt,
+	Key_Unknown      = RUSH_KEY_UNKNOWN,
+	Key_Space        = RUSH_KEY_SPACE,
+	Key_Apostrophe   = RUSH_KEY_APOSTROPHE,
+	Key_Comma        = RUSH_KEY_COMMA,
+	Key_Minus        = RUSH_KEY_MINUS,
+	Key_Period       = RUSH_KEY_PERIOD,
+	Key_Slash        = RUSH_KEY_SLASH,
+	Key_0            = RUSH_KEY_0,
+	Key_1            = RUSH_KEY_1,
+	Key_2            = RUSH_KEY_2,
+	Key_3            = RUSH_KEY_3,
+	Key_4            = RUSH_KEY_4,
+	Key_5            = RUSH_KEY_5,
+	Key_6            = RUSH_KEY_6,
+	Key_7            = RUSH_KEY_7,
+	Key_8            = RUSH_KEY_8,
+	Key_9            = RUSH_KEY_9,
+	Key_Semicolon    = RUSH_KEY_SEMICOLON,
+	Key_Equal        = RUSH_KEY_EQUAL,
+	Key_A            = RUSH_KEY_A,
+	Key_B            = RUSH_KEY_B,
+	Key_C            = RUSH_KEY_C,
+	Key_D            = RUSH_KEY_D,
+	Key_E            = RUSH_KEY_E,
+	Key_F            = RUSH_KEY_F,
+	Key_G            = RUSH_KEY_G,
+	Key_H            = RUSH_KEY_H,
+	Key_I            = RUSH_KEY_I,
+	Key_J            = RUSH_KEY_J,
+	Key_K            = RUSH_KEY_K,
+	Key_L            = RUSH_KEY_L,
+	Key_M            = RUSH_KEY_M,
+	Key_N            = RUSH_KEY_N,
+	Key_O            = RUSH_KEY_O,
+	Key_P            = RUSH_KEY_P,
+	Key_Q            = RUSH_KEY_Q,
+	Key_R            = RUSH_KEY_R,
+	Key_S            = RUSH_KEY_S,
+	Key_T            = RUSH_KEY_T,
+	Key_U            = RUSH_KEY_U,
+	Key_V            = RUSH_KEY_V,
+	Key_W            = RUSH_KEY_W,
+	Key_X            = RUSH_KEY_X,
+	Key_Y            = RUSH_KEY_Y,
+	Key_Z            = RUSH_KEY_Z,
+	Key_LeftBracket  = RUSH_KEY_LEFT_BRACKET,
+	Key_Backslash    = RUSH_KEY_BACKSLASH,
+	Key_RightBracket = RUSH_KEY_RIGHT_BRACKET,
+	Key_Backquote    = RUSH_KEY_BACKQUOTE,
+	Key_Escape       = RUSH_KEY_ESCAPE,
+	Key_Enter        = RUSH_KEY_ENTER,
+	Key_Tab          = RUSH_KEY_TAB,
+	Key_Backspace    = RUSH_KEY_BACKSPACE,
+	Key_Insert       = RUSH_KEY_INSERT,
+	Key_Delete       = RUSH_KEY_DELETE,
+	Key_Right        = RUSH_KEY_RIGHT,
+	Key_Left         = RUSH_KEY_LEFT,
+	Key_Down         = RUSH_KEY_DOWN,
+	Key_Up           = RUSH_KEY_UP,
+	Key_PageUp       = RUSH_KEY_PAGE_UP,
+	Key_PageDown     = RUSH_KEY_PAGE_DOWN,
+	Key_Home         = RUSH_KEY_HOME,
+	Key_End          = RUSH_KEY_END,
+	Key_CapsLock     = RUSH_KEY_CAPS_LOCK,
+	Key_ScrollLock   = RUSH_KEY_SCROLL_LOCK,
+	Key_NumLock      = RUSH_KEY_NUM_LOCK,
+	Key_PrintScreen  = RUSH_KEY_PRINT_SCREEN,
+	Key_Pause        = RUSH_KEY_PAUSE,
+	Key_F1           = RUSH_KEY_F1,
+	Key_F2           = RUSH_KEY_F2,
+	Key_F3           = RUSH_KEY_F3,
+	Key_F4           = RUSH_KEY_F4,
+	Key_F5           = RUSH_KEY_F5,
+	Key_F6           = RUSH_KEY_F6,
+	Key_F7           = RUSH_KEY_F7,
+	Key_F8           = RUSH_KEY_F8,
+	Key_F9           = RUSH_KEY_F9,
+	Key_F10          = RUSH_KEY_F10,
+	Key_F11          = RUSH_KEY_F11,
+	Key_F12          = RUSH_KEY_F12,
+	Key_F13          = RUSH_KEY_F13,
+	Key_F14          = RUSH_KEY_F14,
+	Key_F15          = RUSH_KEY_F15,
+	Key_F16          = RUSH_KEY_F16,
+	Key_F17          = RUSH_KEY_F17,
+	Key_F18          = RUSH_KEY_F18,
+	Key_F19          = RUSH_KEY_F19,
+	Key_F20          = RUSH_KEY_F20,
+	Key_F21          = RUSH_KEY_F21,
+	Key_F22          = RUSH_KEY_F22,
+	Key_F23          = RUSH_KEY_F23,
+	Key_F24          = RUSH_KEY_F24,
+	Key_F25          = RUSH_KEY_F25,
+	Key_KP0          = RUSH_KEY_KP0,
+	Key_KP1          = RUSH_KEY_KP1,
+	Key_KP2          = RUSH_KEY_KP2,
+	Key_KP3          = RUSH_KEY_KP3,
+	Key_KP4          = RUSH_KEY_KP4,
+	Key_KP5          = RUSH_KEY_KP5,
+	Key_KP6          = RUSH_KEY_KP6,
+	Key_KP7          = RUSH_KEY_KP7,
+	Key_KP8          = RUSH_KEY_KP8,
+	Key_KP9          = RUSH_KEY_KP9,
+	Key_KPDecimal    = RUSH_KEY_KP_DECIMAL,
+	Key_KPDivide     = RUSH_KEY_KP_DIVIDE,
+	Key_KPMultiply   = RUSH_KEY_KP_MULTIPLY,
+	Key_KPSubtract   = RUSH_KEY_KP_SUBTRACT,
+	Key_KPAdd        = RUSH_KEY_KP_ADD,
+	Key_KPEnter      = RUSH_KEY_KP_ENTER,
+	Key_KPEqual      = RUSH_KEY_KP_EQUAL,
+	Key_LeftShift    = RUSH_KEY_LEFT_SHIFT,
+	Key_LeftControl  = RUSH_KEY_LEFT_CONTROL,
+	Key_LeftAlt      = RUSH_KEY_LEFT_ALT,
+	Key_RightShift   = RUSH_KEY_RIGHT_SHIFT,
+	Key_RightControl = RUSH_KEY_RIGHT_CONTROL,
+	Key_RightAlt     = RUSH_KEY_RIGHT_ALT,
 
-	Key_COUNT,
+	Key_COUNT = RUSH_KEY_COUNT,
 };
 
 const char* toString(Key key);
@@ -150,6 +152,7 @@ public:
 	int  wheelH;
 	int  wheelV;
 };
+static_assert(sizeof(MouseState) == sizeof(rush_window_mouse_state), "");
 
 class KeyboardState
 {
@@ -160,6 +163,7 @@ public:
 
 	bool keys[Key_COUNT];
 };
+static_assert(sizeof(KeyboardState) == sizeof(rush_window_keyboard_state), "");
 
 class WindowMessageInterceptor
 {
@@ -261,37 +265,34 @@ private:
 	WindowMessageInterceptor* m_interceptor;
 };
 
-enum WindowEventType
+enum WindowEventType : u32
 {
-	WindowEventType_Unknown,
+	WindowEventType_Unknown   = RUSH_WINDOW_EVENT_TYPE_UNKNOWN,
+	WindowEventType_KeyDown   = RUSH_WINDOW_EVENT_TYPE_KEY_DOWN,
+	WindowEventType_KeyUp     = RUSH_WINDOW_EVENT_TYPE_KEY_UP,
+	WindowEventType_Resize    = RUSH_WINDOW_EVENT_TYPE_RESIZE,
+	WindowEventType_Char      = RUSH_WINDOW_EVENT_TYPE_CHAR,
+	WindowEventType_MouseDown = RUSH_WINDOW_EVENT_TYPE_MOUSE_DOWN,
+	WindowEventType_MouseUp   = RUSH_WINDOW_EVENT_TYPE_MOUSE_UP,
+	WindowEventType_MouseMove = RUSH_WINDOW_EVENT_TYPE_MOUSE_MOVE,
+	WindowEventType_Scroll    = RUSH_WINDOW_EVENT_TYPE_SCROLL,
 
-	WindowEventType_KeyDown,
-	WindowEventType_KeyUp,
-	WindowEventType_Resize,
-	WindowEventType_Char,
-	WindowEventType_MouseDown,
-	WindowEventType_MouseUp,
-	WindowEventType_MouseMove,
-	WindowEventType_Scroll,
-
-	WindowEventType_COUNT
+	WindowEventType_COUNT     = RUSH_WINDOW_EVENT_TYPE_COUNT
 };
 
 enum WindowEventMask : u32
 {
-	WindowEventMask_KeyDown   = 1 << WindowEventType_KeyDown,
-	WindowEventMask_KeyUp     = 1 << WindowEventType_KeyUp,
-	WindowEventMask_Resize    = 1 << WindowEventType_Resize,
-	WindowEventMask_Char      = 1 << WindowEventType_Char,
-	WindowEventMask_MouseDown = 1 << WindowEventType_MouseDown,
-	WindowEventMask_MouseUp   = 1 << WindowEventType_MouseUp,
-	WindowEventMask_MouseMove = 1 << WindowEventType_MouseMove,
-	WindowEventMask_Scroll    = 1 << WindowEventType_Scroll,
-
-	WindowEventMask_Key   = WindowEventMask_KeyDown | WindowEventMask_KeyUp,
-	WindowEventMask_Mouse = WindowEventMask_MouseDown | WindowEventMask_MouseUp | WindowEventMask_MouseMove,
-
-	WindowEventMask_All = ~0U
+	WindowEventMask_KeyDown   = RUSH_WINDOW_EVENT_MASK_KEY_DOWN,
+	WindowEventMask_KeyUp     = RUSH_WINDOW_EVENT_MASK_KEY_UP,
+	WindowEventMask_Resize    = RUSH_WINDOW_EVENT_MASK_RESIZE,
+	WindowEventMask_Char      = RUSH_WINDOW_EVENT_MASK_CHAR,
+	WindowEventMask_MouseDown = RUSH_WINDOW_EVENT_MASK_MOUSE_DOWN,
+	WindowEventMask_MouseUp   = RUSH_WINDOW_EVENT_MASK_MOUSE_UP,
+	WindowEventMask_MouseMove = RUSH_WINDOW_EVENT_MASK_MOUSE_MOVE,
+	WindowEventMask_Scroll    = RUSH_WINDOW_EVENT_MASK_SCROLL,
+	WindowEventMask_Key       = RUSH_WINDOW_EVENT_MASK_KEY,
+	WindowEventMask_Mouse     = RUSH_WINDOW_EVENT_MASK_MOUSE,
+	WindowEventMask_All       = RUSH_WINDOW_EVENT_MASK_ALL,
 };
 
 struct WindowEvent
@@ -380,14 +381,10 @@ struct WindowEvent
 		return e;
 	}
 };
+static_assert(sizeof(WindowEvent) == sizeof(rush_window_event), "");
 
 class WindowEventListener : public DynamicArray<WindowEvent>
 {
-public:
-	template <typename IDT> struct ID
-	{
-	};
-
 public:
 	WindowEventListener(u32 _mask = WindowEventMask_All) : owner(nullptr), mask(_mask) {}
 
