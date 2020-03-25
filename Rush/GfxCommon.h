@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Rush.h"
+#include "RushC.h"
 
 #include "MathTypes.h"
 #include "UtilResourcePool.h"
@@ -174,7 +175,7 @@ public:
 	T    get() const { return m_handle; }
 	bool valid() const { return m_handle.valid(); }
 
-	T detach() const
+	T detach()
 	{
 		T result = m_handle;
 		m_handle = InvalidResourceHandle();
@@ -300,13 +301,13 @@ enum class GfxContextType : u8
 
 enum class TextureType : u8
 {
-	Tex1D,
-	Tex1DArray,
-	Tex2D,
-	Tex2DArray,
-	Tex3D,
-	TexCube,
-	TexCubeArray,
+	Tex1D = RUSH_GFX_TEXTURE_TYPE_1D,
+	Tex1DArray = RUSH_GFX_TEXTURE_TYPE_1D_ARRAY,
+	Tex2D = RUSH_GFX_TEXTURE_TYPE_2D,
+	Tex2DArray = RUSH_GFX_TEXTURE_TYPE_2D_ARRAY,
+	Tex3D = RUSH_GFX_TEXTURE_TYPE_3D,
+	TexCube = RUSH_GFX_TEXTURE_TYPE_CUBE,
+	TexCubeArray = RUSH_GFX_TEXTURE_TYPE_CUBE_ARRAY,
 };
 
 inline bool isCubeTexture(TextureType type)
@@ -321,13 +322,13 @@ inline bool isArrayTexture(TextureType type)
 
 enum GfxShaderSourceType : u8
 {
-	GfxShaderSourceType_Unknown = 0,
-	GfxShaderSourceType_SPV     = 1, // binary
-	GfxShaderSourceType_GLSL    = 2, // text
-	GfxShaderSourceType_HLSL    = 3, // text
-	GfxShaderSourceType_DXBC    = 4, // binary
-	GfxShaderSourceType_DXIL    = 5, // binary
-	GfxShaderSourceType_MSL     = 6, // text
+	GfxShaderSourceType_Unknown = RUSH_GFX_SHADER_SOURCE_UNKNOWN,
+	GfxShaderSourceType_SPV     = RUSH_GFX_SHADER_SOURCE_SPV,  // binary
+	GfxShaderSourceType_GLSL    = RUSH_GFX_SHADER_SOURCE_GLSL, // text
+	GfxShaderSourceType_HLSL    = RUSH_GFX_SHADER_SOURCE_HLSL, // text
+	GfxShaderSourceType_DXBC    = RUSH_GFX_SHADER_SOURCE_DXBC, // binary
+	GfxShaderSourceType_DXIL    = RUSH_GFX_SHADER_SOURCE_DXIL, // binary
+	GfxShaderSourceType_MSL     = RUSH_GFX_SHADER_SOURCE_MSL,  // text
 };
 
 enum GfxFormatType : u8
@@ -436,50 +437,45 @@ enum class GfxUsageFlags : u8
 {
 	None = 0,
 
-	ShaderResource = 1 << 0,
-	RenderTarget   = 1 << 1,
-	DepthStencil   = 1 << 2,
-	StorageImage   = 1 << 3,
-	TransferSrc    = 1 << 4,
-	TransferDst    = 1 << 5,
+	ShaderResource = RUSH_GFX_USAGE_SHADER_RESOURCE,
+	RenderTarget   = RUSH_GFX_USAGE_RENDER_TARGET,
+	DepthStencil   = RUSH_GFX_USAGE_DEPTH_STENCIL,
+	StorageImage   = RUSH_GFX_USAGE_STORAGE_IMAGE,
+	TransferSrc    = RUSH_GFX_USAGE_TRANSFER_SRC,
+	TransferDst    = RUSH_GFX_USAGE_TRANSFER_DST,
 
 	RenderTarget_ShaderResource = ShaderResource | RenderTarget,
 	DepthStencil_ShaderResource = ShaderResource | DepthStencil,
 	StorageImage_ShaderResource = ShaderResource | StorageImage,
 };
 
-enum class GfxSampleCount : u8
-{
-
-};
-
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxUsageFlags, u8);
 
 enum class GfxStage : u8
 {
-	Vertex      = 0,
-	Geometry    = 1,
-	Pixel       = 2,
-	Hull        = 3,
-	Domain      = 4,
-	Compute     = 5,
-	Mesh        = 6,
-	RayTracing  = 7,
+	Vertex      = RUSH_GFX_STAGE_VERTEX,
+	Geometry    = RUSH_GFX_STAGE_GEOMETRY,
+	Pixel       = RUSH_GFX_STAGE_PIXEL,
+	Hull        = RUSH_GFX_STAGE_HULL,
+	Domain      = RUSH_GFX_STAGE_DOMAIN,
+	Compute     = RUSH_GFX_STAGE_COMPUTE,
+	Mesh        = RUSH_GFX_STAGE_MESH,
+	RayTracing  = RUSH_GFX_STAGE_RAYTRACING,
 	count
 };
 
 enum class GfxStageFlags : u8
 {
-	None = 0,
+	None = RUSH_GFX_STAGE_FLAG_NONE,
 
-	Vertex     = 1u << (u32)GfxStage::Vertex,
-	Geometry   = 1u << (u32)GfxStage::Geometry,
-	Pixel      = 1u << (u32)GfxStage::Pixel,
-	Hull       = 1u << (u32)GfxStage::Hull,
-	Domain     = 1u << (u32)GfxStage::Domain,
-	Compute    = 1u << (u32)GfxStage::Compute,
-	Mesh       = 1u << (u32)GfxStage::Mesh,
-	RayTracing = 1u << (u32)GfxStage::RayTracing,
+	Vertex     = RUSH_GFX_STAGE_FLAG_VERTEX,
+	Geometry   = RUSH_GFX_STAGE_FLAG_GEOMETRY,
+	Pixel      = RUSH_GFX_STAGE_FLAG_PIXEL,
+	Hull       = RUSH_GFX_STAGE_FLAG_HULL,
+	Domain     = RUSH_GFX_STAGE_FLAG_DOMAIN,
+	Compute    = RUSH_GFX_STAGE_FLAG_COMPUTE,
+	Mesh       = RUSH_GFX_STAGE_FLAG_MESH,
+	RayTracing = RUSH_GFX_STAGE_FLAG_RAYTRACING,
 
 	VertexPixel = Vertex | Pixel,
 	All         = 0xFF,
@@ -489,11 +485,11 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxStageFlags, u8);
 
 enum class GfxPrimitive : u8
 {
-	PointList,
-	LineList,
-	LineStrip,
-	TriangleList,
-	TriangleStrip,
+	PointList = RUSH_GFX_PRIMITIVE_POINT_LIST,
+	LineList = RUSH_GFX_PRIMITIVE_LINE_LIST,
+	LineStrip = RUSH_GFX_PRIMITIVE_LINE_STRIP,
+	TriangleList = RUSH_GFX_PRIMITIVE_TRIANGLE_LIST,
+	TriangleStrip = RUSH_GFX_PRIMITIVE_TRIANGLE_STRIP,
 	count
 };
 
@@ -517,16 +513,16 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxClearFlags, u8);
 
 enum class GfxBufferFlags : u32
 {
-	None         = 0u,
-	Vertex       = 1u << 0,
-	Index        = 1u << 1,
-	Constant     = 1u << 2,
-	Storage      = 1u << 3,
-	Texel        = 1u << 4,
-	IndirectArgs = 1u << 5,
-	RayTracing   = 1u << 6,
+	None         = RUSH_GFX_BUFFER_FLAG_NONE,
+	Vertex       = RUSH_GFX_BUFFER_FLAG_VERTEX,
+	Index        = RUSH_GFX_BUFFER_FLAG_INDEX,
+	Constant     = RUSH_GFX_BUFFER_FLAG_CONSTANT,
+	Storage      = RUSH_GFX_BUFFER_FLAG_STORAGE,
+	Texel        = RUSH_GFX_BUFFER_FLAG_TEXEL,
+	IndirectArgs = RUSH_GFX_BUFFER_FLAG_INDIRECT_ARGS,
+	RayTracing   = RUSH_GFX_BUFFER_FLAG_RAYTRACING,
 
-	Transient = 1u << 31,
+	Transient    = RUSH_GFX_BUFFER_FLAG_TRANSIENT,
 
 	TransientVertex   = Transient | Vertex,
 	TransientIndex    = Transient | Index,
@@ -549,74 +545,74 @@ enum class GfxShaderType : u8
 
 enum class GfxBlendParam : u8
 {
-	Zero,
-	One,
-	SrcColor,
-	InvSrcColor,
-	SrcAlpha,
-	InvSrcAlpha,
-	DestAlpha,
-	InvDestAlpha,
-	DestColor,
-	InvDestColor,
+	Zero = RUSH_GFX_BLEND_PARAM_ZERO,
+	One = RUSH_GFX_BLEND_PARAM_ONE,
+	SrcColor = RUSH_GFX_BLEND_PARAM_SRC_COLOR,
+	InvSrcColor = RUSH_GFX_BLEND_PARAM_INV_SRC_COLOR,
+	SrcAlpha = RUSH_GFX_BLEND_PARAM_SRC_ALPHA,
+	InvSrcAlpha = RUSH_GFX_BLEND_PARAM_INV_SRC_ALPHA,
+	DestAlpha = RUSH_GFX_BLEND_PARAM_DEST_ALPHA,
+	InvDestAlpha = RUSH_GFX_BLEND_PARAM_INV_DEST_ALPHA,
+	DestColor = RUSH_GFX_BLEND_PARAM_DEST_COLOR,
+	InvDestColor = RUSH_GFX_BLEND_PARAM_INV_DEST_COLOR,
 
 	count
 };
 
 enum class GfxBlendOp : u8
 {
-	Add,
-	Subtract,
-	RevSubtract,
-	Min,
-	Max,
+	Add = RUSH_GFX_BLEND_OP_ADD,
+	Subtract = RUSH_GFX_BLEND_OP_SUBTRACT,
+	RevSubtract = RUSH_GFX_BLEND_OP_REV_SUBTRACT,
+	Min = RUSH_GFX_BLEND_OP_MIN,
+	Max = RUSH_GFX_BLEND_OP_MAX,
 
 	count
 };
 
 enum class GfxTextureFilter : u8
 {
-	Point,
-	Linear,
-	Anisotropic,
+	Point = RUSH_GFX_TEXTURE_FILTER_POINT,
+	Linear = RUSH_GFX_TEXTURE_FILTER_LINEAR,
+	Anisotropic = RUSH_GFX_TEXTURE_FILTER_ANISOTROPIC,
 
 	count
 };
 
 enum class GfxTextureWrap : u8
 {
-	Wrap,
-	Mirror,
-	Clamp,
+	Wrap = RUSH_GFX_TEXTURE_WRAP_REPEAT,
+	Mirror = RUSH_GFX_TEXTURE_WRAP_MIRROR,
+	Clamp = RUSH_GFX_TEXTURE_WRAP_CLAMP,
 
 	count
 };
 
 enum class GfxCompareFunc : u8
 {
-	Never,
-	Less,
-	Equal,
-	LessEqual,
-	Greater,
-	NotEqual,
-	GreaterEqual,
-	Always,
+	Never = RUSH_GFX_COMPARE_FUNC_NEVER,
+	Less = RUSH_GFX_COMPARE_FUNC_LESS,
+	Equal = RUSH_GFX_COMPARE_FUNC_EQUAL,
+	LessEqual = RUSH_GFX_COMPARE_FUNC_LESS_EQUAL,
+	Greater = RUSH_GFX_COMPARE_FUNC_GREATER,
+	NotEqual = RUSH_GFX_COMPARE_FUNC_NOT_EQUAL,
+	GreaterEqual = RUSH_GFX_COMPARE_FUNC_GREATER_EQUAL,
+	Always = RUSH_GFX_COMPARE_FUNC_ALWAYS,
 
 	count
 };
 
 enum class GfxFillMode : u8
 {
-	Solid,
-	Wireframe
+	Solid = RUSH_GFX_FILL_MODE_SOLID,
+	Wireframe = RUSH_GFX_FILL_MODE_WIREFRAME,
 };
 
 enum class GfxCullMode : u8
 {
-	None,
-	CW,
-	CCW,
+	None = RUSH_GFX_CULL_MODE_NONE,
+	CW = RUSH_GFX_CULL_MODE_CW,
+	CCW = RUSH_GFX_CULL_MODE_CCW,
 };
 
 inline GfxFormatType      getGfxFormatType(GfxFormat fmt) { return (GfxFormatType)(fmt & 0x000000FF); }
@@ -772,16 +768,16 @@ public:
 
 	enum class Semantic : u8
 	{
-		Unused       = 0,
-		Position     = 1,
-		Texcoord     = 2,
-		Color        = 3,
-		Normal       = 4,
-		TangentU     = 5,
-		TangentV     = 6,
-		InstanceData = 7,
-		BoneIndex    = 8,
-		BoneWeight   = 9,
+		Unused       = RUSH_GFX_VERTEX_SEMANTIC_UNUSED,
+		Position     = RUSH_GFX_VERTEX_SEMANTIC_POSITION,
+		Texcoord     = RUSH_GFX_VERTEX_SEMANTIC_TEXCOORD,
+		Color        = RUSH_GFX_VERTEX_SEMANTIC_COLOR,
+		Normal       = RUSH_GFX_VERTEX_SEMANTIC_NORMAL,
+		TangentU     = RUSH_GFX_VERTEX_SEMANTIC_TANGENTU,
+		TangentV     = RUSH_GFX_VERTEX_SEMANTIC_TANGENTV,
+		InstanceData = RUSH_GFX_VERTEX_SEMANTIC_INSTANCEDATA,
+		BoneIndex    = RUSH_GFX_VERTEX_SEMANTIC_BONEINDEX,
+		BoneWeight   = RUSH_GFX_VERTEX_SEMANTIC_BONEWEIGHT,
 
 		Tangent   = TangentU, // backwards-compatible name
 		Bitangent = TangentV, // backwards-compatible name
@@ -897,7 +893,7 @@ struct GfxSpecializationConstant
 {
 	u32    id;
 	u32    offset;
-	size_t size;
+	u32    size;
 };
 
 struct GfxTechniqueDesc

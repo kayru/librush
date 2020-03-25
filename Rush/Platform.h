@@ -42,9 +42,9 @@ struct AppConfig
 
 	void* userData = nullptr;
 
-	PlatformCallback_Startup  onStartup;
-	PlatformCallback_Update   onUpdate;
-	PlatformCallback_Shutdown onShutdown;
+	PlatformCallback_Startup  onStartup = nullptr;
+	PlatformCallback_Update   onUpdate = nullptr;
+	PlatformCallback_Shutdown onShutdown = nullptr;
 };
 
 class Application

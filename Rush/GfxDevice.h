@@ -2,6 +2,7 @@
 
 #include "GfxCommon.h"
 #include "UtilColor.h"
+#include "RushC.h"
 
 namespace Rush
 {
@@ -134,12 +135,12 @@ struct GfxTextureData
 
 enum class GfxPassFlags : u32
 {
-	None = 0,
+	None = RUSH_GFX_PASS_NONE,
 
-	ClearColor        = 1 << 0,
-	ClearDepthStencil = 1 << 1,
+	ClearColor        = RUSH_GFX_PASS_CLEAR_COLOR,
+	ClearDepthStencil = RUSH_GFX_PASS_CLEAR_DEPTH_STENCIL,
 
-	DiscardColor = 1 << 2,
+	DiscardColor = RUSH_GFX_PASS_DISCARD_COLOR,
 
 	ClearAll = ClearColor | ClearDepthStencil,
 };
@@ -147,7 +148,7 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxPassFlags, u32)
 
 struct GfxPassDesc
 {
-	static const u32 MaxTargets = 8;
+	static constexpr u32 MaxTargets = 8;
 
 	GfxTexture   color[MaxTargets];
 	GfxTexture   depth;
