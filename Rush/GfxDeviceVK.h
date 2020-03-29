@@ -244,11 +244,12 @@ public:
 	void          init(u32 memoryType, bool hostVisible);
 	MemoryBlockVK alloc(u64 size, u64 alignment);
 	void          reset();
-	void          releaseBlocks();
+	void          releaseBlocks(bool immediate);
 
-private:
+	void addBlock(const MemoryBlockVK& block);
+
 	MemoryBlockVK allocBlock(u64 blockSize);
-	void          freeBlock(MemoryBlockVK block);
+	void          freeBlock(MemoryBlockVK block, bool immediate);
 
 	u32                         m_memoryType = 0;
 	DynamicArray<MemoryBlockVK> m_availableBlocks;
@@ -460,10 +461,8 @@ public:
 
 	struct MemoryTypes
 	{
-		u32 local          = ~0u;
-		u32 hostVisible    = ~0u;
-		u32 hostOnly       = ~0u;
-		u32 hostOnlyCached = ~0u;
+		u32 local = ~0u;
+		u32 host  = ~0u;
 	} m_memoryTypes;
 
 	VkCommandPool m_graphicsCommandPool = VK_NULL_HANDLE;
@@ -534,8 +533,9 @@ public:
 		DynamicArray<GfxContext*>       contexts;
 		DynamicArray<VkSampler>         samplers;
 		DynamicArray<DescriptorPoolVK*> descriptorPools;
+		DynamicArray<MemoryBlockVK>     transientHostMemory;
 
-		void flush(VkDevice vulkanDevice);
+		void flush(GfxDevice* device);
 	};
 
 	struct FrameData
@@ -551,11 +551,6 @@ public:
 
 		DestructionQueue destructionQueue;
 
-		MemoryAllocatorVK localOnlyAllocator;
-		MemoryAllocatorVK hostVisibleAllocator;
-		MemoryAllocatorVK hostOnlyAllocator;
-		MemoryAllocatorVK hostOnlyCachedAllocator;
-
 		u32     frameIndex             = ~0u;
 		VkFence lastGraphicsFence      = VK_NULL_HANDLE;
 		bool    presentSemaphoreWaited = false;
@@ -563,6 +558,9 @@ public:
 
 	DynamicArray<FrameData> m_frameData;
 	FrameData*             m_currentFrame = nullptr;
+
+	MemoryAllocatorVK m_transientLocalAllocator;
+	MemoryAllocatorVK m_transientHostAllocator;
 
 	u32 m_uniqueResourceCounter = 1;
 	u32 m_frameCount            = 0;

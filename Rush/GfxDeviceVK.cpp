@@ -838,45 +838,28 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		m_memoryTraits[i].bits = bits;
 	}
 
+	
+
 	m_memoryTypes.local = memoryTypeFromProperties(0xFFFFFFFF, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	m_memoryTypes.hostVisible =
-	    memoryTypeFromProperties(0xFFFFFFFF, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-	if (m_memoryTypes.hostVisible == 0xFFFFFFFF)
-	{
-		m_memoryTypes.hostVisible = memoryTypeFromProperties(0xFFFFFFFF, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	}
-
-	m_memoryTypes.hostOnly = memoryTypeFromProperties(0xFFFFFFFF,
-	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-	    VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	if (m_memoryTypes.hostOnly == 0xFFFFFFFF)
-	{
-		m_memoryTypes.hostOnly = memoryTypeFromProperties(
-		    0xFFFFFFFF, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
-	}
-
-	if (m_memoryTypes.hostOnly == 0xFFFFFFFF)
-	{
-		m_memoryTypes.hostOnly = memoryTypeFromProperties(0xFFFFFFFF, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	}
-
-	m_memoryTypes.hostOnlyCached = memoryTypeFromProperties(0xFFFFFFFF,
-	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-	    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
 	RUSH_ASSERT(m_memoryTypes.local != 0xFFFFFFFF);
-	RUSH_ASSERT(m_memoryTypes.hostVisible != 0xFFFFFFFF);
-	RUSH_ASSERT(m_memoryTypes.hostOnly != 0xFFFFFFFF);
 
-	if (m_memoryTypes.hostOnlyCached == 0xFFFFFFFF)
+	struct
 	{
-		// Host-only cached is unavailable (Intel).
-		// Fallback to host visible.
-		m_memoryTypes.hostOnlyCached = m_memoryTypes.hostVisible;
+		VkFlags required;
+		VkFlags incompatible;
+	} hostMemoryProperties[] = {
+	    {VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0},
+	    {VK_MEMORY_PROPERTY_HOST_CACHED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT},
+		{VK_MEMORY_PROPERTY_HOST_CACHED_BIT, 0},
+	    {VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0},
+	    {VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 0},
+	};
+
+	for (u32 i = 0; i < RUSH_COUNTOF(hostMemoryProperties) && m_memoryTypes.host == 0xFFFFFFFF; ++i)
+	{
+		m_memoryTypes.host = memoryTypeFromProperties(0xFFFFFFFF, hostMemoryProperties[i].required, hostMemoryProperties[i].incompatible);
 	}
+	RUSH_ASSERT(m_memoryTypes.host != 0xFFFFFFFF);
 
 	// Swap chain
 
@@ -933,11 +916,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		it.timestampPoolData.resize(timestampPoolCreateInfo.queryCount);
 		it.timestampSlotMap.resize(timestampPoolCreateInfo.queryCount);
 
-		it.localOnlyAllocator.init(m_memoryTypes.local, false);
-		it.hostVisibleAllocator.init(m_memoryTypes.hostVisible, true);
-		it.hostOnlyAllocator.init(m_memoryTypes.hostOnly, true);
-		it.hostOnlyCachedAllocator.init(m_memoryTypes.hostOnlyCached, true);
 	}
+
+	m_transientLocalAllocator.init(m_memoryTypes.local, false);
+	m_transientHostAllocator.init(m_memoryTypes.host, true);
 
 	m_currentFrame                         = &m_frameData.back();
 	m_currentFrame->presentSemaphoreWaited = true;
@@ -1081,7 +1063,7 @@ GfxDevice::~GfxDevice()
 
 	for (FrameData& it : m_frameData)
 	{
-		it.destructionQueue.flush(m_vulkanDevice);
+		it.destructionQueue.flush(this);
 	}
 
 	for (auto& contextPool : m_freeContexts)
@@ -1117,21 +1099,16 @@ GfxDevice::~GfxDevice()
 
 	for (FrameData& it : m_frameData)
 	{
-		it.localOnlyAllocator.releaseBlocks();
-		it.hostVisibleAllocator.releaseBlocks();
-		it.hostOnlyAllocator.releaseBlocks();
-		it.hostOnlyCachedAllocator.releaseBlocks();
-	}
-
-	for (FrameData& it : m_frameData)
-	{
 		it.descriptorPools.clear();
 		it.availableDescriptorPools.clear();
 
 		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, g_allocationCallbacks);
 
-		it.destructionQueue.flush(m_vulkanDevice);
+		it.destructionQueue.flush(this);
 	}
+
+	m_transientLocalAllocator.releaseBlocks(true);
+	m_transientHostAllocator.releaseBlocks(true);
 
 	for (auto& it : m_renderPasses)
 	{
@@ -1816,12 +1793,7 @@ void GfxDevice::beginFrame()
 		m_currentFrame->lastGraphicsFence = VK_NULL_HANDLE;
 	}
 
-	m_currentFrame->destructionQueue.flush(m_vulkanDevice);
-
-	m_currentFrame->localOnlyAllocator.reset();
-	m_currentFrame->hostVisibleAllocator.reset();
-	m_currentFrame->hostOnlyAllocator.reset();
-	m_currentFrame->hostOnlyCachedAllocator.reset();
+	m_currentFrame->destructionQueue.flush(this);
 
 	m_currentFrame->presentSemaphoreWaited = false;
 
@@ -1832,10 +1804,19 @@ void GfxDevice::beginFrame()
 	}
 	m_currentFrame->descriptorPools.clear();
 
+	m_transientLocalAllocator.reset();
+
 	extendDescriptorPool(m_currentFrame);
 }
 
-void GfxDevice::endFrame() {}
+void GfxDevice::endFrame() 
+{
+	for (MemoryBlockVK& block : m_transientHostAllocator.m_fullBlocks)
+	{
+		m_currentFrame->destructionQueue.transientHostMemory.push_back(block);
+	}
+	m_transientHostAllocator.m_fullBlocks.clear();
+}
 
 u32 GfxDevice::memoryTypeFromProperties(u32 memoryTypeBits, VkFlags requiredFlags, VkFlags incompatibleFlags)
 {
@@ -1911,7 +1892,7 @@ MemoryBlockVK MemoryAllocatorVK::alloc(u64 size, u64 alignment)
 		if (m_availableBlocks.empty())
 		{
 			u64 blockSize = max<u64>(size, m_defaultBlockSize);
-			m_availableBlocks.push_back(allocBlock(blockSize));
+			addBlock(allocBlock(blockSize));
 		}
 
 		MemoryBlockVK& currentBlock  = m_availableBlocks.back();
@@ -1953,16 +1934,24 @@ void MemoryAllocatorVK::reset()
 	m_fullBlocks.clear();
 }
 
-void MemoryAllocatorVK::releaseBlocks()
+void MemoryAllocatorVK::addBlock(const MemoryBlockVK& block)
+{
+	RUSH_ASSERT(block.offset == 0);
+	RUSH_ASSERT(block.memory != VK_NULL_HANDLE);
+	RUSH_ASSERT(block.buffer != VK_NULL_HANDLE);
+	m_availableBlocks.push_back(block);
+}
+
+void MemoryAllocatorVK::releaseBlocks(bool immediate)
 {
 	for (MemoryBlockVK& block : m_fullBlocks)
 	{
-		freeBlock(block);
+		freeBlock(block, immediate);
 	}
 
 	for (MemoryBlockVK& block : m_availableBlocks)
 	{
-		freeBlock(block);
+		freeBlock(block, immediate);
 	}
 
 	m_fullBlocks.clear();
@@ -2002,15 +1991,23 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 	return block;
 }
 
-void MemoryAllocatorVK::freeBlock(MemoryBlockVK block)
+void MemoryAllocatorVK::freeBlock(MemoryBlockVK block, bool immediate)
 {
 	if (m_hostVisible)
 	{
 		vkUnmapMemory(g_vulkanDevice, block.memory);
 	}
 
-	g_device->enqueueDestroyBuffer(block.buffer);
-	g_device->enqueueDestroyMemory(block.memory);
+	if (immediate)
+	{
+		vkDestroyBuffer(g_vulkanDevice, block.buffer, g_allocationCallbacks);
+		vkFreeMemory(g_vulkanDevice, block.memory, g_allocationCallbacks);
+	}
+	else
+	{
+		g_device->enqueueDestroyBuffer(block.buffer);
+		g_device->enqueueDestroyMemory(block.memory);
+	}
 }
 
 inline VkCommandPool getCommandPoolByContextType(GfxContextType contextType)
@@ -3095,7 +3092,7 @@ void GfxDevice::captureScreenshot()
 
 	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 	allocInfo.allocationSize       = memoryReq.size;
-	allocInfo.memoryTypeIndex      = m_memoryTypes.hostOnly;
+	allocInfo.memoryTypeIndex      = m_memoryTypes.host;
 
 	V(vkAllocateMemory(m_vulkanDevice, &allocInfo, g_allocationCallbacks, &memory));
 	V(vkBindBufferMemory(m_vulkanDevice, buffer, memory, 0));
@@ -3873,31 +3870,6 @@ static u32 aspectFlagsFromFormat(GfxFormat format)
 	return aspectFlags;
 }
 
-VkDeviceMemory allocDeviceMemory(size_t size, u32 memoryType)
-{
-	VkDeviceMemory result = VK_NULL_HANDLE;
-
-	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-	allocInfo.allocationSize       = size;
-	allocInfo.memoryTypeIndex      = memoryType;
-
-	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &result));
-
-	return result;
-}
-
-inline VkDeviceMemory allocLocalMemory(size_t size) { return allocDeviceMemory(size, g_device->m_memoryTypes.local); }
-
-inline VkDeviceMemory allocHostOnlyMemory(size_t size)
-{
-	return allocDeviceMemory(size, g_device->m_memoryTypes.hostOnly);
-}
-
-inline VkDeviceMemory allocHostVisibleMemory(size_t size)
-{
-	return allocDeviceMemory(size, g_device->m_memoryTypes.hostVisible);
-}
-
 inline VkImageViewType getDefaultImageViewType(TextureType type)
 {
 	switch (type)
@@ -4095,29 +4067,10 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			stagingBufferSize += alignedLevelSize;
 		}
 
-		VkBufferCreateInfo stagingBufferCreateInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-		stagingBufferCreateInfo.usage              = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		stagingBufferCreateInfo.size               = stagingBufferSize;
+		MemoryBlockVK stagingBlock = g_device->m_transientHostAllocator.alloc(stagingBufferSize, 16);
 
-		VkBuffer stagingBuffer = VK_NULL_HANDLE;
-		V(vkCreateBuffer(g_vulkanDevice, &stagingBufferCreateInfo, g_allocationCallbacks, &stagingBuffer));
-
-		VkMemoryRequirements stagingMemoryReq = {};
-		vkGetBufferMemoryRequirements(g_vulkanDevice, stagingBuffer, &stagingMemoryReq);
-
-		VkMemoryAllocateInfo stagingAllocInfo = getStagingMemoryAllocateInfo(stagingMemoryReq);
-
-		// TODO: allocate memory from a pool, rather than do individual allocations
-		VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
-		V(vkAllocateMemory(g_vulkanDevice, &stagingAllocInfo, g_allocationCallbacks, &stagingMemory));
-		V(vkBindBufferMemory(g_vulkanDevice, stagingBuffer, stagingMemory, 0));
-
-		// TODO: keep upload / staging memory persistently mapped
-		void* mappedStagingImage = nullptr;
-		V(vkMapMemory(g_vulkanDevice, stagingMemory, 0, stagingAllocInfo.allocationSize, 0, &mappedStagingImage));
-
-		size_t stagingImageOffset = 0;
-		u8*    stagingImagePixels = (u8*)mappedStagingImage;
+		size_t stagingImageOffset = stagingBlock.offset;
+		u8*    stagingImagePixels = (u8*)stagingBlock.mappedBuffer;
 
 		for (u32 i = 0; i < count; ++i)
 		{
@@ -4144,7 +4097,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			bufferImageCopy.imageOffset = VkOffset3D{0, 0, 0};
 			bufferImageCopy.imageExtent = VkExtent3D{mipWidth, mipHeight, mipDepth};
 
-			vkCmdCopyBufferToImage(uploadContext->m_commandBuffer, stagingBuffer, res.image,
+			vkCmdCopyBufferToImage(uploadContext->m_commandBuffer, stagingBlock.buffer, res.image,
 			    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageCopy);
 
 			stagingImagePixels += alignedLevelSize;
@@ -4153,11 +4106,6 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 		res.currentLayout = uploadContext->addImageBarrier(res.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &subresourceRange);
-
-		vkUnmapMemory(g_vulkanDevice, stagingMemory);
-
-		g_device->enqueueDestroyMemory(stagingMemory);
-		g_device->enqueueDestroyBuffer(stagingBuffer);
 	}
 
 	return res;
@@ -4395,34 +4343,16 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 
 	if (data)
 	{
-		VkBufferCreateInfo stagingBufferCreateInfo = bufferCreateInfo;
-		stagingBufferCreateInfo.usage              = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		MemoryBlockVK stagingBlock = g_device->m_transientHostAllocator.alloc(bufferCreateInfo.size, 16);
 
-		VkBuffer stagingBuffer = VK_NULL_HANDLE;
-		V(vkCreateBuffer(g_vulkanDevice, &stagingBufferCreateInfo, g_allocationCallbacks, &stagingBuffer));
-
-		VkMemoryRequirements stagingMemoryReq = {};
-		vkGetBufferMemoryRequirements(g_vulkanDevice, stagingBuffer, &stagingMemoryReq);
-		VkMemoryAllocateInfo stagingAllocInfo = getStagingMemoryAllocateInfo(stagingMemoryReq);
-
-		VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
-		V(vkAllocateMemory(g_vulkanDevice, &stagingAllocInfo, g_allocationCallbacks, &stagingMemory));
-
-		void* mappedBuffer = nullptr;
-		V(vkMapMemory(g_vulkanDevice, stagingMemory, 0, stagingAllocInfo.allocationSize, 0, &mappedBuffer));
-
-		memcpy(mappedBuffer, data, stagingBufferCreateInfo.size);
-
-		vkUnmapMemory(g_vulkanDevice, stagingMemory);
-
-		V(vkBindBufferMemory(g_vulkanDevice, stagingBuffer, stagingMemory, 0));
+		memcpy(stagingBlock.mappedBuffer, data, bufferCreateInfo.size);
 
 		RUSH_ASSERT(res.info.buffer != VK_NULL_HANDLE);
 
 		VkMemoryRequirements memoryReq = {};
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
 
-		VkMemoryAllocateInfo allocInfo = stagingAllocInfo;
+		VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 		allocInfo.allocationSize       = memoryReq.size;
 		allocInfo.memoryTypeIndex =
 		    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
@@ -4440,13 +4370,10 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 
 		GfxContext*  uploadContext = getUploadContext();
 		VkBufferCopy region        = {};
-		region.srcOffset           = 0;
+		region.srcOffset           = stagingBlock.offset;
 		region.dstOffset           = 0;
 		region.size                = bufferCreateInfo.size;
-		vkCmdCopyBuffer(uploadContext->m_commandBuffer, stagingBuffer, res.info.buffer, 1, &region);
-
-		g_device->enqueueDestroyBuffer(stagingBuffer);
-		g_device->enqueueDestroyMemory(stagingMemory);
+		vkCmdCopyBuffer(uploadContext->m_commandBuffer, stagingBlock.buffer, res.info.buffer, 1, &region);
 
 		res.lastUpdateFrame = g_device->m_frameCount;
 	}
@@ -4700,7 +4627,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 			g_device->enqueueDestroyBuffer(buffer.info.buffer);
 		}
 
-		MemoryBlockVK block = g_device->m_currentFrame->localOnlyAllocator.alloc(size, alignment);
+		MemoryBlockVK block = g_device->m_transientLocalAllocator.alloc(size, alignment);
 
 		buffer.memory     = block.memory;
 		buffer.ownsMemory = false;
@@ -4725,7 +4652,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 	memoryReq.alignment            = alignment;
 	memoryReq.size                 = size;
 
-	MemoryBlockVK block = g_device->m_currentFrame->hostOnlyAllocator.alloc(memoryReq.size, memoryReq.alignment);
+	MemoryBlockVK block = g_device->m_transientHostAllocator.alloc(memoryReq.size, memoryReq.alignment);
 	RUSH_ASSERT(block.buffer);
 	RUSH_ASSERT(block.mappedBuffer);
 
@@ -5349,8 +5276,10 @@ void BufferVK::destroy()
 
 const GfxCapability& Gfx_GetCapability() { return g_device->m_caps; }
 
-void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
+void GfxDevice::DestructionQueue::flush(GfxDevice* device)
 {
+	VkDevice vulkanDevice = device->m_vulkanDevice;
+
 	for (VkPipeline x : pipelines)
 	{
 		vkDestroyPipeline(vulkanDevice, x, g_allocationCallbacks);
@@ -5404,6 +5333,13 @@ void GfxDevice::DestructionQueue::flush(VkDevice vulkanDevice)
 		delete p;
 	}
 	descriptorPools.clear();
+
+	for (MemoryBlockVK& block : transientHostMemory)
+	{
+		block.offset = 0;
+		device->m_transientHostAllocator.addBlock(block);
+	}
+	transientHostMemory.clear();
 }
 
 const char* toString(VkResult value)
@@ -5774,7 +5710,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	    getAllocInfo(accel.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV);
 
 	const u32          scratchAlignment = 256; // TODO: what should the alignment be?
-	MemoryAllocatorVK& scratchAllocator = g_device->m_currentFrame->localOnlyAllocator;
+	MemoryAllocatorVK& scratchAllocator = g_device->m_transientLocalAllocator;
 	MemoryBlockVK      scratchBlock     = scratchAllocator.alloc(scratchAllocInfo.allocationSize, scratchAlignment);
 
 	VkDescriptorBufferInfo instanceBufferInfo = {};
