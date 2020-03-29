@@ -11,6 +11,8 @@
 namespace Rush
 {
 
+const Timer Timer::global;
+
 Timer::Timer(void)
 {
 #if defined(RUSH_PLATFORM_WINDOWS)
