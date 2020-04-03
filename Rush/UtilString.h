@@ -122,9 +122,29 @@ public:
 		return m_data[idx];
 	}
 
-	const char* c_str() const
+	const char* data() const
 	{
 		return m_data ? m_data : String::getEmptyString();
+	}
+
+	bool operator == (const char* other) const
+	{
+		return strncmp(m_data, other, m_length) == 0;
+	}
+
+	bool operator != (const char* other) const
+	{
+		return strncmp(m_data, other, m_length) != 0;
+	}
+
+	bool operator == (const StringView& other) const
+	{
+		return m_length == other.m_length && memcmp(m_data, other.m_data, m_length) == 0;
+	}
+
+	bool operator != (const StringView& other) const
+	{
+		return m_length != other.m_length || memcmp(m_data, other.m_data, m_length) != 0;
 	}
 
 private:
