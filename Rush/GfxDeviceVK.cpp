@@ -3669,8 +3669,13 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		// todo: batch all allocations into one
 
 		size_t specializationEntriesSize = sizeof(VkSpecializationMapEntry) * desc.specializationConstantCount;
-		void*  specializationEntriesCopy = allocateBytes(specializationEntriesSize);
-		memcpy(specializationEntriesCopy, desc.specializationConstants, specializationEntriesSize);
+		VkSpecializationMapEntry* specializationEntriesCopy = (VkSpecializationMapEntry*)allocateBytes(specializationEntriesSize);
+		for (u32 i = 0; i < desc.specializationConstantCount; ++i)
+		{
+			specializationEntriesCopy[i].constantID = desc.specializationConstants[i].id;
+			specializationEntriesCopy[i].offset = desc.specializationConstants[i].offset;
+			specializationEntriesCopy[i].size = size_t(desc.specializationConstants[i].size);
+		}
 
 		void* specializationDataCopy = allocateBytes(desc.specializationDataSize);
 		memcpy(specializationDataCopy, desc.specializationData, desc.specializationDataSize);
@@ -3678,7 +3683,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		res.specializationInfo = (VkSpecializationInfo*)allocateBytes(sizeof(VkSpecializationInfo));
 
 		res.specializationInfo->mapEntryCount = desc.specializationConstantCount;
-		res.specializationInfo->pMapEntries   = reinterpret_cast<VkSpecializationMapEntry*>(specializationEntriesCopy);
+		res.specializationInfo->pMapEntries   = specializationEntriesCopy;
 		res.specializationInfo->dataSize      = desc.specializationDataSize;
 		res.specializationInfo->pData         = specializationDataCopy;
 	}
