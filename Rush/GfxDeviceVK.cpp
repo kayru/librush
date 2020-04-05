@@ -632,11 +632,13 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 			continue;
 		}
 
+		#if 0
 		if ((m_queueProps[queueIt].queueFlags & VK_QUEUE_TRANSFER_BIT) && transferQueueIndex == invalidIndex)
 		{
 			transferQueueIndex = queueIt;
 			continue;
 		}
+		#endif
 	}
 
 	RUSH_ASSERT(graphicsQueueIndex != invalidIndex);
