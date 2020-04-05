@@ -8,9 +8,9 @@
 
 namespace Rush
 {
-u32 FileIn::read(void* buf, u32 size)
+u64 FileIn::read(void* buf, u64 size)
 {
-	u32 br = (u32)fread(buf, 1, size, m_file);
+	u64 br = (u64)fread(buf, 1, size, m_file);
 	return br;
 }
 
@@ -25,29 +25,29 @@ FileIn::~FileIn()
 	}
 }
 
-u32 FileIn::length()
+u64 FileIn::length()
 {
-	u32 currPos = tell();
+	u64 currPos = tell();
 
 	fseek(m_file, 0, SEEK_END);
 
-	u32 endPos = tell();
+	u64 endPos = tell();
 
-	fseek(m_file, currPos, SEEK_SET);
+	fseek(m_file, long(currPos), SEEK_SET);
 
 	return endPos;
 }
 
-u32 FileOut::write(const void* buf, u32 size)
+u64 FileOut::write(const void* buf, u64 size)
 {
-	u32 inBufPos    = 0;
-	u32 inBytesLeft = size;
+	u64 inBufPos    = 0;
+	u64 inBytesLeft = size;
 
 	while (inBytesLeft != 0)
 	{
-		u32 outBytesLeft = m_bufferSize - m_bufferPos;
+		u64 outBytesLeft = m_bufferSize - m_bufferPos;
 
-		u32 bytesToCopy = min(inBytesLeft, outBytesLeft);
+		u64 bytesToCopy = min(inBytesLeft, outBytesLeft);
 
 		memcpy(&m_buffer[m_bufferPos], &((char*)buf)[inBufPos], bytesToCopy);
 
@@ -64,7 +64,7 @@ u32 FileOut::write(const void* buf, u32 size)
 	return size;
 }
 
-FileOut::FileOut(const char* filename, u32 buffer_size) : m_buffer(nullptr), m_bufferSize(buffer_size), m_bufferPos(0)
+FileOut::FileOut(const char* filename, u64 buffer_size) : m_buffer(nullptr), m_bufferSize(buffer_size), m_bufferPos(0)
 {
 	m_file   = fopen(filename, "wb");
 	m_buffer = new char[m_bufferSize];
@@ -95,12 +95,12 @@ void FileOut::close()
 	m_buffer = nullptr;
 }
 
-u32 FileBase::tell()
+u64 FileBase::tell()
 {
-	return (u32)ftell(m_file); // TODO: fix casting
+	return (u64)ftell(m_file); // TODO: fix casting
 }
 
-void FileBase::seek(u32 pos) { fseek(m_file, pos, SEEK_SET); }
+void FileBase::seek(u64 pos) { fseek(m_file, long(pos), SEEK_SET); }
 
 void FileBase::skip(int distance) { fseek(m_file, distance, SEEK_CUR); }
 

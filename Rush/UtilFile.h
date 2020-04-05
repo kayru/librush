@@ -17,8 +17,8 @@ public:
 	FileBase() : m_file(nullptr){};
 	virtual ~FileBase() override{};
 
-	virtual u32  tell() override;
-	virtual void seek(u32 pos) override;
+	virtual u64  tell() override;
+	virtual void seek(u64 pos) override;
 	virtual void skip(int distance) override;
 	virtual void rewind() override;
 
@@ -39,10 +39,10 @@ public:
 	FileIn(const char* filename);
 	virtual ~FileIn() override;
 
-	virtual u32 read(void* buf, u32 size) override;
-	virtual u32 write(const void*, u32) override { return 0; }
+	virtual u64 read(void* buf, u64 size) override;
+	virtual u64 write(const void*, u64) override { return 0; }
 
-	virtual u32 length() override;
+	virtual u64 length() override;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -51,13 +51,13 @@ class FileOut : public FileBase
 {
 
 public:
-	FileOut(const char* filename, u32 buffer_size = (1 << 20));
+	FileOut(const char* filename, u64 buffer_size = (1 << 20));
 	virtual ~FileOut();
 
-	virtual u32 read(void*, u32) override { return 0; }
-	virtual u32 write(const void* buf, u32 size) override;
+	virtual u64 read(void*, u64) override { return 0; }
+	virtual u64 write(const void* buf, u64 size) override;
 
-	virtual u32 length() override { return 0; }
+	virtual u64 length() override { return 0; }
 
 	void close();
 
@@ -68,7 +68,7 @@ private:
 	FileOut& operator=(const FileOut&) = delete;
 
 	char*     m_buffer;
-	const u32 m_bufferSize;
-	u32       m_bufferPos;
+	const u64 m_bufferSize;
+	u64       m_bufferPos;
 };
 }
