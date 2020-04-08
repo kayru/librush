@@ -97,7 +97,15 @@ void FileOut::close()
 
 u64 FileBase::tell()
 {
-	return (u64)ftell(m_file); // TODO: fix casting
+	long fileSize = ftell(m_file);
+	if (fileSize == long(-1))
+	{
+		return 0;
+	}
+	else
+	{
+		return u64(fileSize);
+	}
 }
 
 void FileBase::seek(u64 pos) { fseek(m_file, long(pos), SEEK_SET); }
