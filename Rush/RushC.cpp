@@ -677,6 +677,9 @@ rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_eleme
 		GfxVertexFormatDesc::DataType type = GfxVertexFormatDesc::DataType::Unused;
 		switch(convert(elem.format))
 		{
+			default:
+				RUSH_LOG_ERROR("Unsupported vertex format");
+				type = GfxVertexFormatDesc::DataType::Unused;
 			case GfxFormat_R32_Float:    type = GfxVertexFormatDesc::DataType::Float1; break;
 			case GfxFormat_RG32_Float:   type = GfxVertexFormatDesc::DataType::Float2; break;
 			case GfxFormat_RGB32_Float:  type = GfxVertexFormatDesc::DataType::Float3; break;
