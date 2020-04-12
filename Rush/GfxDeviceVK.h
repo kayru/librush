@@ -4,6 +4,10 @@
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_VK
 
+#ifndef VK_ENABLE_BETA_EXTENSIONS
+#define VK_ENABLE_BETA_EXTENSIONS
+#endif
+
 #include "Window.h"
 #include "UtilArray.h"
 #include "UtilHash.h"

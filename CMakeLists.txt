@@ -136,6 +136,7 @@ endif()
 if (${RUSH_RENDER_API} MATCHES "VK")
 	target_compile_definitions(Rush PUBLIC
 		RUSH_RENDER_API=RUSH_RENDER_API_VK
+		VK_ENABLE_BETA_EXTENSIONS=1
 		${RUSH_VULKAN_PLATFORM}
 	)
 	target_include_directories(Rush PUBLIC
