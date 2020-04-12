@@ -320,6 +320,7 @@ public:
 	void enqueueDestroySampler(VkSampler object);
 	void enqueueDestroyContext(GfxContext* object);
 	void enqueueDestroyDescriptorPool(DescriptorPoolVK* object);
+	void enqueueDestroyAccelerationStructure(VkAccelerationStructureNV object);
 
 	void captureScreenshot();
 
@@ -534,6 +535,7 @@ public:
 		DynamicArray<VkSampler>         samplers;
 		DynamicArray<DescriptorPoolVK*> descriptorPools;
 		DynamicArray<MemoryBlockVK>     transientHostMemory;
+		DynamicArray<VkAccelerationStructureNV> accelerationStructures;
 
 		void flush(GfxDevice* device);
 	};

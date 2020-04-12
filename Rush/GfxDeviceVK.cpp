@@ -1878,6 +1878,11 @@ void GfxDevice::enqueueDestroyDescriptorPool(DescriptorPoolVK* object)
 	m_currentFrame->destructionQueue.descriptorPools.push_back(object);
 }
 
+void GfxDevice::enqueueDestroyAccelerationStructure(VkAccelerationStructureNV object)
+{
+	m_currentFrame->destructionQueue.accelerationStructures.push_back(object);
+}
+
 void GfxDevice::enqueueDestroySampler(VkSampler object) { m_currentFrame->destructionQueue.samplers.push_back(object); }
 
 void MemoryAllocatorVK::init(u32 memoryType, bool hostVisible)
@@ -5347,6 +5352,12 @@ void GfxDevice::DestructionQueue::flush(GfxDevice* device)
 		device->m_transientHostAllocator.addBlock(block);
 	}
 	transientHostMemory.clear();
+
+	for (VkAccelerationStructureNV& object : accelerationStructures)
+	{
+		vkDestroyAccelerationStructureNV(g_vulkanDevice, object, g_allocationCallbacks);
+	}
+	accelerationStructures.clear();
 }
 
 const char* toString(VkResult value)
@@ -5834,7 +5845,7 @@ void AccelerationStructureVK::destroy()
 {
 	if (native != VK_NULL_HANDLE)
 	{
-		vkDestroyAccelerationStructureNV(g_vulkanDevice, native, g_allocationCallbacks);
+		g_device->enqueueDestroyAccelerationStructure(native);
 		native = VK_NULL_HANDLE;
 	}
 
