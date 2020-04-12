@@ -531,7 +531,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	if (cfg.debug)
 	{
-		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_LUNARG_standard_validation", false);
 		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_KHRONOS_validation", false);
 		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_EXT_debug_report", false);
 	}
@@ -593,11 +592,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	memset(&m_physicalDeviceProps, 0, sizeof(m_physicalDeviceProps));
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProps);
 
-	m_physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 	m_physicalDeviceFeatures2.pNext = &m_nvMeshShaderFeatures;
-
-	m_nvMeshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV;
-	m_nvMeshShaderFeatures.pNext = nullptr;
+	m_nvMeshShaderFeatures.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
 
 	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
@@ -723,37 +719,35 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	if (m_supportedExtensions.NV_ray_tracing)
 	{
-		m_nvRayTracingProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV;
 		m_nvRayTracingProps.pNext = physicalDeviceProps2Next;
 		physicalDeviceProps2Next  = &m_nvRayTracingProps;
 	}
 
 	if (m_supportedExtensions.NV_mesh_shader)
 	{
-		m_nvMeshShaderProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV;
 		m_nvMeshShaderProps.pNext = physicalDeviceProps2Next;
 		physicalDeviceProps2Next  = &m_nvMeshShaderProps;
 	}
 
+	m_descriptorIndexingProperties.pNext = physicalDeviceProps2Next;
+	physicalDeviceProps2Next = &m_descriptorIndexingProperties;
+
 	enableDeviceExtension(VK_EXT_SHADER_SUBGROUP_BALLOT_EXTENSION_NAME);
 	enableDeviceExtension(VK_EXT_SHADER_SUBGROUP_VOTE_EXTENSION_NAME);
 
-	VkPhysicalDeviceSubgroupProperties subgroupProperties = {};
-	subgroupProperties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+	VkPhysicalDeviceSubgroupProperties subgroupProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
 	subgroupProperties.pNext                              = physicalDeviceProps2Next;
 	physicalDeviceProps2Next                              = &subgroupProperties;
 
-	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = {};
+	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD };
 	if (m_supportedExtensions.AMD_wave_limits)
 	{
-		waveLimitProps.sType     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD;
 		waveLimitProps.pNext     = physicalDeviceProps2Next;
 		physicalDeviceProps2Next = &waveLimitProps;
 	}
 
 	if (vkGetPhysicalDeviceProperties2KHR)
 	{
-		m_physicalDeviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
 		m_physicalDeviceProps2.pNext = physicalDeviceProps2Next;
 		vkGetPhysicalDeviceProperties2KHR(m_physicalDevice, &m_physicalDeviceProps2);
 	}
@@ -768,22 +762,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	if (cfg.debug)
 	{
-		if (!enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_standard_validation"))
-		{
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_GOOGLE_threading");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_parameter_validation");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_device_limits");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_object_tracker");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_image");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_core_validation");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_swapchain");
-			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_GOOGLE_unique_objects");
-		}
 		enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_KHRONOS_validation");
 	}
 
-	VkPhysicalDeviceFeatures enabledDeviceFeatures = m_physicalDeviceFeatures2.features;
-	enabledDeviceFeatures.robustBufferAccess       = false;
+	// Explicitly turn off certain features
+	m_physicalDeviceFeatures2.features.robustBufferAccess = false;
 
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
@@ -792,7 +775,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	deviceCreateInfo.ppEnabledLayerNames     = enabledDeviceLayers.data();
 	deviceCreateInfo.enabledExtensionCount   = (u32)enabledDeviceExtensions.size();
 	deviceCreateInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
-	deviceCreateInfo.pEnabledFeatures        = &enabledDeviceFeatures;
+	deviceCreateInfo.pNext = &m_physicalDeviceFeatures2;
 
 	V(vkCreateDevice(m_physicalDevice, &deviceCreateInfo, g_allocationCallbacks, &m_vulkanDevice));
 	g_vulkanDevice = m_vulkanDevice;
@@ -962,10 +945,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_caps.drawIndirect            = true;
 	m_caps.dispatchIndirect        = true;
 	m_caps.pushConstants           = true;
-	m_caps.shaderInt16             = !!enabledDeviceFeatures.shaderInt16;
-	m_caps.shaderInt64             = !!enabledDeviceFeatures.shaderInt64;
+	m_caps.shaderInt16             = !!m_physicalDeviceFeatures2.features.shaderInt16;
+	m_caps.shaderInt64             = !!m_physicalDeviceFeatures2.features.shaderInt64;
 	m_caps.asyncCompute            = m_computeQueueIndex != invalidIndex;
 	m_caps.constantBufferAlignment = u32(m_physicalDeviceProps.limits.minUniformBufferOffsetAlignment);
+
+	m_caps.descriptorIndexing = 
+		!!m_physicalDeviceDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount &&
+		!!m_physicalDeviceDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing;
 
 	const u32 requiredSubgroupOperations = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_VOTE_BIT |
 	                                       VK_SUBGROUP_FEATURE_ARITHMETIC_BIT | VK_SUBGROUP_FEATURE_BALLOT_BIT |
@@ -3468,11 +3455,10 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		return existing->second;
 	}
 
+	DynamicArray<VkDescriptorBindingFlags> layoutBindingsFlags;
 	DynamicArray<VkDescriptorSetLayoutBinding> layoutBindings;
-	layoutBindings.reserve(desc.getResourceCount());
 
-	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {};
-	descriptorSetLayoutCreateInfo.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 
 	u32 bindingSlot = 0;
 
@@ -3485,6 +3471,7 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		layoutBinding.descriptorCount = 1;
 		layoutBinding.stageFlags      = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
+		layoutBindingsFlags.push_back(0);
 	}
 
 	for (u32 i = 0; i < desc.samplers; ++i)
@@ -3495,16 +3482,36 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		layoutBinding.descriptorCount              = 1;
 		layoutBinding.stageFlags                   = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
+		layoutBindingsFlags.push_back(0);
 	}
 
 	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
+	const bool isVariableDescriptorCount = !!(desc.flags & GfxDescriptorSetFlags::VariableDescriptorCount);
+	RUSH_ASSERT(!isVariableDescriptorCount || g_device->m_caps.descriptorIndexing);
+
 	for (u32 i = 0; i < (isTextureArray ? 1u : desc.textures); ++i)
 	{
 		VkDescriptorSetLayoutBinding layoutBinding = {};
 		layoutBinding.binding                      = bindingSlot++;
 		layoutBinding.descriptorType               = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		layoutBinding.descriptorCount              = isTextureArray ? desc.textures : 1;
-		layoutBinding.stageFlags                   = resourceStageFlags;
+
+		if (isTextureArray && isVariableDescriptorCount)
+		{
+			layoutBinding.descriptorCount = 0xFFFF; // arbitrary large number
+			layoutBindingsFlags.push_back(VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
+		}
+		else if (isTextureArray)
+		{
+			layoutBinding.descriptorCount = desc.textures;
+			layoutBindingsFlags.push_back(0);
+		}
+		else
+		{
+			layoutBinding.descriptorCount = 1;
+			layoutBindingsFlags.push_back(0);
+		}
+
+		layoutBinding.stageFlags = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
 	}
 
@@ -3516,6 +3523,7 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		layoutBinding.descriptorCount              = 1;
 		layoutBinding.stageFlags                   = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
+		layoutBindingsFlags.push_back(0);
 	}
 
 	for (u32 i = 0; i < u32(desc.rwBuffers) + desc.rwTypedBuffers; ++i)
@@ -3529,6 +3537,7 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		layoutBinding.descriptorCount = 1;
 		layoutBinding.stageFlags      = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
+		layoutBindingsFlags.push_back(0);
 	}
 
 	for (u32 i = 0; i < desc.accelerationStructures; ++i)
@@ -3539,13 +3548,21 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 		layoutBinding.descriptorCount = 1;
 		layoutBinding.stageFlags = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
+		layoutBindingsFlags.push_back(0);
 	}
 
+	RUSH_ASSERT(layoutBindings.size() == layoutBindingsFlags.size());
 	RUSH_ASSERT(bindingSlot == layoutBindings.size());
 	RUSH_ASSERT(bindingSlot == getBindingSlotCount(desc));
 
 	descriptorSetLayoutCreateInfo.bindingCount = (u32)layoutBindings.size();
 	descriptorSetLayoutCreateInfo.pBindings    = layoutBindings.data();
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfo flagsCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
+	flagsCreateInfo.bindingCount = descriptorSetLayoutCreateInfo.bindingCount;
+	flagsCreateInfo.pBindingFlags = layoutBindingsFlags.data();
+
+	descriptorSetLayoutCreateInfo.pNext = &flagsCreateInfo;
 
 	VkDescriptorSetLayout res = VK_NULL_HANDLE;
 	V(vkCreateDescriptorSetLayout(g_vulkanDevice, &descriptorSetLayoutCreateInfo, g_allocationCallbacks, &res));

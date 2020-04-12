@@ -452,12 +452,14 @@ public:
 	VkDevice                         m_vulkanDevice   = VK_NULL_HANDLE;
 	VkPhysicalDevice                 m_physicalDevice = VK_NULL_HANDLE;
 	VkPhysicalDeviceProperties       m_physicalDeviceProps;
-	VkPhysicalDeviceProperties2KHR   m_physicalDeviceProps2;
-	VkPhysicalDeviceFeatures2        m_physicalDeviceFeatures2 = {};
-	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = {};
+	VkPhysicalDeviceProperties2      m_physicalDeviceProps2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	VkPhysicalDeviceFeatures2        m_physicalDeviceFeatures2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	VkPhysicalDeviceDescriptorIndexingFeatures m_physicalDeviceDescriptorIndexingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
+	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
-	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps = {};
-	VkPhysicalDeviceMeshShaderPropertiesNV m_nvMeshShaderProps = {};
+	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV };
+	VkPhysicalDeviceMeshShaderPropertiesNV m_nvMeshShaderProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV };
+	VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES };
 	DynamicArray<MemoryTraitsVK>      m_memoryTraits;
 
 	struct MemoryTypes

@@ -90,6 +90,7 @@ struct GfxCapability
 	bool        asyncCompute         = false;
 	bool        sampleLocations      = false;
 	bool        pushConstants        = false;
+	bool        descriptorIndexing   = false;
 
 	bool explicitVertexParameterAMD  = false;
 

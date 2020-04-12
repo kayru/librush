@@ -851,6 +851,7 @@ enum class GfxDescriptorSetFlags : u8
 {
 	None  = 0,
 	TextureArray = 1 << 0,
+	VariableDescriptorCount = 1 << 1,
 };
 RUSH_IMPLEMENT_FLAG_OPERATORS(GfxDescriptorSetFlags, u8)
 
@@ -868,7 +869,9 @@ struct GfxDescriptorSetDesc
 
 	u32 getResourceCount() const
 	{
-		return constantBuffers + samplers + textures + rwImages + rwBuffers + rwTypedBuffers + accelerationStructures;
+		return constantBuffers + samplers 
+			+ (bool(flags&GfxDescriptorSetFlags::TextureArray) ? 1 : textures)
+			+ rwImages + rwBuffers + rwTypedBuffers + accelerationStructures;
 	}
 
 	bool isEmpty() const { return getResourceCount() == 0; }
