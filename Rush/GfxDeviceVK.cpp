@@ -205,8 +205,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
 	{
 		severity = Severity_Warning;
 		if ((flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) &&
-		    (strstr(pMessage, "but no vertex buffers are attached to this Pipeline State Object") ||
-		        strstr(pMessage, "not consumed by vertex shader")))
+			(strstr(pMessage, "but no vertex buffers are attached to this Pipeline State Object") ||
+				strstr(pMessage, "UNASSIGNED-CoreValidation-Shader-OutputNotConsumed")))
 		{
 			severity = Severity_Ignore;
 		}
@@ -532,6 +532,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	if (cfg.debug)
 	{
 		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_LUNARG_standard_validation", false);
+		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_KHRONOS_validation", false);
 		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_EXT_debug_report", false);
 	}
 
@@ -778,6 +779,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_LUNARG_swapchain");
 			enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_GOOGLE_unique_objects");
 		}
+		enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_KHRONOS_validation");
 	}
 
 	VkPhysicalDeviceFeatures enabledDeviceFeatures = m_physicalDeviceFeatures2.features;
