@@ -4774,6 +4774,12 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 
 void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h) {}
 
+u64 Gfx_GetBufferAddress(GfxBufferArg h)
+{
+	BufferVK& buffer = g_device->m_buffers[h];
+	return buffer.deviceAddress;
+}
+
 void Gfx_Release(GfxBuffer h) { releaseResource(g_device->m_buffers, h); }
 
 // context

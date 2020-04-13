@@ -260,6 +260,12 @@ void            Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* dat
 void*           Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size);
 void            Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h);
 
+#ifdef RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
+u64 Gfx_GetBufferAddress(GfxBufferArg h);
+#else // RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
+u64 Gfx_GetBufferAddress(GfxBufferArg) { return 0; }
+#endif // RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
+
 GfxContext* Gfx_AcquireContext();
 void        Gfx_Release(GfxContext* rc);
 
