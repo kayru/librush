@@ -109,6 +109,7 @@ struct BufferVK : GfxResourceBase
 	void*                     mappedMemory    = nullptr;
 	u32                       size            = 0;
 	u32                       lastUpdateFrame = ~0u;
+	u64                       deviceAddress   = 0;
 
 	void destroy();
 };
@@ -197,14 +198,16 @@ struct RayTracingPipelineVK : PipelineBaseVK
 
 struct AccelerationStructureVK : GfxResourceBase
 {
-	VkAccelerationStructureNV native = VK_NULL_HANDLE;
-	u64                       handle = 0;
+	VkAccelerationStructureKHR native = VK_NULL_HANDLE;
+	u64 deviceAddress = 0;
 
-	VkAccelerationStructureInfoNV info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV };
+	VkAccelerationStructureCreateInfoKHR info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
 
-	GfxAccelerationStructureType            type = GfxAccelerationStructureType::BottomLevel;
-	DynamicArray<GfxRayTracingGeometryDesc> geometries;
-	DynamicArray<VkGeometryNV>              nativeGeometries;
+	GfxAccelerationStructureType                     type = GfxAccelerationStructureType::BottomLevel;
+	DynamicArray<GfxRayTracingGeometryDesc>          geometries;
+	DynamicArray<VkAccelerationStructureGeometryKHR> nativeGeometries;
+	DynamicArray<VkAccelerationStructureBuildOffsetInfoKHR> offsetInfos;
+	DynamicArray<VkAccelerationStructureCreateGeometryTypeInfoKHR> geometryTypeInfos;
 
 	// TODO: pool allocations
 	VkDeviceMemory memory = VK_NULL_HANDLE;
@@ -239,6 +242,7 @@ struct MemoryBlockVK
 	u64            size         = 0;
 	VkBuffer       buffer       = VK_NULL_HANDLE;
 	void*          mappedBuffer = nullptr;
+	u64            deviceAddress = 0;
 };
 
 class MemoryAllocatorVK
@@ -324,7 +328,7 @@ public:
 	void enqueueDestroySampler(VkSampler object);
 	void enqueueDestroyContext(GfxContext* object);
 	void enqueueDestroyDescriptorPool(DescriptorPoolVK* object);
-	void enqueueDestroyAccelerationStructure(VkAccelerationStructureNV object);
+	void enqueueDestroyAccelerationStructure(VkAccelerationStructureKHR object);
 
 	void captureScreenshot();
 
@@ -460,8 +464,9 @@ public:
 	VkPhysicalDeviceFeatures2        m_physicalDeviceFeatures2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	VkPhysicalDeviceDescriptorIndexingFeatures m_physicalDeviceDescriptorIndexingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
+	VkPhysicalDeviceBufferDeviceAddressFeatures m_bufferDeviceAddressFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
-	VkPhysicalDeviceRayTracingPropertiesNV m_nvRayTracingProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV };
+	VkPhysicalDeviceRayTracingPropertiesKHR m_rayTracingProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_KHR };
 	VkPhysicalDeviceMeshShaderPropertiesNV m_nvMeshShaderProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV };
 	VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES };
 	DynamicArray<MemoryTraitsVK>      m_memoryTraits;
@@ -541,7 +546,8 @@ public:
 		DynamicArray<VkSampler>         samplers;
 		DynamicArray<DescriptorPoolVK*> descriptorPools;
 		DynamicArray<MemoryBlockVK>     transientHostMemory;
-		DynamicArray<VkAccelerationStructureNV> accelerationStructures;
+
+		DynamicArray<VkAccelerationStructureKHR> accelerationStructures;
 
 		void flush(GfxDevice* device);
 	};
@@ -594,11 +600,15 @@ public:
 		bool AMD_negative_viewport_height         = false;
 		bool AMD_shader_explicit_vertex_parameter = false;
 		bool AMD_wave_limits                      = false;
+		bool EXT_descriptor_indexing              = false;
 		bool EXT_sample_locations                 = false;
+		bool KHR_buffer_device_address            = false;
+		bool KHR_deferred_host_operations         = false;
 		bool KHR_maintenance1                     = false;
+		bool KHR_pipeline_library                 = false;
+		bool KHR_ray_tracing                      = false;
 		bool NV_framebuffer_mixed_samples         = false;
 		bool NV_geometry_shader_passthrough       = false;
-		bool NV_ray_tracing                       = false;
 		bool NV_mesh_shader                       = false;
 	} m_supportedExtensions;
 

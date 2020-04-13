@@ -94,7 +94,7 @@ struct GfxCapability
 
 	bool explicitVertexParameterAMD  = false;
 
-	bool rayTracingNV                = false;
+	bool rayTracing                  = false;
 	bool geometryShaderPassthroughNV = false;
 	bool mixedSamplesNV              = false;
 	bool meshShaderNV                = false;

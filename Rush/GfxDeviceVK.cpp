@@ -430,8 +430,8 @@ static VkShaderStageFlags convertStageFlags(GfxStageFlags flags)
 	}
 	if (!!(flags & GfxStageFlags::RayTracing))
 	{
-		res |= VK_SHADER_STAGE_RAYGEN_BIT_NV | VK_SHADER_STAGE_ANY_HIT_BIT_NV | VK_SHADER_STAGE_CLOSEST_HIT_BIT_NV |
-		       VK_SHADER_STAGE_MISS_BIT_NV | VK_SHADER_STAGE_INTERSECTION_BIT_NV | VK_SHADER_STAGE_CALLABLE_BIT_NV;
+		res |= VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+		       VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CALLABLE_BIT_KHR;
 	}
 	return res;
 }
@@ -594,6 +594,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_physicalDeviceFeatures2.pNext = &m_nvMeshShaderFeatures;
 	m_nvMeshShaderFeatures.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
+	m_physicalDeviceDescriptorIndexingFeatures.pNext = &m_bufferDeviceAddressFeatures;
 
 	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
@@ -629,7 +630,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 			continue;
 		}
 
-		#if 0
+		#if 0 // transfer queue disabled until it is properly synchronized
 		if ((m_queueProps[queueIt].queueFlags & VK_QUEUE_TRANSFER_BIT) && transferQueueIndex == invalidIndex)
 		{
 			transferQueueIndex = queueIt;
@@ -697,9 +698,14 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.AMD_shader_explicit_vertex_parameter =
 	    enableDeviceExtension(VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME, false);
 
+	m_supportedExtensions.EXT_descriptor_indexing = enableDeviceExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, false);
+	m_supportedExtensions.KHR_deferred_host_operations = enableDeviceExtension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, false);
+	m_supportedExtensions.KHR_pipeline_library = enableDeviceExtension(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME, false);
+	m_supportedExtensions.KHR_buffer_device_address = enableDeviceExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME, false);
+
 	if (enableDeviceExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, false))
 	{
-		m_supportedExtensions.NV_ray_tracing = enableDeviceExtension(VK_NV_RAY_TRACING_EXTENSION_NAME, false);
+		m_supportedExtensions.KHR_ray_tracing = enableDeviceExtension(VK_KHR_RAY_TRACING_EXTENSION_NAME, false);
 	}
 
 	m_supportedExtensions.NV_mesh_shader = enableDeviceExtension(VK_NV_MESH_SHADER_EXTENSION_NAME);
@@ -717,10 +723,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	void* physicalDeviceProps2Next = nullptr;
 
-	if (m_supportedExtensions.NV_ray_tracing)
+	if (m_supportedExtensions.KHR_ray_tracing)
 	{
-		m_nvRayTracingProps.pNext = physicalDeviceProps2Next;
-		physicalDeviceProps2Next  = &m_nvRayTracingProps;
+		m_rayTracingProps.pNext = physicalDeviceProps2Next;
+		physicalDeviceProps2Next  = &m_rayTracingProps;
 	}
 
 	if (m_supportedExtensions.NV_mesh_shader)
@@ -766,7 +772,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	}
 
 	// Explicitly turn off certain features
-	m_physicalDeviceFeatures2.features.robustBufferAccess = false;
+	m_physicalDeviceFeatures2.features.robustBufferAccess = VK_FALSE;
+	m_bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = VK_FALSE;
+	m_bufferDeviceAddressFeatures.bufferDeviceAddressMultiDevice = VK_FALSE;
 
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
@@ -966,15 +974,16 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_caps.explicitVertexParameterAMD = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
-	m_caps.rayTracingNV                = m_supportedExtensions.NV_ray_tracing;
+	m_caps.rayTracing = m_supportedExtensions.KHR_ray_tracing; // TODO: rename
+
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.mixedSamplesNV              = m_supportedExtensions.NV_framebuffer_mixed_samples;
 	m_caps.meshShaderNV                = m_supportedExtensions.NV_mesh_shader && m_nvMeshShaderFeatures.meshShader;
-	if (m_caps.rayTracingNV)
+	if (m_caps.rayTracing)
 	{
-		m_caps.rtShaderHandleSize = m_nvRayTracingProps.shaderGroupHandleSize;
-		m_caps.rtSbtMaxStride     = m_nvRayTracingProps.maxShaderGroupStride;
-		m_caps.rtSbtAlignment     = m_nvRayTracingProps.shaderGroupBaseAlignment;
+		m_caps.rtShaderHandleSize = m_rayTracingProps.shaderGroupHandleSize;
+		m_caps.rtSbtMaxStride     = m_rayTracingProps.maxShaderGroupStride;
+		m_caps.rtSbtAlignment     = m_rayTracingProps.shaderGroupBaseAlignment;
 	}
 
 	m_caps.colorSampleCounts = m_physicalDeviceProps.limits.framebufferColorSampleCounts;
@@ -993,7 +1002,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		case VendorID_NVIDIA: m_caps.threadGroupSize = 32; break;
 		case VendorID_AMD: m_caps.threadGroupSize = 64; break;
 		default:
-			m_caps.threadGroupSize = 64; // TODO: what's best for Intel?
+			m_caps.threadGroupSize = 64;
 			break;
 		}
 	}
@@ -1867,7 +1876,7 @@ void GfxDevice::enqueueDestroyDescriptorPool(DescriptorPoolVK* object)
 	m_currentFrame->destructionQueue.descriptorPools.push_back(object);
 }
 
-void GfxDevice::enqueueDestroyAccelerationStructure(VkAccelerationStructureNV object)
+void GfxDevice::enqueueDestroyAccelerationStructure(VkAccelerationStructureKHR object)
 {
 	m_currentFrame->destructionQueue.accelerationStructures.push_back(object);
 }
@@ -1908,6 +1917,7 @@ MemoryBlockVK MemoryAllocatorVK::alloc(u64 size, u64 alignment)
 		result.size         = size;
 		result.buffer       = currentBlock.buffer;
 		result.mappedBuffer = offsetPtr(currentBlock.mappedBuffer, (size_t)alignedOffset);
+		result.deviceAddress = currentBlock.deviceAddress;
 
 		currentBlock.offset = alignedOffset + size;
 
@@ -1965,6 +1975,15 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 	                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
 	                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 	                         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+
+	const bool needDeviceAddress = g_device->m_bufferDeviceAddressFeatures.bufferDeviceAddress;
+	VkMemoryAllocateFlagsInfo allocFlags = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
+	if (needDeviceAddress)
+	{
+		allocFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	}
+
 	bufferCreateInfo.size = blockSize;
 
 	V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, g_allocationCallbacks, &block.buffer));
@@ -1973,11 +1992,23 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 	vkGetBufferMemoryRequirements(g_vulkanDevice, block.buffer, &memoryReq);
 
 	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+	allocInfo.pNext = &allocFlags;
 	allocInfo.allocationSize       = memoryReq.size;
 	allocInfo.memoryTypeIndex      = m_memoryType;
 
 	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &block.memory));
 	V(vkBindBufferMemory(g_vulkanDevice, block.buffer, block.memory, 0));
+
+	if (needDeviceAddress)
+	{
+		VkBufferDeviceAddressInfo deviceAddressInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
+		deviceAddressInfo.buffer = block.buffer;
+		block.deviceAddress = vkGetBufferDeviceAddressKHR(g_vulkanDevice, &deviceAddressInfo);
+	}
+	else
+	{
+		block.deviceAddress = 0;
+	}
 
 	if (m_hostVisible)
 	{
@@ -2646,11 +2677,11 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 
 	// Acceleration structures
 
-	InlineDynamicArray<VkAccelerationStructureNV, 1> writeAccelStructures(desc.accelerationStructures);
-	VkWriteDescriptorSetAccelerationStructureNV writeDescriptorSetAccel;
+	InlineDynamicArray<VkAccelerationStructureKHR, 1> writeAccelStructures(desc.accelerationStructures);
+	VkWriteDescriptorSetAccelerationStructureKHR writeDescriptorSetAccel;
 	if (desc.accelerationStructures)
 	{
-		writeDescriptorSetAccel.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_NV;
+		writeDescriptorSetAccel.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
 		writeDescriptorSetAccel.pNext = nullptr;
 		writeDescriptorSetAccel.accelerationStructureCount = desc.accelerationStructures;
 		writeDescriptorSetAccel.pAccelerationStructures = writeAccelStructures.m_data;
@@ -2664,7 +2695,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		writeDescriptorSet.dstBinding = bindingIndex;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = desc.accelerationStructures;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 		writeDescriptorSet.pImageInfo = nullptr;
 		writeDescriptorSet.pBufferInfo = nullptr;
 		writeDescriptorSet.pTexelBufferView = nullptr;
@@ -2724,7 +2755,7 @@ void GfxContext::applyState()
 		else if (m_pending.rayTracingPipeline.valid())
 		{
 			m_activePipeline = g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline].pipeline;
-			m_currentBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_NV;
+			m_currentBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
 		}
 
 		vkCmdBindPipeline(m_commandBuffer, m_currentBindPoint, m_activePipeline);
@@ -3011,7 +3042,7 @@ void Gfx_BeginFrame()
 #if 0
 	if (vkGetFenceStatus(g_vulkanDevice, g_context->m_fence) == VK_NOT_READY)
 	{
-		RUSH_LOG_ERROR("Allocated immediage context is still in used by GPU. This is likely a bug in command buffer management implementation.");
+		RUSH_LOG_ERROR("Allocated immediate context is still in used by GPU. This is likely a bug in command buffer management implementation.");
 	}
 #endif
 
@@ -3544,7 +3575,7 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 	{
 		VkDescriptorSetLayoutBinding layoutBinding = {};
 		layoutBinding.binding = bindingSlot++;
-		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV;
+		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 		layoutBinding.descriptorCount = 1;
 		layoutBinding.stageFlags = resourceStageFlags;
 		layoutBindings.push_back(layoutBinding);
@@ -4334,7 +4365,7 @@ static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 
 	if (!!(desc.flags & GfxBufferFlags::RayTracing))
 	{
-		bufferCreateInfo.usage |= VK_BUFFER_USAGE_RAY_TRACING_BIT_NV;
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR;
 	}
 
 	bufferCreateInfo.size = desc.count * desc.stride;
@@ -4357,6 +4388,14 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
 	const bool isStatic = !(desc.flags & GfxBufferFlags::Transient);
+
+	const bool needDeviceAddress = g_device->m_bufferDeviceAddressFeatures.bufferDeviceAddress;
+	VkMemoryAllocateFlagsInfo allocFlags = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
+	if (needDeviceAddress)
+	{
+		allocFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	}
 
 	if (data || isStatic)
 	{
@@ -4384,7 +4423,8 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
 
 		VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-		allocInfo.allocationSize       = memoryReq.size;
+		allocInfo.pNext = &allocFlags;
+		allocInfo.allocationSize = memoryReq.size;
 		allocInfo.memoryTypeIndex =
 		    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
 
@@ -4414,8 +4454,9 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
 
 		VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-		allocInfo.allocationSize       = max(memoryReq.size, bufferCreateInfo.size);
-		allocInfo.memoryTypeIndex      = g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
+		allocInfo.pNext = &allocFlags;
+		allocInfo.allocationSize = max(memoryReq.size, bufferCreateInfo.size);
+		allocInfo.memoryTypeIndex = g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
 
 		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 		res.ownsMemory = true;
@@ -4427,6 +4468,17 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 			V(vkMapMemory(g_vulkanDevice, res.memory, 0, allocInfo.allocationSize, 0, &res.mappedMemory));
 			RUSH_ASSERT(res.mappedMemory);
 		}
+	}
+
+	if (needDeviceAddress && res.ownsMemory)
+	{
+		VkBufferDeviceAddressInfo deviceAddressInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
+		deviceAddressInfo.buffer = res.info.buffer;
+		res.deviceAddress = vkGetBufferDeviceAddressKHR(g_vulkanDevice, &deviceAddressInfo);
+	}
+	else
+	{
+		res.deviceAddress = 0;
 	}
 
 	if (desc.format != GfxFormat_Unknown && !!(desc.flags & GfxBufferFlags::Storage) && (data || isStatic))
@@ -4471,10 +4523,10 @@ void Gfx_vkFullPipelineBarrier(GfxContext* ctx)
 	                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
 	                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
 
-	if (g_device->m_supportedExtensions.NV_ray_tracing)
+	if (g_device->m_supportedExtensions.KHR_ray_tracing)
 	{
-		barrier.srcAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV;
-		barrier.dstAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV;
+		barrier.srcAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+		barrier.dstAccessMask |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
 	}
 
 	vkCmdPipelineBarrier(ctx->m_commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -4667,6 +4719,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 		buffer.info.buffer = block.buffer;
 		buffer.info.offset = block.offset;
 		buffer.info.range  = size;
+		buffer.deviceAddress = block.deviceAddress ? block.deviceAddress + block.offset : 0;
 
 		if (buffer.desc.format != GfxFormat_Unknown && !!(buffer.desc.flags & GfxBufferFlags::Storage))
 		{
@@ -5372,10 +5425,11 @@ void GfxDevice::DestructionQueue::flush(GfxDevice* device)
 	}
 	transientHostMemory.clear();
 
-	for (VkAccelerationStructureNV& object : accelerationStructures)
+	for (VkAccelerationStructureKHR& object : accelerationStructures)
 	{
-		vkDestroyAccelerationStructureNV(g_vulkanDevice, object, g_allocationCallbacks);
+		vkDestroyAccelerationStructureKHR(g_vulkanDevice, object, g_allocationCallbacks);
 	}
+
 	accelerationStructures.clear();
 }
 
@@ -5439,7 +5493,7 @@ DescriptorPoolVK::DescriptorPoolVK(VkDevice vulkanDevice, const DescriptorsPerSe
 	if (desc.storageTexelBuffers)
 		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, desc.storageTexelBuffers * maxSets});
 	if (desc.accelerationStructures)
-		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, desc.accelerationStructures * maxSets});
+		poolSizes.pushBack({VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, desc.accelerationStructures * maxSets});
 
 	descriptorPoolCreateInfo.poolSizeCount = u32(poolSizes.currentSize);
 	descriptorPoolCreateInfo.pPoolSizes    = poolSizes.data;
@@ -5499,27 +5553,27 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 	// ray tracing pipeline
 
-	const u32            handleSize = g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	const u32            handleSize = g_device->m_rayTracingProps.shaderGroupHandleSize;
 	static constexpr u32 MaxShaders = 4; // raygen + miss + chs + ahs
 	StaticArray<VkPipelineShaderStageCreateInfo, MaxShaders>     shaderStages;
-	StaticArray<VkRayTracingShaderGroupCreateInfoNV, MaxShaders> shaderGroups;
+	StaticArray<VkRayTracingShaderGroupCreateInfoKHR, MaxShaders> shaderGroups;
 
 	if (result.rayGen != VK_NULL_HANDLE)
 	{
 		result.rayGenOffset = u32(shaderGroups.size() * handleSize);
 
-		VkRayTracingShaderGroupCreateInfoNV group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV};
-		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
+		VkRayTracingShaderGroupCreateInfoKHR group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
+		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
 
 		group.generalShader      = u32(shaderStages.size());
-		group.closestHitShader   = VK_SHADER_UNUSED_NV;
-		group.anyHitShader       = VK_SHADER_UNUSED_NV;
-		group.intersectionShader = VK_SHADER_UNUSED_NV;
+		group.closestHitShader   = VK_SHADER_UNUSED_KHR;
+		group.anyHitShader       = VK_SHADER_UNUSED_KHR;
+		group.intersectionShader = VK_SHADER_UNUSED_KHR;
 
 		shaderGroups.pushBack(group);
 
 		VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-		stage.stage                           = VK_SHADER_STAGE_RAYGEN_BIT_NV;
+		stage.stage                           = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
 		stage.module                          = result.rayGen;
 		stage.pName                           = "main";
 
@@ -5530,18 +5584,18 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	{
 		result.missOffset = u32(shaderGroups.size() * handleSize);
 
-		VkRayTracingShaderGroupCreateInfoNV group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV};
-		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV;
+		VkRayTracingShaderGroupCreateInfoKHR group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
+		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
 
 		group.generalShader      = u32(shaderStages.size());
-		group.closestHitShader   = VK_SHADER_UNUSED_NV;
-		group.anyHitShader       = VK_SHADER_UNUSED_NV;
-		group.intersectionShader = VK_SHADER_UNUSED_NV;
+		group.closestHitShader   = VK_SHADER_UNUSED_KHR;
+		group.anyHitShader       = VK_SHADER_UNUSED_KHR;
+		group.intersectionShader = VK_SHADER_UNUSED_KHR;
 
 		shaderGroups.pushBack(group);
 
 		VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-		stage.stage                           = VK_SHADER_STAGE_MISS_BIT_NV;
+		stage.stage                           = VK_SHADER_STAGE_MISS_BIT_KHR;
 		stage.module                          = result.miss;
 		stage.pName                           = "main";
 
@@ -5552,18 +5606,18 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	{
 		result.hitGroupOffset = u32(shaderGroups.size() * handleSize);
 
-		VkRayTracingShaderGroupCreateInfoNV group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV};
-		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_NV;
+		VkRayTracingShaderGroupCreateInfoKHR group = {VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
+		group.type                                = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
 
-		group.generalShader      = VK_SHADER_UNUSED_NV;
+		group.generalShader      = VK_SHADER_UNUSED_KHR;
 		group.closestHitShader   = u32(shaderStages.size());
-		group.anyHitShader       = VK_SHADER_UNUSED_NV;
-		group.intersectionShader = VK_SHADER_UNUSED_NV;
+		group.anyHitShader       = VK_SHADER_UNUSED_KHR;
+		group.intersectionShader = VK_SHADER_UNUSED_KHR;
 
 		shaderGroups.pushBack(group);
 
 		VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-		stage.stage                           = VK_SHADER_STAGE_CLOSEST_HIT_BIT_NV;
+		stage.stage                           = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 		stage.module                          = result.closestHit;
 		stage.pName                           = "main";
 
@@ -5572,7 +5626,9 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 	RUSH_ASSERT_MSG(result.anyHit == VK_NULL_HANDLE, "Any hit shaders are not implemented");
 
-	VkRayTracingPipelineCreateInfoNV createInfo = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV};
+	VkRayTracingPipelineCreateInfoKHR createInfo = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
+
+	createInfo.libraries = { VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR };
 
 	createInfo.stageCount = u32(shaderStages.size());
 	createInfo.pStages    = shaderStages.data;
@@ -5584,12 +5640,12 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 	createInfo.layout = result.pipelineLayout;
 
-	V(vkCreateRayTracingPipelinesNV(
+	V(vkCreateRayTracingPipelinesKHR(
 	    g_vulkanDevice, g_device->m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &result.pipeline));
 
 	result.shaderHandles.resize(handleSize * shaderGroups.size());
 
-	V(vkGetRayTracingShaderGroupHandlesNV(g_vulkanDevice, result.pipeline, 0, createInfo.groupCount,
+	V(vkGetRayTracingShaderGroupHandlesKHR(g_vulkanDevice, result.pipeline, 0, createInfo.groupCount,
 	    u32(result.shaderHandles.size()), result.shaderHandles.data()));
 
 	GfxBufferDesc bufferDesc(GfxBufferFlags::RayTracing, u32(shaderGroups.size()), handleSize);
@@ -5613,19 +5669,19 @@ const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracin
 }
 
 static VkMemoryRequirements2KHR getMemoryReq(
-    VkAccelerationStructureNV accel, VkAccelerationStructureMemoryRequirementsTypeNV type)
+    VkAccelerationStructureKHR accel, VkAccelerationStructureMemoryRequirementsTypeKHR type)
 {
-	VkAccelerationStructureMemoryRequirementsInfoNV memoryReqInfo = {
-	    VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV};
+	VkAccelerationStructureMemoryRequirementsInfoKHR memoryReqInfo = {
+	    VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_KHR};
 	VkMemoryRequirements2KHR memoryReq  = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
 	memoryReqInfo.accelerationStructure = accel;
 	memoryReqInfo.type                  = type;
-	vkGetAccelerationStructureMemoryRequirementsNV(g_vulkanDevice, &memoryReqInfo, &memoryReq);
+	vkGetAccelerationStructureMemoryRequirementsKHR(g_vulkanDevice, &memoryReqInfo, &memoryReq);
 	return memoryReq;
 }
 
 static VkMemoryAllocateInfo getAllocInfo(
-    VkAccelerationStructureNV accel, VkAccelerationStructureMemoryRequirementsTypeNV type)
+    VkAccelerationStructureKHR accel, VkAccelerationStructureMemoryRequirementsTypeKHR type)
 {
 	VkMemoryAllocateInfo     allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 	VkMemoryRequirements2KHR memoryReq = getMemoryReq(accel, type);
@@ -5643,6 +5699,8 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 	if (desc.type == GfxAccelerationStructureType::BottomLevel)
 	{
 		result.nativeGeometries.resize(desc.geometyCount);
+		result.geometryTypeInfos.resize(desc.geometyCount);
+		result.offsetInfos.resize(desc.geometyCount);
 
 		for (u32 i = 0; i < desc.geometyCount; ++i)
 		{
@@ -5655,78 +5713,104 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 			RUSH_ASSERT(
 			    geometryDesc.indexFormat == GfxFormat_R32_Uint || geometryDesc.indexFormat == GfxFormat_R16_Uint);
 
-			VkGeometryNV& geometry = result.nativeGeometries[i];
+			VkAccelerationStructureGeometryKHR& geometry = result.nativeGeometries[i];
+			geometry = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
 
-			geometry.sType                = VK_STRUCTURE_TYPE_GEOMETRY_NV;
-			geometry.pNext                = nullptr;
-			geometry.geometryType         = VK_GEOMETRY_TYPE_TRIANGLES_NV;
-			geometry.geometry.aabbs.sType = VK_STRUCTURE_TYPE_GEOMETRY_AABB_NV;
-			geometry.flags                = geometryDesc.isOpaque ? VK_GEOMETRY_OPAQUE_BIT_NV : 0;
+			geometry.geometryType         = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+			geometry.flags                = geometryDesc.isOpaque ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0;
 
-			VkGeometryTrianglesNV& triangles = geometry.geometry.triangles;
+			VkAccelerationStructureGeometryTrianglesDataKHR& triangles = geometry.geometry.triangles;
 
-			triangles.sType        = VK_STRUCTURE_TYPE_GEOMETRY_TRIANGLES_NV;
-			triangles.pNext        = nullptr;
-			triangles.vertexData   = vertexBufferVK.info.buffer;
-			triangles.vertexOffset = vertexBufferVK.info.offset + geometryDesc.vertexBufferOffset;
-			triangles.vertexCount  = geometryDesc.vertexCount;
+			triangles = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR };
+			triangles.vertexData.deviceAddress = vertexBufferVK.deviceAddress + geometryDesc.vertexBufferOffset;
 			triangles.vertexStride = geometryDesc.vertexStride;
 			triangles.vertexFormat = Gfx_vkConvertFormat(geometryDesc.vertexFormat);
 
-			triangles.indexData   = indexBufferVK.info.buffer;
-			triangles.indexOffset = indexBufferVK.info.offset + geometryDesc.indexBufferOffset;
-			triangles.indexCount  = geometryDesc.indexCount;
+			triangles.indexData.deviceAddress = indexBufferVK.deviceAddress + geometryDesc.indexBufferOffset;
 			triangles.indexType =
 			    geometryDesc.indexFormat == GfxFormat_R32_Uint ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
 
 			if (geometryDesc.transformBuffer.valid())
 			{
 				const BufferVK& transformBufferVK = g_device->m_buffers[geometryDesc.transformBuffer];
-				triangles.transformData   = transformBufferVK.info.buffer;
-				triangles.transformOffset = transformBufferVK.info.offset + geometryDesc.transformBufferOffset;
+				triangles.transformData.deviceAddress = transformBufferVK.deviceAddress + geometryDesc.transformBufferOffset;
 			}
 			else
 			{
-				triangles.transformData   = VK_NULL_HANDLE;
-				triangles.transformOffset = 0;
+				triangles.transformData.deviceAddress = 0;
 			}
+
+			VkAccelerationStructureCreateGeometryTypeInfoKHR& typeInfo = result.geometryTypeInfos[i];
+			typeInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR };
+			typeInfo.geometryType = geometry.geometryType;
+			typeInfo.maxPrimitiveCount = geometryDesc.indexCount / 3;
+			typeInfo.indexType = triangles.indexType;
+			typeInfo.maxVertexCount = geometryDesc.vertexCount;
+			typeInfo.vertexFormat = triangles.vertexFormat;
+			typeInfo.allowsTransforms = geometryDesc.transformBuffer.valid() ? VK_TRUE : VK_FALSE;
+
+			VkAccelerationStructureBuildOffsetInfoKHR& offsetInfo = result.offsetInfos[i];
+			offsetInfo = {};
+			offsetInfo.primitiveCount = typeInfo.maxPrimitiveCount;
 		}
 
-		result.info               = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV};
-		result.info.type          = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_NV;
-		result.info.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_NV; // TODO: convert flags
-		result.info.geometryCount = desc.geometyCount;
-		result.info.pGeometries   = result.nativeGeometries.data();
+		RUSH_ASSERT(desc.geometyCount == result.geometryTypeInfos.size());
+		RUSH_ASSERT(desc.geometyCount == result.nativeGeometries.size());
+		RUSH_ASSERT(desc.geometyCount == result.offsetInfos.size());
+
+		result.info.type             = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		result.info.flags            = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+		result.info.maxGeometryCount = desc.geometyCount;
+		result.info.pGeometryInfos   = result.geometryTypeInfos.data();
 	}
 	else if (desc.type == GfxAccelerationStructureType::TopLevel)
 	{
-		result.info               = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV};
-		result.info.type          = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_NV;
-		result.info.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_NV; // TODO: convert flags
-		result.info.instanceCount = desc.instanceCount;
+		VkAccelerationStructureGeometryKHR geometry = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+		geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+		geometry.geometry.instances.arrayOfPointers = VK_FALSE;
+		geometry.geometry.instances.data.deviceAddress = 0; // will be filled later
+		result.nativeGeometries.push_back(geometry);
+
+		VkAccelerationStructureCreateGeometryTypeInfoKHR typeInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR };
+		typeInfo.geometryType = geometry.geometryType;
+		typeInfo.maxPrimitiveCount = desc.instanceCount;
+		typeInfo.indexType = VK_INDEX_TYPE_NONE_KHR;
+		typeInfo.maxVertexCount = 0;
+		typeInfo.vertexFormat = VK_FORMAT_UNDEFINED;
+		typeInfo.allowsTransforms = VK_FALSE;
+		result.geometryTypeInfos.push_back(typeInfo);
+
+		VkAccelerationStructureBuildOffsetInfoKHR offsetInfo = {};
+		offsetInfo.primitiveCount = typeInfo.maxPrimitiveCount;
+		result.offsetInfos.push(offsetInfo);
+
+		result.info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+		result.info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+		result.info.maxGeometryCount = desc.instanceCount;
+		result.info.pGeometryInfos = result.geometryTypeInfos.data();
 	}
 	else
 	{
 		RUSH_LOG_ERROR("Unexpected acceleration structure type");
 	}
 
-	VkAccelerationStructureCreateInfoNV createInfo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_NV};
-	createInfo.info                                = result.info;
-	V(vkCreateAccelerationStructureNV(g_vulkanDevice, &createInfo, g_allocationCallbacks, &result.native));
+	V(vkCreateAccelerationStructureKHR(g_vulkanDevice, &result.info, g_allocationCallbacks, &result.native));
 
 	auto allocInfo =
-	    getAllocInfo(result.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV);
+	    getAllocInfo(result.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
 
 	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &result.memory));
 
-	VkBindAccelerationStructureMemoryInfoNV bindInfo = {VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_NV};
+	VkBindAccelerationStructureMemoryInfoKHR bindInfo = {VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR};
 	bindInfo.accelerationStructure                   = result.native;
 	bindInfo.memory                                  = result.memory;
 	bindInfo.memoryOffset                            = 0;
 
-	V(vkBindAccelerationStructureMemoryNV(g_vulkanDevice, 1, &bindInfo));
+	V(vkBindAccelerationStructureMemoryKHR(g_vulkanDevice, 1, &bindInfo));
 
-	V(vkGetAccelerationStructureHandleNV(g_vulkanDevice, result.native, 8, &result.handle));
+	VkAccelerationStructureDeviceAddressInfoKHR deviceAddressInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR };
+	deviceAddressInfo.accelerationStructure = result.native;
+	result.deviceAddress = vkGetAccelerationStructureDeviceAddressKHR(g_vulkanDevice, &deviceAddressInfo);
 
 	return retainResource(g_device->m_accelerationStructures, result);
 }
@@ -5734,7 +5818,7 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 u64 Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h) 
 {
 	AccelerationStructureVK& accel = g_device->m_accelerationStructures[h];
-	return accel.handle;
+	return accel.deviceAddress;
 }
 
 void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer)
@@ -5743,14 +5827,18 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 
 	AccelerationStructureVK& accel = g_device->m_accelerationStructures[h];
 
+	RUSH_ASSERT(accel.native != VK_NULL_HANDLE);
+
 	auto scratchAllocInfo =
-	    getAllocInfo(accel.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV);
+	    getAllocInfo(accel.native, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
 
 	const u32          scratchAlignment = 256; // TODO: what should the alignment be?
 	MemoryAllocatorVK& scratchAllocator = g_device->m_transientLocalAllocator;
 	MemoryBlockVK      scratchBlock     = scratchAllocator.alloc(scratchAllocInfo.allocationSize, scratchAlignment);
 
 	VkDescriptorBufferInfo instanceBufferInfo = {};
+
+	VkAccelerationStructureBuildGeometryInfoKHR buildInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
 
 	if (accel.type == GfxAccelerationStructureType::TopLevel && instanceBuffer.valid())
 	{
@@ -5759,17 +5847,40 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 
 	if (accel.type == GfxAccelerationStructureType::TopLevel)
 	{
+		buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+		RUSH_ASSERT(accel.nativeGeometries.size() == 1);
+
+		BufferVK& instanceBufferVK = g_device->m_buffers[instanceBuffer];
+
+		VkAccelerationStructureGeometryInstancesDataKHR& instances = accel.nativeGeometries[0].geometry.instances;
+		instances.arrayOfPointers = VK_FALSE;
+		instances.data.deviceAddress = instanceBufferVK.deviceAddress;
+
 		// TODO: add pipeline barriers at the high level
 		// TODO: batch acceleration structure builds and barriers
 		Gfx_vkFullPipelineBarrier(ctx);
 	}
+	else
+	{
+		buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	}
 
-	vkCmdBuildAccelerationStructureNV(ctx->m_commandBuffer,
-		&accel.info,
-		instanceBufferInfo.buffer, instanceBufferInfo.offset,
-		VK_FALSE, // update
-		accel.native, VK_NULL_HANDLE, // dest, source
-		scratchBlock.buffer, scratchBlock.offset);
+	const VkAccelerationStructureGeometryKHR* geometries = accel.nativeGeometries.data();
+
+	buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	buildInfo.update = VK_FALSE;
+	buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+	buildInfo.dstAccelerationStructure = accel.native;
+	buildInfo.geometryArrayOfPointers = VK_FALSE;
+	buildInfo.geometryCount = u32(accel.nativeGeometries.size());
+	buildInfo.ppGeometries = &geometries;
+	buildInfo.scratchData.deviceAddress = scratchBlock.deviceAddress;
+
+	RUSH_ASSERT(!accel.offsetInfos.empty());
+	const VkAccelerationStructureBuildOffsetInfoKHR* offsetInfos[1] = { accel.offsetInfos.data() };
+
+	vkCmdBuildAccelerationStructureKHR(ctx->m_commandBuffer, 1, &buildInfo, offsetInfos);
 
 	if (accel.type == GfxAccelerationStructureType::TopLevel)
 	{
@@ -5838,11 +5949,10 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, Gfx
 
 	ctx->flushBarriers();
 
-
 	// TODO: get offsets from pipeline metadata
 
-	//const u32 sbtRaygenOffset = 0 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
-	//const u32 sbtMissOffset   = 1 * g_device->m_nvRayTracingProps.shaderGroupHandleSize;
+	//const u32 sbtRaygenOffset = 0 * g_device->m_rayTracingProps.shaderGroupHandleSize;
+	//const u32 sbtMissOffset   = 1 * g_device->m_rayTracingProps.shaderGroupHandleSize;
 	const u32 sbtMissStride   = 0; // only single shader is supported
 
 	RayTracingPipelineVK& pipeline = g_device->m_rayTracingPipelines[pipelineHandle];
@@ -5852,11 +5962,31 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, Gfx
 	// Disable hit group indexing if SBT contains just one entry
 	const u32 hitGroupStride = hitGroupBuffer.desc.count == 1 ? 0 : hitGroupBuffer.desc.stride;
 
-	vkCmdTraceRaysNV(ctx->m_commandBuffer,
-	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.rayGenOffset,               // raygen
-	    sbtBuffer.info.buffer, sbtBuffer.info.offset + pipeline.missOffset, sbtMissStride,  // miss
-	    hitGroupBuffer.info.buffer, hitGroupBuffer.info.offset, hitGroupStride,             // hit group
-	    VK_NULL_HANDLE, 0, 0,                                                               // callable
+	VkStridedBufferRegionKHR sbtRayGen = {};
+	sbtRayGen.buffer = sbtBuffer.info.buffer;
+	sbtRayGen.offset = sbtBuffer.info.offset + pipeline.rayGenOffset;
+	sbtRayGen.stride = g_device->m_rayTracingProps.shaderGroupHandleSize;
+
+	VkStridedBufferRegionKHR sbtMiss = {};
+	sbtMiss.buffer = sbtBuffer.info.buffer;
+	sbtMiss.offset = sbtBuffer.info.offset + pipeline.missOffset;
+	sbtMiss.stride = sbtMissStride;
+
+	VkStridedBufferRegionKHR sbtHitGroup = {};
+	sbtHitGroup.buffer = hitGroupBuffer.info.buffer;
+	sbtHitGroup.offset = hitGroupBuffer.info.offset;
+	sbtHitGroup.stride = hitGroupStride;
+
+	VkStridedBufferRegionKHR sbtCallable = {};
+	sbtCallable.buffer = VK_NULL_HANDLE;
+	sbtCallable.offset = 0;
+	sbtCallable.stride = 0;
+
+	vkCmdTraceRaysKHR(ctx->m_commandBuffer,
+	    &sbtRayGen,
+		&sbtMiss,
+		&sbtHitGroup,
+		&sbtCallable, // callable
 	    width, height, depth);
 }
 
