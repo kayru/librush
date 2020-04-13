@@ -1917,7 +1917,7 @@ MemoryBlockVK MemoryAllocatorVK::alloc(u64 size, u64 alignment)
 		result.size         = size;
 		result.buffer       = currentBlock.buffer;
 		result.mappedBuffer = offsetPtr(currentBlock.mappedBuffer, (size_t)alignedOffset);
-		result.deviceAddress = currentBlock.deviceAddress;
+		result.deviceAddress = currentBlock.deviceAddress + alignedOffset;
 
 		currentBlock.offset = alignedOffset + size;
 
