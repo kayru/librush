@@ -4719,7 +4719,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 		buffer.info.buffer = block.buffer;
 		buffer.info.offset = block.offset;
 		buffer.info.range  = size;
-		buffer.deviceAddress = block.deviceAddress ? block.deviceAddress + block.offset : 0;
+		buffer.deviceAddress = block.deviceAddress;
 
 		if (buffer.desc.format != GfxFormat_Unknown && !!(buffer.desc.flags & GfxBufferFlags::Storage))
 		{
