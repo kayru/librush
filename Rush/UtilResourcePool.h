@@ -54,9 +54,7 @@ public:
 
 	ResourcePool()
 	{
-		T default_value;
-		memset(&default_value, 0, sizeof(default_value));
-		push(default_value);
+		push(T {});
 	}
 
 	template<typename DeducedT>

@@ -160,24 +160,6 @@ static DynamicArray<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalD
 	return enumerated;
 }
 
-static VkMemoryAllocateInfo getStagingMemoryAllocateInfo(const VkMemoryRequirements& stagingMemoryReq)
-{
-	VkMemoryAllocateInfo stagingAllocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-	stagingAllocInfo.allocationSize       = stagingMemoryReq.size;
-	stagingAllocInfo.memoryTypeIndex      = g_device->memoryTypeFromProperties(
-        stagingMemoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	// Some hardware (i.e. Intel) will fail with device local exclusion
-	// Retry without this bit.
-	if (stagingAllocInfo.memoryTypeIndex == 0xFFFFFFFF)
-	{
-		stagingAllocInfo.memoryTypeIndex =
-		    g_device->memoryTypeFromProperties(stagingMemoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	}
-
-	return stagingAllocInfo;
-}
-
 VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
     VkDebugReportObjectTypeEXT                                           objectType,
     uint64_t                                                             object,
