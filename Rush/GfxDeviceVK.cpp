@@ -2161,12 +2161,21 @@ void GfxContext::submit(VkQueue queue)
 	V(vkQueueSubmit(queue, 1, &submitInfo, m_fence));
 }
 
-VkImageLayout GfxContext::addImageBarrier(VkImage image, VkImageLayout nextLayout, VkImageLayout currentLayout,
+VkImageLayout GfxContext::addImageBarrier(VkImage image,
+	VkImageLayout currentLayout, VkImageLayout nextLayout,
     VkImageSubresourceRange* subresourceRange, bool force)
 {
 	if (currentLayout == nextLayout && !force)
 	{
 		return nextLayout;
+	}
+
+	for (VkImageMemoryBarrier imageBarrier : m_pendingBarriers.imageBarriers)
+	{
+		if (imageBarrier.image == image)
+		{
+			flushBarriers();
+		}
 	}
 
 	// TODO: track subresource states
@@ -2272,8 +2281,6 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image, VkImageLayout nextLayou
 	m_pendingBarriers.dstStageMask |= dstStageMask;
 	m_pendingBarriers.imageBarriers.push_back(barrierDesc);
 
-	// flushBarriers();
-
 	return nextLayout;
 }
 
@@ -2358,7 +2365,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 		VkImageSubresourceRange subresourceRange = {texture.aspectFlags, 0, texture.desc.mips, 0, 1};
 
 		texture.currentLayout = addImageBarrier(
-		    texture.image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, texture.currentLayout, &subresourceRange);
+		    texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &subresourceRange);
 		clearValues[clearValueCount] = m_pendingClear.getClearDepthStencil();
 		++clearValueCount;
 	}
@@ -2377,7 +2384,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 			m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
 			texture.currentLayout =
-			    addImageBarrier(texture.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, texture.currentLayout);
+			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 			if (shouldClearColor)
 			{
 				clearValues[clearValueCount] = m_pendingClear.getClearColor();
@@ -2454,8 +2461,8 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 	VkImageSubresourceRange srcRange = {srcTexture.aspectFlags, 0, srcTexture.desc.mips, 0, 1};
 	VkImageSubresourceRange dstRange = {dstTexture.aspectFlags, 0, dstTexture.desc.mips, 0, 1};
 
-	srcTexture.currentLayout = addImageBarrier(srcTexture.image, srcImageLayout, srcTexture.currentLayout, &srcRange);
-	dstTexture.currentLayout = addImageBarrier(dstTexture.image, dstImageLayout, dstTexture.currentLayout, &dstRange);
+	srcTexture.currentLayout = addImageBarrier(srcTexture.image, srcTexture.currentLayout, srcImageLayout, &srcRange);
+	dstTexture.currentLayout = addImageBarrier(dstTexture.image, dstTexture.currentLayout, dstImageLayout, &dstRange);
 
 	flushBarriers();
 
@@ -2859,7 +2866,7 @@ void GfxContext::applyState()
 			VkImageSubresourceRange subresourceRange = {
 			    texture.aspectFlags, 0, texture.desc.mips, 0, 1}; // TODO: track subresource states
 			texture.currentLayout = addImageBarrier(
-			    texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture.currentLayout, &subresourceRange);
+			    texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, &subresourceRange);
 		}
 
 		for (u32 i = 0; i < bindingDesc.rwImages; ++i)
@@ -2867,7 +2874,7 @@ void GfxContext::applyState()
 			RUSH_ASSERT(m_pending.storageImages[i].valid());
 			TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
 			texture.currentLayout =
-			    addImageBarrier(texture.image, VK_IMAGE_LAYOUT_GENERAL, texture.currentLayout, nullptr, true);
+			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_GENERAL, nullptr, true);
 		}
 
 		updateDescriptorSet(m_currentDescriptorSet, bindingDesc,
@@ -3122,14 +3129,14 @@ void GfxDevice::captureScreenshot()
 
 	VkImage swapChainImage = m_swapChainImages[m_swapChainIndex];
 
-	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 	context->flushBarriers();
 
 	vkCmdCopyImageToBuffer(
 	    context->m_commandBuffer, swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &bufferImageCopy);
 
-	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	context->endBuild();
 	context->submit(m_graphicsQueue);
@@ -3155,7 +3162,7 @@ void Gfx_EndFrame()
 	TextureVK& backBufferTexture =
 	    g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
 	backBufferTexture.currentLayout = g_context->addImageBarrier(
-	    backBufferTexture.image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, backBufferTexture.currentLayout);
+	    backBufferTexture.image, backBufferTexture.currentLayout, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	g_context->endBuild();
 
@@ -3294,48 +3301,6 @@ static ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 
 	return result;
 }
-
-#if 0
-static ShaderVK::InputMapping parseVertexInputMapping(const StringView& vertexAttributeName)
-{
-	ShaderVK::InputMapping result;
-	result.location      = 0;
-	result.semantic      = GfxVertexFormatDesc::Semantic::Unused;
-	result.semanticIndex = 0;
-
-	size_t attrLen = vertexAttributeName.length();
-
-	result.semanticIndex = vertexAttributeName[attrLen - 1] - '0';
-
-	if (strstr(vertexAttributeName.c_str(), "a_pos"))
-	{
-		result.semantic = GfxVertexFormatDesc::Semantic::Position;
-	}
-	else if (strstr(vertexAttributeName.c_str(), "a_tex"))
-	{
-		result.semantic = GfxVertexFormatDesc::Semantic::Texcoord;
-	}
-	else if (strstr(vertexAttributeName.c_str(), "a_col"))
-	{
-		result.semantic = GfxVertexFormatDesc::Semantic::Color;
-	}
-	else if (strstr(vertexAttributeName.c_str(), "a_nor"))
-	{
-		result.semantic = GfxVertexFormatDesc::Semantic::Normal;
-	}
-	else if (strstr(vertexAttributeName.c_str(), "a_tan") || strstr(vertexAttributeName.c_str(), "a_tau"))
-	{
-		result.semantic = GfxVertexFormatDesc::Semantic::Tangent;
-	}
-	else if (strstr(vertexAttributeName.c_str(), "a_bin") || strstr(vertexAttributeName.c_str(), "a_bit") ||
-	         strstr(vertexAttributeName.c_str(), "a_tav"))
-	{
-		result.semantic = GfxVertexFormatDesc::Semantic::Bitangent;
-	}
-
-	return result;
-}
-#endif
 
 // vertex shader
 
@@ -4090,7 +4055,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 		VkImageSubresourceRange subresourceRange = {
 		    VK_IMAGE_ASPECT_COLOR_BIT, 0, desc.mips, 0, imageCreateInfo.arrayLayers};
 		uploadContext->addImageBarrier(
-		    res.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, res.currentLayout, &subresourceRange);
+		    res.image, res.currentLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &subresourceRange);
 		uploadContext->flushBarriers();
 
 		const size_t bitsPerPixel   = getBitsPerPixel(desc.format);
@@ -4148,8 +4113,10 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			stagingImageOffset += alignedLevelSize;
 		}
 
-		res.currentLayout = uploadContext->addImageBarrier(res.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &subresourceRange);
+		res.currentLayout = uploadContext->addImageBarrier(res.image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			&subresourceRange);
 	}
 
 	return res;
@@ -4635,18 +4602,6 @@ static VkDeviceSize getBufferAlignmentRequirements(GfxBufferFlags flags)
 	return alignment;
 }
 
-#if 0
-static VkMemoryRequirements getBufferMemoryRequirements(const BufferVK& buffer)
-{
-	VkMemoryRequirements memoryReq;
-	vkGetBufferMemoryRequirements(g_vulkanDevice, buffer.info.buffer, &memoryReq);
-
-	memoryReq.alignment = max(memoryReq.alignment, getBufferAlignmentRequirements(buffer.desc.type));
-
-	return memoryReq;
-}
-#endif
-
 void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
 	RUSH_ASSERT(data);
@@ -5072,7 +5027,7 @@ void Gfx_AddImageBarrier(
 	}
 
 	texture.currentLayout =
-	    rc->addImageBarrier(texture.image, desiredLayout, texture.currentLayout, &subresourceRangeVk);
+	    rc->addImageBarrier(texture.image, texture.currentLayout, desiredLayout, &subresourceRangeVk);
 }
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
