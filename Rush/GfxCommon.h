@@ -1111,25 +1111,25 @@ struct GfxDispatchArg
 
 enum GfxResourceState : u8
 {
-	GfxResourceState_Undefined,
-	GfxResourceState_General,
-	GfxResourceState_RenderTarget,
-	GfxResourceState_DepthStencilTarget,
-	GfxResourceState_DepthStencilTargetReadOnly,
-	GfxResourceState_ShaderRead,
-	GfxResourceState_TransferSrc,
-	GfxResourceState_TransferDst,
-	GfxResourceState_Preinitialized,
-	GfxResourceState_Present,
-	GfxResourceState_SharedPresent,
+	GfxResourceState_Undefined = RUSH_GFX_RESOURCE_STATE_UNDEFINED,
+	GfxResourceState_General = RUSH_GFX_RESOURCE_STATE_GENERAL,
+	GfxResourceState_RenderTarget = RUSH_GFX_RESOURCE_STATE_RENDER_TARGET,
+	GfxResourceState_DepthStencilTarget = RUSH_GFX_RESOURCE_STATE_DEPTH_STENCIL_TARGET,
+	GfxResourceState_DepthStencilTargetReadOnly = RUSH_GFX_RESOURCE_STATE_DEPTH_STENCIL_TARGET_READ_ONLY,
+	GfxResourceState_ShaderRead = RUSH_GFX_RESOURCE_STATE_SHADER_READ,
+	GfxResourceState_TransferSrc = RUSH_GFX_RESOURCE_STATE_TRANSFER_SRC,
+	GfxResourceState_TransferDst = RUSH_GFX_RESOURCE_STATE_TRANSFER_DST,
+	GfxResourceState_Preinitialized = RUSH_GFX_RESOURCE_STATE_PREINITIALIZED,
+	GfxResourceState_Present = RUSH_GFX_RESOURCE_STATE_PRESENT,
+	GfxResourceState_SharedPresent = RUSH_GFX_RESOURCE_STATE_SHARED_PRESENT,
 };
 
 enum class GfxImageAspectFlags : u8
 {
-	Color    = 1 << 0,
-	Depth    = 1 << 1,
-	Stencil  = 1 << 2,
-	Metadata = 1 << 3,
+	Color    = RUSH_GFX_IMAGE_ASPECT_COLOR,
+	Depth    = RUSH_GFX_IMAGE_ASPECT_DEPTH,
+	Stencil  = RUSH_GFX_IMAGE_ASPECT_STENCIL,
+	Metadata = RUSH_GFX_IMAGE_ASPECT_METADATA,
 
 	DepthStencil = Depth | Stencil,
 };

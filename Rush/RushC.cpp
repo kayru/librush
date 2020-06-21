@@ -789,6 +789,22 @@ void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, ru
 	Gfx_SetConstantBuffer(convert(ctx), idx, convertHandle<GfxBuffer>(h));
 }
 
+void rush_gfx_add_image_barrier(struct rush_gfx_context* ctx, rush_gfx_texture texture, rush_gfx_resource_state desired_state)
+{
+	Gfx_AddImageBarrier(convert(ctx), convertHandle<GfxTexture>(texture), GfxResourceState(desired_state), nullptr);
+}
+
+void rush_gfx_add_image_subresource_barrier(struct rush_gfx_context* ctx, rush_gfx_texture texture, rush_gfx_resource_state desired_state, rush_gfx_subresource_range subresource_range)
+{
+	GfxSubresourceRange range;
+	range.aspectMask     = GfxImageAspectFlags(subresource_range.aspect_mask);
+	range.baseMipLevel   = subresource_range.base_mip_level;
+	range.levelCount     = subresource_range.layer_count;
+	range.baseArrayLayer = subresource_range.base_array_layer;
+	range.layerCount     = subresource_range.layer_count;
+	Gfx_AddImageBarrier(convert(ctx), convertHandle<GfxTexture>(texture), GfxResourceState(desired_state), &range);
+}
+
 void rush_gfx_resolve_image(struct rush_gfx_context* ctx, rush_gfx_texture src, rush_gfx_texture dst)
 {
 	Gfx_ResolveImage(convert(ctx), convertHandle<GfxTexture>(src), convertHandle<GfxTexture>(dst));

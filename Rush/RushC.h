@@ -416,6 +416,21 @@ typedef enum rush_gfx_format
 	RUSH_GFX_FORMAT_BC7_UNORM_SRGB,
 } rush_gfx_format;
 
+typedef enum rush_gfx_resource_state
+{
+	RUSH_GFX_RESOURCE_STATE_UNDEFINED,
+	RUSH_GFX_RESOURCE_STATE_GENERAL,
+	RUSH_GFX_RESOURCE_STATE_RENDER_TARGET,
+	RUSH_GFX_RESOURCE_STATE_DEPTH_STENCIL_TARGET,
+	RUSH_GFX_RESOURCE_STATE_DEPTH_STENCIL_TARGET_READ_ONLY,
+	RUSH_GFX_RESOURCE_STATE_SHADER_READ,
+	RUSH_GFX_RESOURCE_STATE_TRANSFER_SRC,
+	RUSH_GFX_RESOURCE_STATE_TRANSFER_DST,
+	RUSH_GFX_RESOURCE_STATE_PREINITIALIZED,
+	RUSH_GFX_RESOURCE_STATE_PRESENT,
+	RUSH_GFX_RESOURCE_STATE_SHARED_PRESENT,
+} rush_gfx_resource_state;
+
 typedef struct rush_gfx_color_target
 {
 	rush_gfx_texture target;
@@ -493,6 +508,16 @@ typedef enum rush_gfx_usage_flags
 	RUSH_GFX_USAGE_TRANSFER_SRC    = 1 << 4,
 	RUSH_GFX_USAGE_TRANSFER_DST    = 1 << 5,
 } rush_gfx_usage_flags;
+
+typedef enum rush_gfx_image_aspect_flags
+{
+	RUSH_GFX_IMAGE_ASPECT_COLOR         = 1 << 0,
+	RUSH_GFX_IMAGE_ASPECT_DEPTH         = 1 << 1,
+	RUSH_GFX_IMAGE_ASPECT_STENCIL       = 1 << 2,
+	RUSH_GFX_IMAGE_ASPECT_METADATA      = 1 << 3,
+	RUSH_GFX_IMAGE_ASPECT_DEPTH_STENCIL = RUSH_GFX_IMAGE_ASPECT_DEPTH | RUSH_GFX_IMAGE_ASPECT_STENCIL,
+	RUSH_GFX_IMAGE_ASPECT_ALL           = RUSH_GFX_IMAGE_ASPECT_COLOR | RUSH_GFX_IMAGE_ASPECT_DEPTH_STENCIL | RUSH_GFX_IMAGE_ASPECT_METADATA,
+} rush_gfx_image_aspect_flags;
 
 typedef enum rush_gfx_texture_type
 {
@@ -680,6 +705,15 @@ typedef struct rush_gfx_sampler_desc
 	float                   mip_lod_bias;
 } rush_gfx_sampler_desc;
 
+typedef struct rush_gfx_subresource_range
+{
+	rush_gfx_image_aspect_flags aspect_mask;
+	uint32_t                    base_mip_level;
+	uint32_t                    level_count;
+	uint32_t                    base_array_layer;
+	uint32_t                    layer_count;
+} rush_gfx_subresource_range;
+
 void rush_gfx_set_present_interval(uint32_t interval);
 void rush_gfx_finish();
 rush_gfx_capability rush_gfx_get_capability();
@@ -744,6 +778,8 @@ void rush_gfx_set_blend_state(struct rush_gfx_context* ctx, rush_gfx_blend_state
 void rush_gfx_set_depth_stencil_state(struct rush_gfx_context* ctx, rush_gfx_depth_stencil_state h);
 void rush_gfx_set_rasterizer_state(struct rush_gfx_context* ctx, rush_gfx_rasterizer_state h);
 void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h, uint32_t offset);
+void rush_gfx_add_image_barrier(struct rush_gfx_context* ctx, rush_gfx_texture texture, rush_gfx_resource_state desired_state);
+void rush_gfx_add_image_subresource_barrier(struct rush_gfx_context* ctx, rush_gfx_texture texture, rush_gfx_resource_state desired_state, rush_gfx_subresource_range subresource_range);
 void rush_gfx_resolve_image(struct rush_gfx_context* ctx, rush_gfx_texture src, rush_gfx_texture dst);
 void rush_gfx_dispatch(struct rush_gfx_context* ctx, uint32_t size_x, uint32_t size_y, uint32_t size_z);
 void rush_gfx_dispatch2(struct rush_gfx_context* ctx, uint32_t size_x, uint32_t size_y, uint32_t size_z, const void* push_constants, uint32_t push_constants_size);
