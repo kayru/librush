@@ -29,10 +29,6 @@ rush_app_config convert(const AppConfig* cfg)
 	result.minimize_latency = cfg->minimizeLatency;
 	result.argc             = cfg->argc;
 	result.argv             = cfg->argv;
-	result.user_data        = cfg->userData;
-	result.on_startup       = cfg->onStartup;
-	result.on_update        = cfg->onUpdate;
-	result.on_shutdown      = cfg->onShutdown;
 	return result;
 }
 
@@ -52,10 +48,6 @@ AppConfig convert(const rush_app_config* cfg)
 	result.minimizeLatency = cfg->minimize_latency;
 	result.argc            = cfg->argc;
 	result.argv            = cfg->argv;
-	result.userData        = cfg->user_data;
-	result.onStartup       = cfg->on_startup;
-	result.onUpdate        = cfg->on_update;
-	result.onShutdown      = cfg->on_shutdown;
 	return result;
 }
 
@@ -198,13 +190,45 @@ void rush_app_config_init(rush_app_config* out_cfg)
 	*out_cfg = convert(&cfg);
 }
 
-int rush_platform_main(const rush_app_config* in_cfg)
+static rush_platform_context* g_platform_context = nullptr;
+
+struct rush_platform_context* rush_platform_startup(const rush_app_config* in_cfg)
 {
+	if (g_platform_context != nullptr)
+	{
+		// rush_platform_startup can only be called once
+		return nullptr;
+	}
+
+	rush_platform_context* context = new rush_platform_context;
+
 	AppConfig cfg = convert(in_cfg);
-	GfxConfig gfx_cfg(cfg);
+	GfxConfig gfx_cfg(cfg);	
 	gfx_cfg.preferredCoordinateSystem = GfxConfig::PreferredCoordinateSystem_Direct3D;
 	cfg.gfxConfig = &gfx_cfg;
-	return Platform_Main(cfg);
+
+	Platform_Startup(cfg);
+
+	context->window      = (rush_window*)Platform_GetWindow();
+	context->gfx_device  = (rush_gfx_device*)Platform_GetGfxDevice();
+	context->gfx_context = (rush_gfx_context*)Platform_GetGfxContext();
+
+	g_platform_context = context;
+
+	return context;
+}
+
+void rush_platform_run(rush_platform_callback_update on_update, void* user_data) 
+{
+	Platform_Run(on_update, user_data);
+}
+
+void rush_platform_shutdown()
+{
+	RUSH_ASSERT(g_platform_context != nullptr);
+	Platform_Shutdown();
+	delete g_platform_context;
+	g_platform_context = nullptr;
 }
 
 struct rush_window* rush_platform_get_main_window()

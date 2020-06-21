@@ -47,6 +47,10 @@ struct AppConfig
 	PlatformCallback_Shutdown onShutdown = nullptr;
 };
 
+void Platform_Startup(const AppConfig& cfg);
+void Platform_Run(PlatformCallback_Update frameFn, void* userData);
+void Platform_Shutdown();
+
 class Application
 {
 public:
@@ -54,6 +58,7 @@ public:
 	virtual void update()  = 0;
 };
 
+// Convenience wrappers over explicit startup/run/shutdown API
 int Platform_Main(const AppConfig& cfg);
 
 template <typename T> inline int Platform_Main(AppConfig cfg)

@@ -15,9 +15,9 @@
 namespace Rush
 {
 
-static Window*     g_mainWindow     = nullptr;
-static GfxDevice*  g_mainGfxDevice  = nullptr;
-static GfxContext* g_mainGfxContext = nullptr;
+extern Window*     g_mainWindow;
+extern GfxDevice*  g_mainGfxDevice;
+extern GfxContext* g_mainGfxContext;
 
 Window* Platform_CreateWindow(const WindowDesc& desc) { return new WindowXCB(desc); }
 
@@ -66,63 +66,24 @@ const char* Platform_GetExecutableDirectory()
 	return path;
 }
 
-int Platform_Main(const AppConfig& cfg)
+void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
 {
-	WindowDesc windowDesc;
-	windowDesc.width      = cfg.width;
-	windowDesc.height     = cfg.height;
-	windowDesc.resizable  = cfg.resizable;
-	windowDesc.caption    = cfg.name;
-	windowDesc.fullScreen = cfg.fullScreen;
-
-	Window* window = Platform_CreateWindow(windowDesc);
-
-	g_mainWindow = window;
-
-	GfxConfig gfxConfig;
-	if (cfg.gfxConfig)
-	{
-		gfxConfig = *cfg.gfxConfig;
-	}
-	else
-	{
-		gfxConfig = GfxConfig(cfg);
-	}
-	g_mainGfxDevice  = Gfx_CreateDevice(window, gfxConfig);
-	g_mainGfxContext = Gfx_AcquireContext();
-
-	if (cfg.onStartup)
-	{
-		cfg.onStartup(cfg.userData);
-	}
-
 	while (window->isClosed() == false)
 	{
 		window->pollEvents();
 
 		Gfx_BeginFrame();
 
-		if (cfg.onUpdate)
+		if (onUpdate)
 		{
-			cfg.onUpdate(cfg.userData);
+			onUpdate(userData);
 		}
 
 		Gfx_EndFrame();
 		Gfx_Present();
 	}
-
-	if (cfg.onShutdown)
-	{
-		cfg.onShutdown(cfg.userData);
-	}
-
-	Gfx_Release(g_mainGfxContext);
-	Gfx_Release(g_mainGfxDevice);
-
-	window->release();
-
-	return 0;
 }
+
 }
 
 #endif

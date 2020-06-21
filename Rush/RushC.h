@@ -21,10 +21,6 @@ typedef struct rush_memory_view {
 
 // Platform
 
-typedef void (*rush_platform_callback_startup)  (void* user_data);
-typedef void (*rush_platform_callback_update)   (void* user_data);
-typedef void (*rush_platform_callback_shutdown) (void* user_data);
-
 typedef struct rush_app_config {
 	const char* name;
 	int vsync;
@@ -39,15 +35,20 @@ typedef struct rush_app_config {
 	bool minimize_latency;
 	int    argc;
 	char** argv;
-	void* user_data;
-	rush_platform_callback_startup  on_startup;
-	rush_platform_callback_update   on_update;
-	rush_platform_callback_shutdown on_shutdown;
 } rush_app_config;
 
 void rush_app_config_init(rush_app_config* out_cfg);
 
-int rush_platform_main(const rush_app_config* cfg);
+struct rush_platform_context {
+	struct rush_window* window;
+	struct rush_gfx_device* gfx_device;
+	struct rush_gfx_context* gfx_context;
+};
+
+struct rush_platform_context* rush_platform_startup(const rush_app_config* cfg);
+typedef void (*rush_platform_callback_update) (void* user_data);
+void rush_platform_run(rush_platform_callback_update on_update, void* user_data);
+void rush_platform_shutdown();
 
 // Window
 
