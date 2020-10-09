@@ -737,7 +737,7 @@ struct GfxDepthStencilDesc
 struct GfxRasterizerDesc
 {
 	GfxFillMode fillMode            = GfxFillMode::Solid;
-	GfxCullMode cullMode            = GfxCullMode::CCW;
+	GfxCullMode cullMode            = GfxCullMode::None;
 	float       depthBias           = 0.0f;
 	float       depthBiasSlopeScale = 0.0f;
 };
