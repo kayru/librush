@@ -176,6 +176,7 @@ if (MSVC)
 		-wd4201 # nonstandard extension used: nameless struct/union
 		-wd4100 # unreferenced formal parameter
 		-wd4505 # unreferenced local function has been removed
+		-wd5054 # operator '|': deprecated between enumerations of different types
 	)
 	# target_compile_options(Rush PRIVATE )
 	#-WX -w4201 -w4100 -wd4514
