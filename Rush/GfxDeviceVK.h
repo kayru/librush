@@ -201,16 +201,18 @@ struct AccelerationStructureVK : GfxResourceBase
 	VkAccelerationStructureKHR native = VK_NULL_HANDLE;
 	u64 deviceAddress = 0;
 
-	VkAccelerationStructureCreateInfoKHR info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+	VkAccelerationStructureCreateInfoKHR createInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+	VkAccelerationStructureBuildGeometryInfoKHR buildInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+	VkAccelerationStructureBuildSizesInfoKHR buildSize = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
 
 	GfxAccelerationStructureType                     type = GfxAccelerationStructureType::BottomLevel;
 	DynamicArray<GfxRayTracingGeometryDesc>          geometries;
 	DynamicArray<VkAccelerationStructureGeometryKHR> nativeGeometries;
-	DynamicArray<VkAccelerationStructureBuildOffsetInfoKHR> offsetInfos;
-	DynamicArray<VkAccelerationStructureCreateGeometryTypeInfoKHR> geometryTypeInfos;
+	DynamicArray<VkAccelerationStructureBuildRangeInfoKHR> rangeInfos;
 
-	// TODO: pool allocations
-	VkDeviceMemory memory = VK_NULL_HANDLE;
+	u32 instanceCount = 0;
+
+	BufferVK buffer;
 
 	void destroy();
 };
@@ -462,11 +464,14 @@ public:
 	VkPhysicalDeviceProperties       m_physicalDeviceProps;
 	VkPhysicalDeviceProperties2      m_physicalDeviceProps2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	VkPhysicalDeviceFeatures2        m_physicalDeviceFeatures2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	VkPhysicalDeviceRayTracingPipelineFeaturesKHR m_physicalDeviceRayTracingPipelineFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR m_physicalDeviceAccelerationStructureFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
 	VkPhysicalDeviceDescriptorIndexingFeatures m_physicalDeviceDescriptorIndexingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
 	VkPhysicalDeviceBufferDeviceAddressFeatures m_bufferDeviceAddressFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
-	VkPhysicalDeviceRayTracingPropertiesKHR m_rayTracingProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_KHR };
+	VkPhysicalDeviceAccelerationStructurePropertiesKHR m_accelerationStructureProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR };
+	VkPhysicalDeviceRayTracingPipelinePropertiesKHR m_rayTracingPipelineProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
 	VkPhysicalDeviceMeshShaderPropertiesNV m_nvMeshShaderProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV };
 	VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES };
 	DynamicArray<MemoryTraitsVK>      m_memoryTraits;
