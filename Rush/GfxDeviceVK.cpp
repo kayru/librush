@@ -787,6 +787,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	V(vkCreateDevice(m_physicalDevice, &deviceCreateInfo, g_allocationCallbacks, &m_vulkanDevice));
 	g_vulkanDevice = m_vulkanDevice;
 
+	volkLoadDevice(m_vulkanDevice);
+
 	if (debugMerkersAvailable)
 	{
 		vkDebugMarkerSetObjectTag =
@@ -5625,7 +5627,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	V(vkCreateRayTracingPipelinesKHR(
 		g_vulkanDevice,
 		VK_NULL_HANDLE, // deferredOperation
-		VK_NULL_HANDLE, // pipelineCache -- TODO: using real pipeline cache here causes a validation error (claiming invalid cache)
+		g_device->m_pipelineCache,
 		1, &createInfo, // createInfoCount, pCreateInfos
 		g_allocationCallbacks,
 		&result.pipeline));
