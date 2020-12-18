@@ -3687,10 +3687,23 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 		ds.pool                       = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
 	}
 
+
 	VkDescriptorSetAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
 	allocInfo.descriptorSetCount          = 1;
 	allocInfo.pSetLayouts                 = &ds.layout;
 	allocInfo.descriptorPool              = ds.pool->m_descriptorPool;
+
+	VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO };
+	u32 textureDescriptorCount = 0;
+	if (!!(ds.desc.flags & GfxDescriptorSetFlags::VariableDescriptorCount)
+		&& !!(ds.desc.flags & GfxDescriptorSetFlags::TextureArray))
+	{
+		textureDescriptorCount = ds.desc.textures;
+		variableDescriptorCountAllocateInfo.descriptorSetCount = 1;
+		variableDescriptorCountAllocateInfo.pDescriptorCounts = &textureDescriptorCount;
+		allocInfo.pNext = &variableDescriptorCountAllocateInfo;
+	}
+
 	VkResult allocResult                  = vkAllocateDescriptorSets(ds.pool->m_vulkanDevice, &allocInfo, &ds.native);
 	RUSH_ASSERT(allocResult == VK_SUCCESS);
 
