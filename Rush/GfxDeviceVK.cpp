@@ -177,8 +177,8 @@ static void debugRegister(u64 p, VkObjectType objectType, const char* name)
 	{
 		VkDebugMarkerObjectNameInfoEXT nameInfo = {VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT};
 
-		static_assert(VK_OBJECT_TYPE_IMAGE == VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT);
-		static_assert(VK_OBJECT_TYPE_BUFFER == VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT);
+		static_assert(VK_OBJECT_TYPE_IMAGE == VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Unexpected object type");
+		static_assert(VK_OBJECT_TYPE_BUFFER == VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, "Unexpected object type");
 		RUSH_ASSERT(objectType == VK_OBJECT_TYPE_IMAGE || objectType == VK_OBJECT_TYPE_BUFFER);
 
 		nameInfo.object      = p;
