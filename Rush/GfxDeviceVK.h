@@ -455,6 +455,7 @@ public:
 		};
 	};
 
+	GfxConfig     m_cfg;
 	GfxCapability m_caps;
 
 	VkDebugReportCallbackEXT         m_debugReportCallbackExt;

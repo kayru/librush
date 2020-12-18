@@ -160,6 +160,45 @@ static DynamicArray<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalD
 	return enumerated;
 }
 
+static void debugRegister(u64 p, VkObjectType objectType, const char* name)
+{
+	if (vkSetDebugUtilsObjectNameEXT)
+	{
+		VkDebugUtilsObjectNameInfoEXT nameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+
+		nameInfo.objectHandle = p;
+		nameInfo.objectType   = objectType;
+		nameInfo.pObjectName  = name;
+
+		vkSetDebugUtilsObjectNameEXT(g_vulkanDevice, &nameInfo);
+	}
+
+	if (vkDebugMarkerSetObjectNameEXT)
+	{
+		VkDebugMarkerObjectNameInfoEXT nameInfo = {VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT};
+
+		static_assert(VK_OBJECT_TYPE_IMAGE == VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT);
+		static_assert(VK_OBJECT_TYPE_BUFFER == VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT);
+		RUSH_ASSERT(objectType == VK_OBJECT_TYPE_IMAGE || objectType == VK_OBJECT_TYPE_BUFFER);
+
+		nameInfo.object      = p;
+		nameInfo.objectType  = (VkDebugReportObjectTypeEXT)objectType;
+		nameInfo.pObjectName = name;
+
+		vkDebugMarkerSetObjectNameEXT(g_vulkanDevice, &nameInfo);
+	}
+}
+
+static void debugRegister(VkImage p, const char* name)
+{
+	debugRegister((u64)p, VK_OBJECT_TYPE_IMAGE, name);
+}
+
+static void debugRegister(VkBuffer p, const char* name)
+{ 
+	debugRegister((u64)p, VK_OBJECT_TYPE_BUFFER, name);
+}
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
     VkDebugReportObjectTypeEXT                                           objectType,
     uint64_t                                                             object,
@@ -490,6 +529,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	g_device = this;
 
+	m_cfg = cfg;
 	m_refs = 1;
 
 	m_window = window;
@@ -514,7 +554,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	if (cfg.debug)
 	{
 		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_KHRONOS_validation", false);
-		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_EXT_debug_report", false);
+		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME, false);
+		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
 	}
 
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_KHR_get_physical_device_properties2");
@@ -4034,6 +4075,11 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	imageCreateInfo.initialLayout = res.currentLayout;
 
 	V(vkCreateImage(g_vulkanDevice, &imageCreateInfo, g_allocationCallbacks, &res.image));
+	if (g_device->m_cfg.debug && desc.debugName)
+	{
+		debugRegister(res.image, desc.debugName);
+	}
+
 	res.ownsImage = true;
 
 	VkMemoryRequirements memoryReq = {};
@@ -4372,6 +4418,11 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 	if (data || isStatic)
 	{
 		V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, g_allocationCallbacks, &res.info.buffer));
+		if (g_device->m_cfg.debug && desc.debugName)
+		{
+			debugRegister(res.info.buffer, desc.debugName);
+		}
+
 		res.ownsBuffer = true;
 
 		res.size        = (u32)bufferCreateInfo.size;

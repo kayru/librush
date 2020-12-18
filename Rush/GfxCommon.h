@@ -680,6 +680,7 @@ struct GfxBufferDesc
 	u32            stride      = 0;
 	u32            count       = 0;
 	bool           hostVisible = false;
+	const char*    debugName   = nullptr;
 };
 
 struct GfxBlendStateDesc
