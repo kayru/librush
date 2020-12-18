@@ -4532,9 +4532,13 @@ void Gfx_vkFillBuffer(GfxContext* ctx, GfxBuffer h, u32 value)
 	vkCmdFillBuffer(ctx->m_commandBuffer, buffer.info.buffer, buffer.info.offset, buffer.info.range, value);
 }
 
-void Gfx_vkFullPipelineBarrier(GfxContext* ctx)
+void Gfx_FlushBarriers(GfxContext* ctx)
 {
 	ctx->flushBarriers();
+}
+void Gfx_AddFullPipelineBarrier(GfxContext* ctx)
+{
+	Gfx_FlushBarriers(ctx);
 
 	VkMemoryBarrier barrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
 
@@ -5830,7 +5834,7 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 	result.buildInfo.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
 	result.buildInfo.mode          = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
 
-	result.buildSize = getBuildSizeInfo(VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &result.buildInfo, result.instanceCount);
+	result.buildSize = getBuildSizeInfo(VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &result.buildInfo, result.primitiveCounts.data());
 
 	GfxBufferDesc bufferDesc(GfxBufferFlags::RayTracing, (u32)result.buildSize.accelerationStructureSize, 1);
 	result.buffer = createBuffer(bufferDesc, nullptr);
@@ -5882,10 +5886,6 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		VkAccelerationStructureGeometryInstancesDataKHR& instances = accel.nativeGeometries[0].geometry.instances;
 		instances.arrayOfPointers = VK_FALSE;
 		instances.data.deviceAddress = instanceBufferVK.deviceAddress;
-
-		// TODO: add pipeline barriers at the high level
-		// TODO: batch acceleration structure builds and barriers
-		Gfx_vkFullPipelineBarrier(ctx);
 	}
 
 	buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
@@ -5901,13 +5901,6 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	const VkAccelerationStructureBuildRangeInfoKHR* rangeInfos[1] = { accel.rangeInfos.data() };
 
 	vkCmdBuildAccelerationStructuresKHR(ctx->m_commandBuffer, 1, &buildInfo, rangeInfos);
-
-	if (accel.type == GfxAccelerationStructureType::TopLevel)
-	{
-		// TODO: add pipeline barriers at the high level
-		// TODO: batch acceleration structure builds and barriers
-		Gfx_vkFullPipelineBarrier(ctx);
-	}
 }
 
 void Gfx_Retain(GfxAccelerationStructure h) { g_device->m_accelerationStructures[h].addReference(); }

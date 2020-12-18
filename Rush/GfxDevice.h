@@ -290,6 +290,8 @@ void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState);
 void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nextState);
 void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState);
 void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset = 0);
+void Gfx_FlushBarriers(GfxContext* rc);
+void Gfx_AddFullPipelineBarrier(GfxContext* rc);
 void Gfx_AddImageBarrier(GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState,
     GfxSubresourceRange* subresourceRange = nullptr);
 void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst);
@@ -403,12 +405,14 @@ template <typename T> inline T* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferA
 	return reinterpret_cast<T*>(Gfx_BeginUpdateBuffer(rc, h, u32(sizeof(T)* arrayCount)));
 }
 
-#ifndef RUSH_RENDER_SUPPORT_IMAGE_BARRIERS
+#ifndef RUSH_RENDER_SUPPORT_BARRIERS
+inline void Gfx_FlushBarriers(GfxContext*) {};
+inline void Gfx_AddFullPipelineBarrier(GfxContext*) {};
 inline void Gfx_AddImageBarrier(
     GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
 {
 }
-#endif // RUSH_RENDER_SUPPORT_IMAGE_BARRIERS
+#endif // RUSH_RENDER_SUPPORT_BARRIERS
 
 #ifndef RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 inline GfxContext* Gfx_BeginAsyncCompute(GfxContext*) { return nullptr; }
