@@ -205,10 +205,11 @@ struct AccelerationStructureVK : GfxResourceBase
 	VkAccelerationStructureBuildGeometryInfoKHR buildInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
 	VkAccelerationStructureBuildSizesInfoKHR buildSize = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
 
-	GfxAccelerationStructureType                     type = GfxAccelerationStructureType::BottomLevel;
-	DynamicArray<GfxRayTracingGeometryDesc>          geometries;
-	DynamicArray<VkAccelerationStructureGeometryKHR> nativeGeometries;
+	GfxAccelerationStructureType                           type = GfxAccelerationStructureType::BottomLevel;
+	DynamicArray<GfxRayTracingGeometryDesc>                geometries;
+	DynamicArray<VkAccelerationStructureGeometryKHR>       nativeGeometries;
 	DynamicArray<VkAccelerationStructureBuildRangeInfoKHR> rangeInfos;
+	DynamicArray<u32>                                      primitiveCounts;
 
 	u32 instanceCount = 0;
 

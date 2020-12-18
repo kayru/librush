@@ -5725,10 +5725,10 @@ const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracin
 static VkAccelerationStructureBuildSizesInfoKHR getBuildSizeInfo(
 	VkAccelerationStructureBuildTypeKHR buildType,
 	const VkAccelerationStructureBuildGeometryInfoKHR* buildInfo,
-	u32 maxPrimitives)
+	u32* maxPrimitives)
 {
 	VkAccelerationStructureBuildSizesInfoKHR sizeInfo = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
-	vkGetAccelerationStructureBuildSizesKHR(g_vulkanDevice, buildType, buildInfo, &maxPrimitives, &sizeInfo);
+	vkGetAccelerationStructureBuildSizesKHR(g_vulkanDevice, buildType, buildInfo, maxPrimitives, &sizeInfo);
 	return sizeInfo;
 }
 
@@ -5737,14 +5737,13 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 	AccelerationStructureVK result;
 	result.type = desc.type;
 
-	u32 totalPrimitiveCount = 0;
-
 	if (desc.type == GfxAccelerationStructureType::BottomLevel)
 	{
 		result.buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
 		result.nativeGeometries.resize(desc.geometyCount);
 		result.rangeInfos.resize(desc.geometyCount);
+		result.primitiveCounts.resize(desc.geometyCount);
 
 		for (u32 i = 0; i < desc.geometyCount; ++i)
 		{
@@ -5793,7 +5792,7 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 
 			result.rangeInfos[i] = rangeInfo;
 
-			totalPrimitiveCount += rangeInfo.primitiveCount;
+			result.primitiveCounts[i] = rangeInfo.primitiveCount;
 		}
 
 		RUSH_ASSERT(desc.geometyCount == result.nativeGeometries.size());
@@ -5816,7 +5815,7 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 		rangeInfo.primitiveCount = desc.instanceCount;
 		result.rangeInfos.push(rangeInfo);
 
-		totalPrimitiveCount = rangeInfo.primitiveCount;
+		result.primitiveCounts.push(rangeInfo.primitiveCount);
 	}
 	else
 	{
