@@ -247,7 +247,8 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxSampler* samplers = nullptr,
 	const GfxTexture* textures = nullptr,
 	const GfxTexture* storageImages = nullptr,
-	const GfxBuffer* storageBuffers = nullptr);
+	const GfxBuffer* storageBuffers = nullptr,
+	const GfxAccelerationStructure* accelStructures = nullptr);
 #endif // RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 
 const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTextureArg h);

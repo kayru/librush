@@ -1758,7 +1758,8 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	 const GfxSampler* samplers,
 	 const GfxTexture* textures,
 	 const GfxTexture* storageImages,
-	 const GfxBuffer* storageBuffers)
+	 const GfxBuffer* storageBuffers,
+	 const GfxAccelerationStructure*)
 {
 	const GfxDescriptorSetDesc& desc = ds.desc;
 
@@ -1828,10 +1829,11 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	 const GfxSampler* samplers,
 	 const GfxTexture* textures,
 	 const GfxTexture* storageImages,
-	 const GfxBuffer* storageBuffers)
+	 const GfxBuffer* storageBuffers,
+	 const GfxAccelerationStructure* accelStructures)
 {
 	DescriptorSetMTL& ds = g_device->m_descriptorSets[d];
-	updateDescriptorSet(ds, constantBuffers, 0, samplers, textures, storageImages, storageBuffers);
+	updateDescriptorSet(ds, constantBuffers, 0, samplers, textures, storageImages, storageBuffers, accelStructures);
 }
 
 void DescriptorSetMTL::destroy()

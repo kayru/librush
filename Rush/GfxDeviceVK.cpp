@@ -3668,7 +3668,9 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
     const GfxSampler*                            samplers,
     const GfxTexture*                            textures,
     const GfxTexture*                            storageImages,
-    const GfxBuffer*                             storageBuffers)
+    const GfxBuffer*                             storageBuffers,
+    const GfxAccelerationStructure*              accelStructures
+)
 {
 	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
 	if (ds.native)
@@ -3710,7 +3712,7 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	    false, // useDynamicUniformBuffers
 	    false, // allowTransientBuffers
 	    constantBuffers, samplers, textures, storageImages, storageBuffers,
-	    nullptr // acceleration structures
+	    accelStructures
 	);
 }
 
