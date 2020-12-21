@@ -173,13 +173,12 @@ static void debugRegister(u64 p, VkObjectType objectType, const char* name)
 		vkSetDebugUtilsObjectNameEXT(g_vulkanDevice, &nameInfo);
 	}
 
-	if (vkDebugMarkerSetObjectNameEXT)
+	if (vkDebugMarkerSetObjectNameEXT && (objectType == VK_OBJECT_TYPE_IMAGE || objectType == VK_OBJECT_TYPE_BUFFER))
 	{
 		VkDebugMarkerObjectNameInfoEXT nameInfo = {VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT};
 
-		static_assert(VK_OBJECT_TYPE_IMAGE == VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Unexpected object type");
-		static_assert(VK_OBJECT_TYPE_BUFFER == VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, "Unexpected object type");
-		RUSH_ASSERT(objectType == VK_OBJECT_TYPE_IMAGE || objectType == VK_OBJECT_TYPE_BUFFER);
+		static_assert(VK_OBJECT_TYPE_IMAGE == (VkDebugReportObjectTypeEXT)VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Unexpected object type");
+		static_assert(VK_OBJECT_TYPE_BUFFER == (VkDebugReportObjectTypeEXT)VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, "Unexpected object type");
 
 		nameInfo.object      = p;
 		nameInfo.objectType  = (VkDebugReportObjectTypeEXT)objectType;
