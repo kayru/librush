@@ -408,6 +408,7 @@ void WindowWin32::processSizeEvent(WPARAM wparam, LPARAM lparam)
 	{
 		m_maximized = false;
 		m_minimized = true;
+		m_focused = false;
 	}
 	if (wparam == SIZE_MAXIMIZED)
 	{
