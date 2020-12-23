@@ -8,11 +8,6 @@
 
 #include <algorithm>
 
-#ifdef __GNUC__
-#include <limits.h>
-#define _strdup strdup
-#endif
-
 #if defined(RUSH_PLATFORM_WINDOWS)
 #include <Windows.h> // only needed for GetModuleHandle()
 #endif
@@ -3358,7 +3353,7 @@ static ShaderVK createShader(VkDevice device, const GfxShaderSource& code)
 {
 	ShaderVK result;
 
-	result.entry = _strdup(code.entry);
+	result.entry = code.entry;
 	result.module = createShaderModule(device, code);
 
 	return result;
@@ -3776,7 +3771,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 		stageInfo.stage                           = VK_SHADER_STAGE_COMPUTE_BIT;
 		stageInfo.module                          = g_device->m_shaders[desc.cs].module;
-		stageInfo.pName                           = g_device->m_shaders[desc.cs].entry;
+		stageInfo.pName                           = g_device->m_shaders[desc.cs].entry.c_str();
 		stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 		if (g_device->m_supportedExtensions.AMD_wave_limits && desc.csWaveLimit != 1.0f)
@@ -3807,7 +3802,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_VERTEX_BIT;
 			stageInfo.module                          = g_device->m_shaders[desc.vs].module;
-			stageInfo.pName                           = g_device->m_shaders[desc.vs].entry;
+			stageInfo.pName                           = g_device->m_shaders[desc.vs].entry.c_str();
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.vsWaveLimit != 1.0f)
@@ -3825,7 +3820,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_GEOMETRY_BIT;
 			stageInfo.module                          = g_device->m_shaders[desc.gs].module;
-			stageInfo.pName                           = g_device->m_shaders[desc.gs].entry;
+			stageInfo.pName                           = g_device->m_shaders[desc.gs].entry.c_str();
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			res.shaderStages.push_back(stageInfo);
@@ -3837,7 +3832,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_FRAGMENT_BIT;
 			stageInfo.module                          = g_device->m_shaders[desc.ps].module;
-			stageInfo.pName                           = g_device->m_shaders[desc.ps].entry;
+			stageInfo.pName                           = g_device->m_shaders[desc.ps].entry.c_str();
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.psWaveLimit != 1.0f)
@@ -3858,7 +3853,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 			stageInfo.stage                           = VK_SHADER_STAGE_MESH_BIT_NV;
 			stageInfo.module                          = g_device->m_shaders[desc.ms].module;
-			stageInfo.pName                           = g_device->m_shaders[desc.ms].entry;
+			stageInfo.pName                           = g_device->m_shaders[desc.ms].entry.c_str();
 			stageInfo.pSpecializationInfo             = res.specializationInfo;
 
 			res.shaderStages.push_back(stageInfo);
@@ -5366,7 +5361,6 @@ void ShaderVK::destroy()
 	RUSH_ASSERT(m_refs == 0);
 	// TODO: queue-up destruction
 	vkDestroyShaderModule(g_vulkanDevice, module, g_allocationCallbacks);
-	deallocateBytes(const_cast<char*>(entry));
 }
 
 void BufferVK::destroy()

@@ -37,7 +37,7 @@ union MemoryTraitsVK {
 struct ShaderVK : GfxResourceBase
 {
 	VkShaderModule module = VK_NULL_HANDLE;
-	const char*    entry  = nullptr;
+	String         entry;
 
 	struct InputMapping
 	{
