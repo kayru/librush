@@ -31,9 +31,9 @@ Mat4 Camera::buildViewMatrix() const
 	return res;
 }
 
-Mat4 Camera::buildProjMatrix(ProjectionFlags flags) const
+Mat4 Camera::buildProjMatrix() const
 {
-	return Mat4::perspective(m_aspect, m_fov, m_clipNear, m_clipFar, flags);
+	return Mat4::perspective(m_aspect, m_fov, m_clipNear, m_clipFar);
 }
 
 void Camera::blendTo(const Camera& other, float positionAlpha, float orientationAlpha, float parameterAlpha)

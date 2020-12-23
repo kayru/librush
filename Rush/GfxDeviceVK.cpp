@@ -969,20 +969,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// Done!
 
-	if (cfg.preferredCoordinateSystem == GfxConfig::PreferredCoordinateSystem_Direct3D &&
-	    (m_supportedExtensions.AMD_negative_viewport_height || m_supportedExtensions.KHR_maintenance1))
+	if (m_supportedExtensions.AMD_negative_viewport_height || m_supportedExtensions.KHR_maintenance1)
 	{
-		m_useNegativeViewport  = true;
-		m_caps.projectionFlags = ProjectionFlags::Default;
-		m_caps.deviceTopLeft   = Vec2(-1.0f, 1.0f);
+		m_useNegativeViewport = true;
 	}
 	else
 	{
-		m_caps.projectionFlags = ProjectionFlags::FlipVertical;
-		m_caps.deviceTopLeft   = Vec2(-1.0f, -1.0f);
+		RUSH_LOG_FATAL("Negative viewport height is required for Vulkan renderer, but it is not supported on this system.");
 	}
 
-	m_caps.textureTopLeft = Vec2(0.0f, 0.0f);
 	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_SPV;
 	m_caps.compute                 = true;
 	m_caps.instancing              = true;

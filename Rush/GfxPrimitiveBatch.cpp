@@ -327,9 +327,7 @@ void PrimitiveBatch::begin2D(const Vec2& scale, const Vec2& bias)
 {
 	RUSH_ASSERT(m_mode == BatchMode_Invalid);
 
-	const GfxCapability& caps = Gfx_GetCapability();
-
-	m_constants.transform2D = Vec4(scale.x, caps.deviceTopLeft.y * scale.y, bias.x, caps.deviceTopLeft.y * bias.y);
+	m_constants.transform2D = Vec4(scale.x, scale.y, bias.x, bias.y);
 	m_constantBufferDirty   = true;
 	m_mode                  = BatchMode_2D;
 }

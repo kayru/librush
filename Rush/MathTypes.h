@@ -469,17 +469,6 @@ inline Mat3 transpose(const Mat3& m)
 	    Vec3{m.rows[0].z, m.rows[1].z, m.rows[2].z}}};
 }
 
-enum class ProjectionFlags : u32
-{
-	// Top-Left-Near XYZ: -1, +1, 0
-	// Bottom-Right-Far XYZ: +1, -1, +1
-	Default = 0,
-
-	FlipVertical = 1 << 0,
-};
-
-RUSH_IMPLEMENT_FLAG_OPERATORS(ProjectionFlags, u32);
-
 struct Mat4
 {
 	Vec4 rows[4];
@@ -541,8 +530,7 @@ struct Mat4
 	static Mat4 orthographic(float w, float h, float zn = 1, float zf = -1);
 	static Mat4 orthographicOffCenter(float l, float r, float b, float t, float zn, float zf);
 	static Mat4 orthographicOffCenter(const Box3& bounds);
-	static Mat4 perspective(
-	    float aspect, float fov, float zn, float zf, ProjectionFlags flags = ProjectionFlags::Default);
+	static Mat4 perspective(float aspect, float fov, float zn, float zf);
 	static Mat4 lookAt(const Vec3& position, const Vec3& target, const Vec3& up = Vec3(0, 1, 0));
 };
 

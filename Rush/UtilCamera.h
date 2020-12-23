@@ -36,7 +36,7 @@ public:
 	Vec3&       getPosition() { return m_position; }
 
 	Mat4 buildViewMatrix() const;
-	Mat4 buildProjMatrix(ProjectionFlags flags) const;
+	Mat4 buildProjMatrix() const;
 
 	const Vec3& getRight() const { return m_axisX; }
 	const Vec3& getUp() const { return m_axisY; }

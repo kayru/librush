@@ -60,19 +60,6 @@ struct GfxConfig
 	bool debug            = false;
 	bool warp             = false;
 	bool minimizeLatency  = false;
-
-	enum PreferredCoordinateSystem
-	{
-		PreferredCoordinateSystem_Default,  // whatever is the default for current graphics API
-		PreferredCoordinateSystem_Direct3D, // XY top-left: [-1, +1], Z range  0 to +1, texture top-left: [0, 0]
-		PreferredCoordinateSystem_Vulkan,   // XY top-left: [-1, -1], Z range  0 to +1, texture top-left: [0, 0]
-		PreferredCoordinateSystem_OpenGL,   // XY top-left: [-1, +1], Z range -1 to +1, texture top-left: [0, 1]
-	};
-
-	// Coordinate system will be configured according to this preference.
-	// This does not provide any guarantees and device capability structure must be checked
-	// to detect the actual coordinate system conventions used.
-	PreferredCoordinateSystem preferredCoordinateSystem = PreferredCoordinateSystem_Default;
 };
 
 struct GfxCapability
@@ -101,8 +88,6 @@ struct GfxCapability
 
 	float deviceFarDepth  = 1.0f;
 	float deviceNearDepth = 0.0f;
-	Vec2  deviceTopLeft   = Vec2(-1.0f, -1.0f);
-	Vec2  textureTopLeft  = Vec2(0.0f, 0.0f);
 
 	u32 shaderTypeMask  = 0;
 	u32 threadGroupSize = 64;
@@ -115,8 +100,6 @@ struct GfxCapability
 	u32 rtShaderHandleSize = 0;
 	u32 rtSbtMaxStride = 0;
 	u32 rtSbtAlignment = 0;
-
-	ProjectionFlags projectionFlags = ProjectionFlags::Default;
 
 	bool shaderTypeSupported(GfxShaderSourceType type) const { return (shaderTypeMask & (1 << type)) != 0; }
 };

@@ -168,18 +168,13 @@ Mat4 Mat4::orthographicOffCenter(const Box3& bounds)
 	    bounds.m_min.x, bounds.m_max.x, bounds.m_min.y, bounds.m_max.y, bounds.m_min.z, bounds.m_max.z);
 }
 
-Mat4 Mat4::perspective(float aspect, float fov, float zn, float zf, ProjectionFlags flags)
+Mat4 Mat4::perspective(float aspect, float fov, float zn, float zf)
 {
 	float sy = 1.0f / tanf(fov * 0.5f);
 	float sx = sy / aspect;
 
 	float a = zf / (zf - zn);
 	float b = -zn * a;
-
-	if (!!(flags & ProjectionFlags::FlipVertical))
-	{
-		sy = -sy;
-	}
 
 	Mat4 res(sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, a, 1, 0, 0, b, 0);
 
