@@ -86,7 +86,7 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 
 	{
 		GfxShaderBindingDesc bindings;
-		bindings.constantBuffers = 1;
+		bindings.descriptorSets[0].constantBuffers = 1;
 		m_techniques[TechniqueID_Plain2D] =
 		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader2D, m_vertexFormat2D, bindings));
 		m_techniques[TechniqueID_Plain3D] =
@@ -95,9 +95,9 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 
 	{
 		GfxShaderBindingDesc bindings;
-		bindings.constantBuffers = 1;
-		bindings.samplers        = 1;
-		bindings.textures        = 1;
+		bindings.descriptorSets[0].constantBuffers = 1;
+		bindings.descriptorSets[0].samplers        = 1;
+		bindings.descriptorSets[0].textures        = 1;
 
 		m_techniques[TechniqueID_Textured2D] =
 		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader2D, m_vertexFormat2D, bindings));

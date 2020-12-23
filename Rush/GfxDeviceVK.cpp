@@ -2774,6 +2774,7 @@ void GfxContext::applyState()
 	                                                           : static_cast<PipelineBaseVK&>(g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline]);
 
 	const GfxShaderBindingDesc& bindingDesc = pipelineBase.bindings;
+	const GfxDescriptorSetDesc& descSet = pipelineBase.bindings.descriptorSets[0];
 
 	if (m_dirtyState & DirtyStateFlag_Pipeline)
 	{
@@ -2920,7 +2921,7 @@ void GfxContext::applyState()
 		m_currentDescriptorSet = pipelineBase.descriptorSetCache.back();
 		pipelineBase.descriptorSetCache.pop_back();
 
-		for (u32 i = 0; i < bindingDesc.textures; ++i)
+		for (u32 i = 0; i < descSet.textures; ++i)
 		{
 			RUSH_ASSERT(m_pending.textures[i].valid());
 			TextureVK&              texture          = g_device->m_textures[m_pending.textures[i]];
@@ -2930,7 +2931,7 @@ void GfxContext::applyState()
 			    texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, &subresourceRange);
 		}
 
-		for (u32 i = 0; i < bindingDesc.rwImages; ++i)
+		for (u32 i = 0; i < descSet.rwImages; ++i)
 		{
 			RUSH_ASSERT(m_pending.storageImages[i].valid());
 			TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
@@ -2938,7 +2939,7 @@ void GfxContext::applyState()
 			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_GENERAL, nullptr, true);
 		}
 
-		updateDescriptorSet(m_currentDescriptorSet, bindingDesc,
+		updateDescriptorSet(m_currentDescriptorSet, descSet,
 		    true, // use dynamic uniform buffers
 		    true, // allow transient buffers
 		    m_pending.constantBuffers, m_pending.samplers, m_pending.textures, m_pending.storageImages,
@@ -2952,7 +2953,7 @@ void GfxContext::applyState()
 	{
 		u32 first              = bitScanForward(descriptorSetMask);
 		u32 count              = bitCount(descriptorSetMask);
-		u32 dynamicOffsetCount = first == 0 ? bindingDesc.constantBuffers : 0;
+		u32 dynamicOffsetCount = first == 0 ? descSet.constantBuffers : 0;
 
 		vkCmdBindDescriptorSets(m_commandBuffer, m_currentBindPoint, pipelineBase.pipelineLayout, first, count,
 		    &descriptorSets[first], dynamicOffsetCount, m_pending.constantBufferOffsets);
@@ -3615,9 +3616,11 @@ DescriptorSetLayoutArray GfxDevice::createDescriptorSetLayouts(
     const GfxShaderBindingDesc& desc, u32 resourceStageFlags)
 {
 	RUSH_ASSERT_MSG(desc.useDefaultDescriptorSet, "Pipelines without default descriptor set are not implemented");
+	const GfxDescriptorSetDesc& descSet = desc.descriptorSets[0];
+
 	static_assert(GfxShaderBindingDesc::MaxDescriptorSets == GfxContext::MaxDescriptorSets, "");
 	DescriptorSetLayoutArray setLayouts;
-	setLayouts.pushBack(createDescriptorSetLayout(desc, resourceStageFlags, true));
+	setLayouts.pushBack(createDescriptorSetLayout(descSet, resourceStageFlags, true));
 
 	for (u32 i = 1; i < GfxContext::MaxDescriptorSets; ++i)
 	{
@@ -3865,11 +3868,13 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	res.bindings = desc.bindings;
 
-	res.pushConstantStageFlags  = convertStageFlags(desc.bindings.pushConstantStageFlags);
-	res.pushConstantsSize       = desc.bindings.pushConstants;
 
-	RUSH_ASSERT(res.bindings.rwTypedBuffers + res.bindings.rwBuffers <= GfxContext::MaxStorageBuffers);
-	RUSH_ASSERT(res.bindings.constantBuffers <= GfxContext::MaxConstantBuffers);
+	res.pushConstantStageFlags  = convertStageFlags(desc.bindings.pushConstantStageFlags);
+	res.pushConstantsSize       = desc.bindings.pushConstantSize;
+
+	const GfxDescriptorSetDesc& descSet = desc.bindings.descriptorSets[0];
+	RUSH_ASSERT(descSet.rwTypedBuffers + descSet.rwBuffers <= GfxContext::MaxStorageBuffers);
+	RUSH_ASSERT(descSet.constantBuffers <= GfxContext::MaxConstantBuffers);
 
 	u32 resourceStageFlags = 0;
 	if (desc.cs.valid())
@@ -5561,8 +5566,9 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	result.maxRecursionDepth = desc.maxRecursionDepth;
 	result.bindings          = desc.bindings;
 
+	const GfxDescriptorSetDesc& descSet = desc.bindings.descriptorSets[0];
 	RUSH_ASSERT_MSG(
-	    desc.bindings.accelerationStructures <= 1, "Binding multiple acceleration structures is not implemented");
+		descSet.accelerationStructures <= 1, "Binding multiple acceleration structures is not implemented");
 
 	// shader modules
 

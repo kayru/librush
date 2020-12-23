@@ -883,14 +883,14 @@ struct GfxDescriptorSetDesc
 	bool operator!=(const GfxDescriptorSetDesc& other) const { return !(*this == other); }
 };
 
-struct GfxShaderBindingDesc : GfxDescriptorSetDesc
+struct GfxShaderBindingDesc
 {
 	// Shader resources must be specified in the same order as members of this struct
 	GfxStageFlags pushConstantStageFlags = GfxStageFlags::None;
-	u8            pushConstants          = 0;
+	u8            pushConstantSize       = 0; // size in bytes
 
 	static constexpr u32 MaxDescriptorSets                 = 4;
-	bool                 useDefaultDescriptorSet           = true; // if 'true', then descriptor set 0 is reserved
+	bool                 useDefaultDescriptorSet           = true; // if 'true', then descriptor set 0 is used for Gfx_SetTexture, etc.
 	GfxDescriptorSetDesc descriptorSets[MaxDescriptorSets] = {};
 };
 
