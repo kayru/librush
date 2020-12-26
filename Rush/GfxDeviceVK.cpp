@@ -1580,8 +1580,8 @@ VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDesc& desc, VkRenderPass
 		return existingFrameBuffer->second;
 	}
 
-	u32 width  = UINT_MAX;
-	u32 height = UINT_MAX;
+	u32 width  = UINT32_MAX;
+	u32 height = UINT32_MAX;
 
 	u32         attachmentCount = 0;
 	VkImageView frameBufferAttachments[1 + GfxPassDesc::MaxTargets];
