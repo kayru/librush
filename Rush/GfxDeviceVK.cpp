@@ -2396,8 +2396,8 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 		m_pendingClear.flags = m_pendingClear.flags | GfxClearFlags::DepthStencil;
 	}
 
-	m_currentRenderRect.extent.width  = UINT_MAX;
-	m_currentRenderRect.extent.height = UINT_MAX;
+	m_currentRenderRect.extent.width  = UINT32_MAX;
+	m_currentRenderRect.extent.height = UINT32_MAX;
 
 	u32 depthSampleCount = 0;
 
