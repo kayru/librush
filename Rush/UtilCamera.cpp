@@ -5,17 +5,17 @@
 namespace Rush
 {
 
-Camera::Camera() : Camera(1.0f, Pi * 0.25f, 1.0f, 1000.0f) {}
-
-Camera::Camera(float aspect, float fov, float clip_near, float clip_far)
+Camera::Camera() : Camera(1.0f, Pi * 0.25f, 1.0f, INFINITY) {}
+Camera::Camera(float aspect, float fov, float clipNear) : Camera(aspect, fov, clipNear, INFINITY) {}
+Camera::Camera(float aspect, float fov, float clipNear, float clipFar)
 : m_position(0, 0, 0)
 , m_axisX(1, 0, 0)
 , m_axisY(0, 1, 0)
 , m_axisZ(0, 0, 1)
 , m_aspect(aspect)
 , m_fov(fov)
-, m_clipNear(clip_near)
-, m_clipFar(clip_far)
+, m_clipNear(clipNear)
+, m_clipFar(clipFar)
 {
 }
 
@@ -31,9 +31,9 @@ Mat4 Camera::buildViewMatrix() const
 	return res;
 }
 
-Mat4 Camera::buildProjMatrix() const
+Mat4 Camera::buildProjMatrix(bool reverseZ) const
 {
-	return Mat4::perspective(m_aspect, m_fov, m_clipNear, m_clipFar);
+	return Mat4::perspective(m_aspect, m_fov, m_clipNear, m_clipFar, reverseZ);
 }
 
 void Camera::blendTo(const Camera& other, float positionAlpha, float orientationAlpha, float parameterAlpha)
@@ -43,7 +43,15 @@ void Camera::blendTo(const Camera& other, float positionAlpha, float orientation
 	m_aspect   = lerp(m_aspect, other.m_aspect, parameterAlpha);
 	m_fov      = lerp(m_fov, other.m_fov, parameterAlpha);
 	m_clipNear = lerp(m_clipNear, other.m_clipNear, parameterAlpha);
-	m_clipFar  = lerp(m_clipFar, other.m_clipFar, parameterAlpha);
+
+	if (m_clipFar == INFINITY || other.m_clipFar == INFINITY)
+	{
+		m_clipFar = INFINITY;
+	}
+	else
+	{
+		m_clipFar = lerp(m_clipFar, other.m_clipFar, parameterAlpha);
+	}
 
 	Mat3 orientationA{{Vec3{m_axisX.x, m_axisY.x, m_axisZ.x}, Vec3{m_axisX.y, m_axisY.y, m_axisZ.y},
 	    Vec3{m_axisX.z, m_axisY.z, m_axisZ.z}}};

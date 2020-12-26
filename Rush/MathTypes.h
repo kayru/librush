@@ -530,7 +530,7 @@ struct Mat4
 	static Mat4 orthographic(float w, float h, float zn = 1, float zf = -1);
 	static Mat4 orthographicOffCenter(float l, float r, float b, float t, float zn, float zf);
 	static Mat4 orthographicOffCenter(const Box3& bounds);
-	static Mat4 perspective(float aspect, float fov, float zn, float zf);
+	static Mat4 perspective(float aspect, float fov, float zn, float zf, bool reverseZ=false);
 	static Mat4 lookAt(const Vec3& position, const Vec3& target, const Vec3& up = Vec3(0, 1, 0));
 };
 

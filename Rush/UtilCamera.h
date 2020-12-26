@@ -13,6 +13,7 @@ class Camera
 
 public:
 	Camera();
+	Camera(float aspect, float fov, float clipNear);
 	Camera(float aspect, float fov, float clipNear, float clipFar);
 
 	void setAspect(float aspect) { m_aspect = aspect; }
@@ -36,7 +37,7 @@ public:
 	Vec3&       getPosition() { return m_position; }
 
 	Mat4 buildViewMatrix() const;
-	Mat4 buildProjMatrix() const;
+	Mat4 buildProjMatrix(bool reverseZ=false) const;
 
 	const Vec3& getRight() const { return m_axisX; }
 	const Vec3& getUp() const { return m_axisY; }

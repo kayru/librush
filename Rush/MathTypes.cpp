@@ -168,17 +168,45 @@ Mat4 Mat4::orthographicOffCenter(const Box3& bounds)
 	    bounds.m_min.x, bounds.m_max.x, bounds.m_min.y, bounds.m_max.y, bounds.m_min.z, bounds.m_max.z);
 }
 
-Mat4 Mat4::perspective(float aspect, float fov, float zn, float zf)
+Mat4 Mat4::perspective(float aspect, float fov, float zn, float zf, bool reverseZ)
 {
-	float sy = 1.0f / tanf(fov * 0.5f);
-	float sx = sy / aspect;
+	float y = 1.0f / tanf(fov * 0.5f);
+	float x = y / aspect;
 
-	float a = zf / (zf - zn);
-	float b = -zn * a;
+	float a, b;
 
-	Mat4 res(sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, a, 1, 0, 0, b, 0);
+	if (zf == INFINITY)
+	{
+		if (reverseZ)
+		{
+			a = 0;
+			b = zn;
+		}
+		else
+		{
+			a = 1;
+			b = -zn;
+		}
+	}
+	else
+	{
+		if (reverseZ)
+		{
+			a = zn / (zn - zf);
+			b = -zf * a;
+		}
+		else
+		{
+			a = zf / (zf - zn);
+			b = -zn * a;
+		}
+	}
 
-	return res;
+	return Mat4(
+		x, 0, 0, 0,
+		0, y, 0, 0,
+		0, 0, a, 1,
+		0, 0, b, 0);
 }
 
 Mat4 Mat4::scaleTranslate(const Vec3& s, const Vec3& t)
