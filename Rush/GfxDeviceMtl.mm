@@ -16,7 +16,8 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	const GfxSampler* samplers,
 	const GfxTexture* textures,
 	const GfxTexture* storageImages,
-	const GfxBuffer* storageBuffers);
+	const GfxBuffer* storageBuffers,
+	const GfxAccelerationStructure* accelStructures);
 
 static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
@@ -149,10 +150,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// init caps
 
-	m_caps.deviceTopLeft = Vec2(-1.0f, 1.0f);
-	m_caps.textureTopLeft = Vec2(0.0f, 0.0f);
 	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_MSL;
-	m_caps.projectionFlags = ProjectionFlags::Default;
 	m_caps.deviceNearDepth = 0.0f;
 	m_caps.deviceFarDepth = 1.0f;
 	m_caps.compute = true;
@@ -496,22 +494,24 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		result.ps.retain(desc.ps);
 	}
 
+	const auto& dsetDesc = desc.bindings.descriptorSets[0];
+
 	u32 offset = 0;
 
 	result.constantBufferOffset = 0;
-	offset += desc.bindings.constantBuffers;
+	offset += dsetDesc.constantBuffers;
 
 	result.samplerOffset = offset;
-	offset += desc.bindings.samplers;
+	offset += dsetDesc.samplers;
 
 	result.sampledImageOffset = offset;
-	offset += desc.bindings.textures;
+	offset += dsetDesc.textures;
 
 	result.storageImageOffset = offset;
-	offset += desc.bindings.rwImages;
+	offset += dsetDesc.rwImages;
 
 	result.storageBufferOffset = offset;
-	offset += desc.bindings.rwBuffers;
+	offset += dsetDesc.rwBuffers;
 
 	for(u32 i=0; i<GfxShaderBindingDesc::MaxDescriptorSets; ++i)
 	{
@@ -521,7 +521,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 		}
 	}
 
-	result.defaultDescriptorSet = createDescriptorSet(desc.bindings);
+	result.defaultDescriptorSet = createDescriptorSet(dsetDesc);
 
 	return GfxDevice::makeOwn(retainResource(g_device->m_techniques, result));
 }
@@ -1139,27 +1139,28 @@ void GfxContext::applyState()
 		GfxTexture storageImages[RUSH_COUNTOF(m_storageImages)];
 		GfxBuffer storageBuffers[RUSH_COUNTOF(m_storageBuffers)];
 
-		for(u32 i=0; i<technique.desc.bindings.constantBuffers; ++i)
+		const auto& dsetDesc = technique.desc.bindings.descriptorSets[0];
+		for(u32 i=0; i<dsetDesc.constantBuffers; ++i)
 		{
 			constantBuffers[i] = m_constantBuffers[i].get();
 		}
-		for(u32 i=0; i<technique.desc.bindings.samplers; ++i)
+		for(u32 i=0; i<dsetDesc.samplers; ++i)
 		{
 			samplers[i] = m_samplers[i].get();
 		}
-		for(u32 i=0; i<technique.desc.bindings.textures; ++i)
+		for(u32 i=0; i<dsetDesc.textures; ++i)
 		{
 			sampledImages[i] = m_sampledImages[i].get();
 		}
-		for(u32 i=0; i<technique.desc.bindings.rwImages; ++i)
+		for(u32 i=0; i<dsetDesc.rwImages; ++i)
 		{
 			storageImages[i] = m_storageImages[i].get();
 		}
-		for(u32 i=0; i<technique.desc.bindings.rwBuffers; ++i)
+		for(u32 i=0; i<dsetDesc.rwBuffers; ++i)
 		{
 			storageBuffers[i] = m_storageBuffers[i].get();
 		}
-		for(u32 i=0; i<technique.desc.bindings.rwTypedBuffers; ++i)
+		for(u32 i=0; i<dsetDesc.rwTypedBuffers; ++i)
 		{
 			//TODO: bind typed storage buffers
 		}
@@ -1170,7 +1171,8 @@ void GfxContext::applyState()
 							samplers,
 							sampledImages,
 							storageImages,
-							storageBuffers);
+							storageBuffers,
+							nullptr);
 
 		auto& ds = technique.defaultDescriptorSet;
 
@@ -1759,7 +1761,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	 const GfxTexture* textures,
 	 const GfxTexture* storageImages,
 	 const GfxBuffer* storageBuffers,
-	 const GfxAccelerationStructure*)
+     const GfxAccelerationStructure* accelStructures)
 {
 	const GfxDescriptorSetDesc& desc = ds.desc;
 

@@ -247,7 +247,7 @@ void            Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h);
 #ifdef RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
 u64 Gfx_GetBufferAddress(GfxBufferArg h);
 #else // RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
-u64 Gfx_GetBufferAddress(GfxBufferArg) { return 0; }
+inline u64 Gfx_GetBufferAddress(GfxBufferArg) { return 0; }
 #endif // RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
 
 GfxContext* Gfx_AcquireContext();
