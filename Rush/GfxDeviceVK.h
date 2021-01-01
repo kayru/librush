@@ -614,6 +614,7 @@ public:
 		bool KHR_maintenance1                     = false;
 		bool KHR_pipeline_library                 = false;
 		bool KHR_ray_tracing                      = false;
+		bool KHR_ray_query                        = false;
 		bool NV_framebuffer_mixed_samples         = false;
 		bool NV_geometry_shader_passthrough       = false;
 		bool NV_mesh_shader                       = false;
