@@ -104,7 +104,10 @@ public:
 	void setKey(KeyFunction fun, u8 key);
 	u8   getKey(KeyFunction fun);
 
+	void setUpDirection(const Vec3& v) { m_upDirection = v; }
+
 private:
+
 	Vec2 m_oldMousePos;
 	int  m_oldMouseWheel;
 
@@ -113,6 +116,8 @@ private:
 
 	Mode m_mode;
 	u8   m_keys[KeyFunction_COUNT];
+
+	Vec3 m_upDirection = Vec3(0, 0, 1);
 };
 
 }

@@ -233,7 +233,7 @@ void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks
 		float rot_len = camRotate.length();
 		if (rot_len > 0)
 		{
-			camera->rotateOnAxis(camRotate.y, Vec3(0, 1, 0));
+			camera->rotateOnAxis(camRotate.y, m_upDirection);
 			camera->rotateOnAxis(camRotate.x, camera->getRight());
 		}
 
