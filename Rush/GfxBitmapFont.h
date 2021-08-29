@@ -69,7 +69,14 @@ public:
 
 	static BitmapFontData createEmbeddedFont(bool shadow = true, u32 padX = 0, u32 padY = 0);
 
-	void setScale(float scale);
+	void setScale(Vec2 scale) { m_scale = scale; };
+	void setScale(float scale) { m_scale = Vec2(scale); };
+
+	const BitmapFontDesc& getFontDesc() const { return m_fontDesc; }
+	const DynamicArray<GfxOwn<GfxTexture>>& getTextures() const { return m_textures; }
+	const DynamicArray<GfxTextureDesc>& getTextureDescs() const { return m_textureDesc; }
+	const TexturedQuad2D* getCharQuads() const { return m_chars; }
+	Vec2 GetScale() const { return m_scale; }
 
 private:
 	void createSprites();
@@ -79,7 +86,7 @@ private:
 	DynamicArray<GfxOwn<GfxTexture>> m_textures;
 	DynamicArray<GfxTextureDesc>     m_textureDesc;
 	TexturedQuad2D                   m_chars[256];
-	float                            m_scale;
+	Vec2                             m_scale;
 };
 
 // Draw characters into a 32bpp RGBA bitmap.
