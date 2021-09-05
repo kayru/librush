@@ -174,12 +174,13 @@ public:
 
 struct WindowDesc
 {
-	const char* caption    = nullptr;
-	int         width      = 0;
-	int         height     = 0;
-	bool        resizable  = false;
-	bool        fullScreen = false;
-	bool        handleShortcutQuit = true;
+	const char* caption                  = nullptr;
+	int         width                    = 0;
+	int         height                   = 0;
+	bool        resizable                = false;
+	bool        fullScreen               = false;
+	bool        maximized                = false;
+	bool        handleShortcutQuit       = true;
 	bool        handleShortcutFullScreen = true;
 };
 

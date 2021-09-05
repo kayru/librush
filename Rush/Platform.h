@@ -30,6 +30,7 @@ struct AppConfig
 	int maxHeight = 0;
 
 	bool fullScreen      = false;
+	bool maximized       = false;
 	bool resizable       = false;
 	bool debug           = false;
 	bool warp            = false;

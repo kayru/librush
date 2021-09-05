@@ -194,7 +194,15 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 		setFullscreen(true);
 	}
 
-	ShowWindow(m_hwnd, SW_SHOWNORMAL);
+	if (desc.maximized)
+	{
+		ShowWindow(m_hwnd, SW_SHOWMAXIMIZED);
+	}
+	else
+	{
+		ShowWindow(m_hwnd, SW_SHOWNORMAL);
+	}
+
 	UpdateWindow(m_hwnd);
 }
 
