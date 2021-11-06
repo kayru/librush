@@ -726,6 +726,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 			&& enableDeviceExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, false)
 			&& enableDeviceExtension(VK_KHR_SPIRV_1_4_EXTENSION_NAME, false)
 			&& enableDeviceExtension(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME, false);
+
+		m_supportedExtensions.KHR_ray_query = m_supportedExtensions.KHR_ray_tracing && enableDeviceExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME, false);
 	}
 
 	m_supportedExtensions.NV_mesh_shader = enableDeviceExtension(VK_NV_MESH_SHADER_EXTENSION_NAME);
@@ -1005,7 +1007,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_caps.explicitVertexParameterAMD = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
-	m_caps.rayTracing = m_supportedExtensions.KHR_ray_tracing; // TODO: rename
+	m_caps.rayTracing       = m_supportedExtensions.KHR_ray_tracing;
+	m_caps.rayTracingInline = m_supportedExtensions.KHR_ray_query;
 
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.mixedSamplesNV              = m_supportedExtensions.NV_framebuffer_mixed_samples;
@@ -5951,7 +5954,17 @@ void RayTracingPipelineVK::destroy()
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
 
-void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, GfxAccelerationStructureArg tlas,
+void Gfx_SetAccelerationStructure(GfxContext* ctx, u32 idx, GfxAccelerationStructureArg h)
+{
+	RUSH_ASSERT_MSG(idx == 0, "Only one acceleration structure is supported in the default descriptor set");
+	if (ctx->m_pending.accelerationStructure != h)
+	{
+		ctx->m_pending.accelerationStructure = h;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_AccelerationStructure;
+	}
+}
+
+void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle,
     GfxBufferArg hitGroups, u32 width, u32 height, u32 depth)
 {
 	if (ctx->m_pending.rayTracingPipeline != pipelineHandle)
@@ -5959,12 +5972,6 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle, Gfx
 		ctx->m_pending.technique = {};
 		ctx->m_pending.rayTracingPipeline = pipelineHandle;
 		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
-	}
-
-	if (ctx->m_pending.accelerationStructure != tlas)
-	{
-		ctx->m_pending.accelerationStructure = tlas;
-		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_AccelerationStructure;
 	}
 
 	ctx->applyState();

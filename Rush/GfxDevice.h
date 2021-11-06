@@ -82,6 +82,7 @@ struct GfxCapability
 	bool explicitVertexParameterAMD  = false;
 
 	bool rayTracing                  = false;
+	bool rayTracingInline            = false;
 	bool geometryShaderPassthroughNV = false;
 	bool mixedSamplesNV              = false;
 	bool meshShaderNV                = false;
@@ -186,7 +187,8 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 const u8*                        Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index);
 u64                              Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h);
 void                             Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer = InvalidResourceHandle());
-void                             Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccelerationStructureArg tlas, GfxBufferArg hitGroups, u32 width, u32 height = 1, u32 depth = 1);
+void                             Gfx_SetAccelerationStructure(GfxContext* ctx, u32 idx, GfxAccelerationStructureArg h);
+void                             Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxBufferArg hitGroups, u32 width, u32 height = 1, u32 depth = 1);
 
 void Gfx_Retain(GfxDevice* dev);
 void Gfx_Retain(GfxContext* rc);
@@ -416,7 +418,8 @@ inline GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const Gf
 inline const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index) { return {}; }
 inline u64  Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h) { return 0; }
 inline void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer) {}
-inline void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxAccelerationStructureArg tlas, GfxBufferArg hitGroups, u32 width, u32 height, u32 depth) {}
+inline void Gfx_SetAccelerationStructure(GfxContext* ctx, u32 idx, GfxAccelerationStructureArg h) {}
+inline void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxBufferArg hitGroups, u32 width, u32 height, u32 depth) {}
 inline void Gfx_Release(GfxRayTracingPipeline h){};
 inline void Gfx_Release(GfxAccelerationStructure h){};
 #endif // RUSH_RENDER_SUPPORT_RAY_TRACING

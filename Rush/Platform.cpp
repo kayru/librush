@@ -22,6 +22,7 @@ void Platform_Startup(const AppConfig& cfg)
 	windowDesc.resizable  = cfg.resizable;
 	windowDesc.caption    = cfg.name;
 	windowDesc.fullScreen = cfg.fullScreen;
+	windowDesc.maximized  = cfg.maximized;
 
 	Window* window = Platform_CreateWindow(windowDesc);
 

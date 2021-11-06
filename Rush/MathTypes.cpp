@@ -3,45 +3,42 @@
 namespace Rush
 {
 
-namespace
+static void mul33(Mat4& res, const Mat4& a, const Mat4& b)
 {
-void mul33(Mat4& res, const Mat4& a, const Mat4& b)
-{
-	res.m(0, 0) = a.m(0, 0) * b.m(0, 0) + a.m(0, 1) * b.m(1, 0) + a.m(0, 2) * b.m(2, 0);
-	res.m(0, 1) = a.m(0, 0) * b.m(0, 1) + a.m(0, 1) * b.m(1, 1) + a.m(0, 2) * b.m(2, 1);
-	res.m(0, 2) = a.m(0, 0) * b.m(0, 2) + a.m(0, 1) * b.m(1, 2) + a.m(0, 2) * b.m(2, 2);
+	res.rows[0].x = a.rows[0].x * b.rows[0].x + a.rows[0].y * b.rows[1].x + a.rows[0].z * b.rows[2].x;
+	res.rows[0].y = a.rows[0].x * b.rows[0].y + a.rows[0].y * b.rows[1].y + a.rows[0].z * b.rows[2].y;
+	res.rows[0].z = a.rows[0].x * b.rows[0].z + a.rows[0].y * b.rows[1].z + a.rows[0].z * b.rows[2].z;
 
-	res.m(1, 0) = a.m(1, 0) * b.m(0, 0) + a.m(1, 1) * b.m(1, 0) + a.m(1, 2) * b.m(2, 0);
-	res.m(1, 1) = a.m(1, 0) * b.m(0, 1) + a.m(1, 1) * b.m(1, 1) + a.m(1, 2) * b.m(2, 1);
-	res.m(1, 2) = a.m(1, 0) * b.m(0, 2) + a.m(1, 1) * b.m(1, 2) + a.m(1, 2) * b.m(2, 2);
+	res.rows[1].x = a.rows[1].x * b.rows[0].x + a.rows[1].y * b.rows[1].x + a.rows[1].z * b.rows[2].x;
+	res.rows[1].y = a.rows[1].x * b.rows[0].y + a.rows[1].y * b.rows[1].y + a.rows[1].z * b.rows[2].y;
+	res.rows[1].z = a.rows[1].x * b.rows[0].z + a.rows[1].y * b.rows[1].z + a.rows[1].z * b.rows[2].z;
 
-	res.m(2, 0) = a.m(2, 0) * b.m(0, 0) + a.m(2, 1) * b.m(1, 0) + a.m(2, 2) * b.m(2, 0);
-	res.m(2, 1) = a.m(2, 0) * b.m(0, 1) + a.m(2, 1) * b.m(1, 1) + a.m(2, 2) * b.m(2, 1);
-	res.m(2, 2) = a.m(2, 0) * b.m(0, 2) + a.m(2, 1) * b.m(1, 2) + a.m(2, 2) * b.m(2, 2);
+	res.rows[2].x = a.rows[2].x * b.rows[0].x + a.rows[2].y * b.rows[1].x + a.rows[2].z * b.rows[2].x;
+	res.rows[2].y = a.rows[2].x * b.rows[0].y + a.rows[2].y * b.rows[1].y + a.rows[2].z * b.rows[2].y;
+	res.rows[2].z = a.rows[2].x * b.rows[0].z + a.rows[2].y * b.rows[1].z + a.rows[2].z * b.rows[2].z;
 }
 
-void mul(Mat4& res, const Mat4& a, const Mat4& b)
+static void mul(Mat4& res, const Mat4& a, const Mat4& b)
 {
-	res.m(0, 0) = a.m(0, 0) * b.m(0, 0) + a.m(0, 1) * b.m(1, 0) + a.m(0, 2) * b.m(2, 0) + a.m(0, 3) * b.m(3, 0);
-	res.m(0, 1) = a.m(0, 0) * b.m(0, 1) + a.m(0, 1) * b.m(1, 1) + a.m(0, 2) * b.m(2, 1) + a.m(0, 3) * b.m(3, 1);
-	res.m(0, 2) = a.m(0, 0) * b.m(0, 2) + a.m(0, 1) * b.m(1, 2) + a.m(0, 2) * b.m(2, 2) + a.m(0, 3) * b.m(3, 2);
-	res.m(0, 3) = a.m(0, 0) * b.m(0, 3) + a.m(0, 1) * b.m(1, 3) + a.m(0, 2) * b.m(2, 3) + a.m(0, 3) * b.m(3, 3);
+	res.rows[0].x = a.rows[0].x * b.rows[0].x + a.rows[0].y * b.rows[1].x + a.rows[0].z * b.rows[2].x + a.rows[0].w * b.rows[3].x;
+	res.rows[0].y = a.rows[0].x * b.rows[0].y + a.rows[0].y * b.rows[1].y + a.rows[0].z * b.rows[2].y + a.rows[0].w * b.rows[3].y;
+	res.rows[0].z = a.rows[0].x * b.rows[0].z + a.rows[0].y * b.rows[1].z + a.rows[0].z * b.rows[2].z + a.rows[0].w * b.rows[3].z;
+	res.rows[0].w = a.rows[0].x * b.rows[0].w + a.rows[0].y * b.rows[1].w + a.rows[0].z * b.rows[2].w + a.rows[0].w * b.rows[3].w;
 
-	res.m(1, 0) = a.m(1, 0) * b.m(0, 0) + a.m(1, 1) * b.m(1, 0) + a.m(1, 2) * b.m(2, 0) + a.m(1, 3) * b.m(3, 0);
-	res.m(1, 1) = a.m(1, 0) * b.m(0, 1) + a.m(1, 1) * b.m(1, 1) + a.m(1, 2) * b.m(2, 1) + a.m(1, 3) * b.m(3, 1);
-	res.m(1, 2) = a.m(1, 0) * b.m(0, 2) + a.m(1, 1) * b.m(1, 2) + a.m(1, 2) * b.m(2, 2) + a.m(1, 3) * b.m(3, 2);
-	res.m(1, 3) = a.m(1, 0) * b.m(0, 3) + a.m(1, 1) * b.m(1, 3) + a.m(1, 2) * b.m(2, 3) + a.m(1, 3) * b.m(3, 3);
+	res.rows[1].x = a.rows[1].x * b.rows[0].x + a.rows[1].y * b.rows[1].x + a.rows[1].z * b.rows[2].x + a.rows[1].w * b.rows[3].x;
+	res.rows[1].y = a.rows[1].x * b.rows[0].y + a.rows[1].y * b.rows[1].y + a.rows[1].z * b.rows[2].y + a.rows[1].w * b.rows[3].y;
+	res.rows[1].z = a.rows[1].x * b.rows[0].z + a.rows[1].y * b.rows[1].z + a.rows[1].z * b.rows[2].z + a.rows[1].w * b.rows[3].z;
+	res.rows[1].w = a.rows[1].x * b.rows[0].w + a.rows[1].y * b.rows[1].w + a.rows[1].z * b.rows[2].w + a.rows[1].w * b.rows[3].w;
 
-	res.m(2, 0) = a.m(2, 0) * b.m(0, 0) + a.m(2, 1) * b.m(1, 0) + a.m(2, 2) * b.m(2, 0) + a.m(2, 3) * b.m(3, 0);
-	res.m(2, 1) = a.m(2, 0) * b.m(0, 1) + a.m(2, 1) * b.m(1, 1) + a.m(2, 2) * b.m(2, 1) + a.m(2, 3) * b.m(3, 1);
-	res.m(2, 2) = a.m(2, 0) * b.m(0, 2) + a.m(2, 1) * b.m(1, 2) + a.m(2, 2) * b.m(2, 2) + a.m(2, 3) * b.m(3, 2);
-	res.m(2, 3) = a.m(2, 0) * b.m(0, 3) + a.m(2, 1) * b.m(1, 3) + a.m(2, 2) * b.m(2, 3) + a.m(2, 3) * b.m(3, 3);
+	res.rows[2].x = a.rows[2].x * b.rows[0].x + a.rows[2].y * b.rows[1].x + a.rows[2].z * b.rows[2].x + a.rows[2].w * b.rows[3].x;
+	res.rows[2].y = a.rows[2].x * b.rows[0].y + a.rows[2].y * b.rows[1].y + a.rows[2].z * b.rows[2].y + a.rows[2].w * b.rows[3].y;
+	res.rows[2].z = a.rows[2].x * b.rows[0].z + a.rows[2].y * b.rows[1].z + a.rows[2].z * b.rows[2].z + a.rows[2].w * b.rows[3].z;
+	res.rows[2].w = a.rows[2].x * b.rows[0].w + a.rows[2].y * b.rows[1].w + a.rows[2].z * b.rows[2].w + a.rows[2].w * b.rows[3].w;
 
-	res.m(3, 0) = a.m(3, 0) * b.m(0, 0) + a.m(3, 1) * b.m(1, 0) + a.m(3, 2) * b.m(2, 0) + a.m(3, 3) * b.m(3, 0);
-	res.m(3, 1) = a.m(3, 0) * b.m(0, 1) + a.m(3, 1) * b.m(1, 1) + a.m(3, 2) * b.m(2, 1) + a.m(3, 3) * b.m(3, 1);
-	res.m(3, 2) = a.m(3, 0) * b.m(0, 2) + a.m(3, 1) * b.m(1, 2) + a.m(3, 2) * b.m(2, 2) + a.m(3, 3) * b.m(3, 2);
-	res.m(3, 3) = a.m(3, 0) * b.m(0, 3) + a.m(3, 1) * b.m(1, 3) + a.m(3, 2) * b.m(2, 3) + a.m(3, 3) * b.m(3, 3);
-}
+	res.rows[3].x = a.rows[3].x * b.rows[0].x + a.rows[3].y * b.rows[1].x + a.rows[3].z * b.rows[2].x + a.rows[3].w * b.rows[3].x;
+	res.rows[3].y = a.rows[3].x * b.rows[0].y + a.rows[3].y * b.rows[1].y + a.rows[3].z * b.rows[2].y + a.rows[3].w * b.rows[3].y;
+	res.rows[3].z = a.rows[3].x * b.rows[0].z + a.rows[3].y * b.rows[1].z + a.rows[3].z * b.rows[2].z + a.rows[3].w * b.rows[3].z;
+	res.rows[3].w = a.rows[3].x * b.rows[0].w + a.rows[3].y * b.rows[1].w + a.rows[3].z * b.rows[2].w + a.rows[3].w * b.rows[3].w;
 }
 
 Mat4 Mat4::inverse() const

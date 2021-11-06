@@ -287,7 +287,7 @@ Vec2 BitmapFontRenderer::draw(PrimitiveBatch* batch, const Vec2& pos, const char
 		u8 c = *str;
 		if (c == '\n')
 		{
-			y += m_scale * (float)m_fontDesc.m_size;
+			y += m_scale.y * (float)m_fontDesc.m_size;
 			x = orig_x;
 		}
 		else
@@ -306,7 +306,7 @@ Vec2 BitmapFontRenderer::draw(PrimitiveBatch* batch, const Vec2& pos, const char
 				batch->setSampler(PrimitiveBatch::SamplerState_Point);
 				batch->setTexture(m_textures[data.page]);
 				batch->drawTexturedQuad(&q, col);
-				x += m_scale * float(data.advanceX);
+				x += m_scale.x * float(data.advanceX);
 			}
 		}
 		++str;
@@ -339,7 +339,7 @@ Vec2 BitmapFontRenderer::measure(const char* str)
 		if (c == '\n')
 		{
 			max_x = max(max_x, x);
-			y += char_h * m_scale;
+			y += char_h * m_scale.y;
 			x = orig_x;
 		}
 		else
@@ -348,7 +348,7 @@ Vec2 BitmapFontRenderer::measure(const char* str)
 			if (data.page != BitmapFontDesc::InvalidPage)
 			{
 				char_w = (float)data.advanceX;
-				x += char_w * m_scale;
+				x += char_w * m_scale.x;
 			}
 		}
 		++str;
@@ -356,7 +356,7 @@ Vec2 BitmapFontRenderer::measure(const char* str)
 
 	max_x = max(max_x, x);
 
-	return Vec2(max_x, y + char_h * m_scale);
+	return Vec2(max_x, y + char_h * m_scale.y);
 }
 
 void BitmapFontRenderer::createSprites()
@@ -447,8 +447,6 @@ BitmapFontData BitmapFontRenderer::createEmbeddedFont(bool shadow, u32 pad_x, u3
 
 	return res;
 }
-
-void BitmapFontRenderer::setScale(float scale) { m_scale = scale; }
 
 // clang-format off
 static const u32 g_embeddedFontBitmap6x8[] =
