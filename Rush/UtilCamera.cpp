@@ -5,9 +5,12 @@
 namespace Rush
 {
 
-Camera::Camera() : Camera(1.0f, Pi * 0.25f, 1.0f, INFINITY) {}
-Camera::Camera(float aspect, float fov, float clipNear) : Camera(aspect, fov, clipNear, INFINITY) {}
-Camera::Camera(float aspect, float fov, float clipNear, float clipFar)
+Camera::Camera(CoordinateSystem coordSystem) : Camera(1.0f, Pi * 0.25f, 1.0f, INFINITY, coordSystem) {}
+Camera::Camera(float aspect, float fov, float clipNear, CoordinateSystem coordSystem)
+: Camera(aspect, fov, clipNear, INFINITY, coordSystem)
+{
+}
+Camera::Camera(float aspect, float fov, float clipNear, float clipFar, CoordinateSystem coordSystem)
 : m_position(0, 0, 0)
 , m_axisX(1, 0, 0)
 , m_axisY(0, 1, 0)
@@ -16,24 +19,34 @@ Camera::Camera(float aspect, float fov, float clipNear, float clipFar)
 , m_fov(fov)
 , m_clipNear(clipNear)
 , m_clipFar(clipFar)
+, m_coordSystem(coordSystem)
 {
 }
 
 Mat4 Camera::buildViewMatrix() const
 {
-	float x = -m_axisX.dot(m_position);
-	float y = -m_axisY.dot(m_position);
-	float z = -m_axisZ.dot(m_position);
+	Vec3 axisX = m_axisX;
+	Vec3 axisY = m_axisY;
+	Vec3 axisZ = m_axisZ;
 
-	Mat4 res(m_axisX.x, m_axisY.x, m_axisZ.x, 0, m_axisX.y, m_axisY.y, m_axisZ.y, 0, m_axisX.z, m_axisY.z, m_axisZ.z, 0,
-	    x, y, z, 1);
+	float x = -axisX.dot(m_position);
+	float y = -axisY.dot(m_position);
+	float z = -axisZ.dot(m_position);
+
+	Mat4 res(axisX.x, axisY.x, axisZ.x, 0, axisX.y, axisY.y, axisZ.y, 0, axisX.z, axisY.z, axisZ.z, 0, x, y, z, 1);
 
 	return res;
 }
 
 Mat4 Camera::buildProjMatrix(bool reverseZ) const
 {
-	return Mat4::perspective(m_aspect, m_fov, m_clipNear, m_clipFar, reverseZ);
+	Mat4 res = Mat4::perspective(m_aspect, m_fov, m_clipNear, m_clipFar, reverseZ);
+	if (m_coordSystem == RightHanded)
+	{
+		res.rows[2].z = -res.rows[2].z;
+		res.rows[2].w = -res.rows[2].w;
+	}
+	return res;
 }
 
 void Camera::blendTo(const Camera& other, float positionAlpha, float orientationAlpha, float parameterAlpha)
@@ -74,15 +87,21 @@ void Camera::blendTo(const Camera& other, float positionAlpha, float orientation
 
 void Camera::move(const Vec3& delta)
 {
-	m_position += m_axisX * delta.x;
-	m_position += m_axisY * delta.y;
-	m_position += m_axisZ * delta.z;
+	m_position += getRight() * delta.x;
+	m_position += getUp() * delta.y;
+	m_position += getForward() * delta.z;
 }
 
 void Camera::moveOnAxis(float delta, const Vec3& axis) { m_position += axis * delta; }
 
-void Camera::rotate(const Vec3& delta)
+void Camera::rotate(const Vec3& _delta)
 {
+	Vec3 delta = _delta;
+	if (m_coordSystem == RightHanded)
+	{
+		delta = -delta;
+	}
+
 	Mat4 mx = Mat4::rotationAxis(m_axisX, delta.x);
 	Mat4 my = Mat4::rotationAxis(m_axisY, delta.y);
 	Mat4 mz = Mat4::rotationAxis(m_axisZ, delta.z);
@@ -100,6 +119,11 @@ void Camera::rotate(const Vec3& delta)
 
 void Camera::rotateOnAxis(float delta, const Vec3& axis)
 {
+	if (m_coordSystem == RightHanded)
+	{
+		delta = -delta;
+	}
+
 	Mat4 mat = Mat4::rotationAxis(axis, delta);
 
 	m_axisX = mat * m_axisX;
@@ -122,6 +146,12 @@ void Camera::lookAt(const Vec3& position, const Vec3& target, const Vec3& up)
 	m_axisY = m_axisZ.cross(m_axisX);
 	m_axisX = m_axisY.cross(m_axisZ);
 
+	if (m_coordSystem == RightHanded)
+	{
+		m_axisX = -m_axisX;
+		m_axisZ = -m_axisZ;
+	}
+
 	m_axisX.normalize();
 	m_axisY.normalize();
 	m_axisZ.normalize();
@@ -136,7 +166,7 @@ void Camera::setClip(float near_dist, float far_dist)
 CameraManipulator::CameraManipulator() : CameraManipulator(KeyboardState{}, MouseState{}) {}
 
 CameraManipulator::CameraManipulator(const KeyboardState& ks, const MouseState& ms)
-	: m_oldMousePos(0, 0), m_oldMouseWheel(0), m_moveSpeed(20.0f), m_turnSpeed(2.0f), m_mode(Mode_FirstPerson)
+: m_oldMousePos(0, 0), m_oldMouseWheel(0), m_moveSpeed(20.0f), m_turnSpeed(2.0f), m_mode(Mode_FirstPerson)
 {
 	init(ks, ms);
 	setDefaultKeys();
@@ -166,7 +196,7 @@ void CameraManipulator::setDefaultKeys()
 
 void CameraManipulator::init(const KeyboardState& ks, const MouseState& ms)
 {
-	m_oldMousePos = ms.pos;
+	m_oldMousePos   = ms.pos;
 	m_oldMouseWheel = ms.wheelV;
 }
 
@@ -174,12 +204,12 @@ void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks
 {
 	RUSH_ASSERT(camera);
 
-	Vec2 mousePos = ms.pos;
+	Vec2 mousePos   = ms.pos;
 	Vec2 mouseDelta = mousePos - m_oldMousePos;
-	m_oldMousePos = mousePos;
+	m_oldMousePos   = mousePos;
 
-	int mouseWheel = ms.wheelV;
-	int wheelDelta = mouseWheel - m_oldMouseWheel;
+	int mouseWheel  = ms.wheelV;
+	int wheelDelta  = mouseWheel - m_oldMouseWheel;
 	m_oldMouseWheel = mouseWheel;
 
 	switch (m_mode)
@@ -262,7 +292,7 @@ void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks
 		{
 			Vec3 old_cam_pos = camera->getPosition();
 			Vec3 old_cam_dir = camera->getForward();
-			Vec3 old_cam_up = camera->getUp();
+			Vec3 old_cam_up  = camera->getUp();
 
 			float orbitRadius = 1.0f;
 			Vec3  orbitCenter = old_cam_pos + old_cam_dir * orbitRadius;
@@ -277,7 +307,7 @@ void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks
 		else if (ms.buttons[1] != 0)
 		{
 			// move
-			Vec2 mp = mouseDelta * 5.0f;
+			Vec2 mp   = mouseDelta * 5.0f;
 			camMove.x = mp.x * -1;
 			camMove.y = mp.y;
 		}
@@ -300,4 +330,4 @@ void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks
 	}
 }
 
-}
+} // namespace Rush

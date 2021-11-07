@@ -12,9 +12,15 @@ class Camera
 {
 
 public:
-	Camera();
-	Camera(float aspect, float fov, float clipNear);
-	Camera(float aspect, float fov, float clipNear, float clipFar);
+
+	enum CoordinateSystem {
+		LeftHanded,
+		RightHanded,
+	};
+
+	Camera(CoordinateSystem coordSys = LeftHanded);
+	Camera(float aspect, float fov, float clipNear, CoordinateSystem coordSys = LeftHanded);
+	Camera(float aspect, float fov, float clipNear, float clipFar, CoordinateSystem coordSys = LeftHanded);
 
 	void setAspect(float aspect) { m_aspect = aspect; }
 	void setFov(float fov) { m_fov = fov; }
@@ -39,9 +45,9 @@ public:
 	Mat4 buildViewMatrix() const;
 	Mat4 buildProjMatrix(bool reverseZ=false) const;
 
-	const Vec3& getRight() const { return m_axisX; }
-	const Vec3& getUp() const { return m_axisY; }
-	const Vec3& getForward() const { return m_axisZ; }
+	const Vec3 getRight() const { return m_axisX; }
+	const Vec3 getUp() const { return m_axisY; }
+	const Vec3 getForward() const { return m_coordSystem==LeftHanded ? m_axisZ : -m_axisZ; }
 
 	void blendTo(const Camera& other, float positionAlpha, float orientationAlpha, float parameterAlpha = 1.0f);
 
@@ -56,6 +62,8 @@ private:
 	float m_fov;
 	float m_clipNear;
 	float m_clipFar;
+
+	CoordinateSystem m_coordSystem;
 };
 
 class CameraManipulator
