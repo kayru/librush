@@ -557,7 +557,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	VkApplicationInfo appInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
 	appInfo.pApplicationName  = "Rush";
 	appInfo.pEngineName       = "Rush";
-	appInfo.apiVersion        = VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION);
+	appInfo.apiVersion        = VK_HEADER_VERSION_COMPLETE;
 
 	VkInstanceCreateInfo instanceCreateInfo    = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
 	instanceCreateInfo.pApplicationInfo        = &appInfo;
