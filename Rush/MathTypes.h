@@ -129,6 +129,7 @@ struct Vec3
 	Vec3(const float _x, const float _y, const float _z) : x(_x), y(_y), z(_z){};
 	Vec3(const float s) : x(s), y(s), z(s){};
 	Vec3(const float* arr) : x(arr[0]), y(arr[1]), z(arr[2]){};
+	Vec3(const Vec2& _xy, float _z = 0.0f) : x(_xy.x), y(_xy.y), z(_z){};
 
 	Vec3& operator=(const float s)
 	{
@@ -258,8 +259,8 @@ struct Vec4
 	Vec4(const float _x, const float _y, const float _z, const float _w) : x(_x), y(_y), z(_z), w(_w){};
 	Vec4(const float s) : x(s), y(s), z(s), w(s){};
 	Vec4(const float* arr) : x(arr[0]), y(arr[1]), z(arr[2]), w(arr[3]){};
-	Vec4(const Vec2& rhs, float _z = 0.0f, float _w = 0.0f) : x(rhs.x), y(rhs.y), z(_z), w(_w){};
-	explicit Vec4(const Vec3& rhs, float _w = 0.0f) : x(rhs.x), y(rhs.y), z(rhs.z), w(_w){};
+	Vec4(const Vec2& _xy, float _z = 0.0f, float _w = 0.0f) : x(_xy.x), y(_xy.y), z(_z), w(_w){};
+	Vec4(const Vec3& _xyz, float _w = 0.0f) : x(_xyz.x), y(_xyz.y), z(_xyz.z), w(_w){};
 
 	Vec4& operator=(const float s)
 	{
