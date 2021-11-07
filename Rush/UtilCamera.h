@@ -117,7 +117,7 @@ private:
 	Mode m_mode;
 	u8   m_keys[KeyFunction_COUNT];
 
-	Vec3 m_upDirection = Vec3(0, 0, 1);
+	Vec3 m_upDirection = Vec3(0, 1, 0);
 };
 
 }
