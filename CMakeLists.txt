@@ -170,6 +170,9 @@ endif()
 source_group("" FILES ${RUSH_SRC})
 
 if (MSVC)
+	target_sources(Rush PRIVATE
+		Rush/Rush.natvis
+	)
 	target_compile_options(Rush PRIVATE
 		-W4
 		-WX

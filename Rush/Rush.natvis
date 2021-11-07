@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="Rush::Vec4">
+    <DisplayString>{{x={x} y={y} z={z} w={w}}}</DisplayString>
+  </Type>
+  <Type Name="Rush::Quat">
+    <DisplayString>{{x={x} y={y} z={z} w={w}}}</DisplayString>
+  </Type>
+  <Type Name="Rush::DynamicArray&lt;*&gt;">
+    <DisplayString>{{size={m_buffer.m_size} capacity={m_buffer.m_capacity} data={(const void*)m_buffer.m_data}}}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>m_buffer.m_size</Size>
+        <ValuePointer>m_buffer.m_data</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+</AutoVisualizer>
