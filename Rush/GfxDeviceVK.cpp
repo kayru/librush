@@ -4417,6 +4417,13 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
+	if (g_device->m_supportedExtensions.KHR_ray_tracing)
+	{
+		// Any buffer can be used as input for acceleration structure builds
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+	}
+
+
 	const bool isStatic = !(desc.flags & GfxBufferFlags::Transient);
 
 	const bool needDeviceAddress = g_device->m_bufferDeviceAddressFeatures.bufferDeviceAddress;
