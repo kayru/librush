@@ -332,6 +332,8 @@ static MTLVertexFormat convertVertexFormat(const GfxVertexFormatDesc::Element& v
 		return MTLVertexFormatUChar4Normalized;
 	case GfxVertexFormatDesc::DataType::Short2N:
 		return MTLVertexFormatShort2Normalized;
+	case GfxVertexFormatDesc::DataType::UInt:
+		return MTLVertexFormatUInt;
 	default:
 		Log::error("Unsupported vertex element format type");
 		return MTLVertexFormatInvalid;
