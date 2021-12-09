@@ -150,6 +150,16 @@ if (${RUSH_RENDER_API} MATCHES "VK")
 endif()
 
 if (${RUSH_RENDER_API} MATCHES "MTL")
+	target_compile_definitions(Rush PUBLIC
+		RUSH_RENDER_API=RUSH_RENDER_API_MTL
+	)
+	target_sources(Rush PRIVATE
+		Rush/GfxDeviceMtl.h
+		Rush/GfxDeviceMtl.mm
+	)
+endif()
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	find_library(Metal_LIBRARIES Metal)
 	find_library(AppKit_LIBRARIES AppKit)
 	find_library(QuartzCore_LIBRARIES QuartzCore)
@@ -157,13 +167,6 @@ if (${RUSH_RENDER_API} MATCHES "MTL")
 		${Metal_LIBRARIES}
 		${AppKit_LIBRARIES}
 		${QuartzCore_LIBRARIES}
-	)
-	target_compile_definitions(Rush PUBLIC
-		RUSH_RENDER_API=RUSH_RENDER_API_MTL
-	)
-	target_sources(Rush PRIVATE
-		Rush/GfxDeviceMtl.h
-		Rush/GfxDeviceMtl.mm
 	)
 endif()
 

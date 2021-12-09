@@ -12,6 +12,11 @@
 #include <Windows.h> // only needed for GetModuleHandle()
 #endif
 
+#if defined(RUSH_PLATFORM_MAC)
+#include <vulkan/vulkan_metal.h>
+#include "WindowMac.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,6 +37,7 @@ static PFN_vkCmdDebugMarkerBeginEXT          vkCmdDebugMarkerBegin             =
 static PFN_vkCmdDebugMarkerEndEXT            vkCmdDebugMarkerEnd               = VK_NULL_HANDLE;
 static PFN_vkCmdDebugMarkerInsertEXT         vkCmdDebugMarkerInsert            = VK_NULL_HANDLE;
 static PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = VK_NULL_HANDLE;
+static PFN_vkCreateMetalSurfaceEXT           vkCreateMetalSurfaceEXT           = VK_NULL_HANDLE;
 
 #define VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD ((VkStructureType)(1000045000ull))
 #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD ((VkStructureType)(1000045001ull))
@@ -541,6 +547,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, true);
 #elif defined(RUSH_PLATFORM_LINUX)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_XCB_SURFACE_EXTENSION_NAME, true);
+#elif defined(RUSH_PLATFORM_MAC)
+	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_METAL_SURFACE_EXTENSION_NAME, true);
 #else
 	RUSH_LOG_FATAL("Vulkan surface extension is not implemented for this platform");
 #endif
@@ -571,6 +579,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	vkGetPhysicalDeviceProperties2KHR = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2KHR>(
 	    vkGetInstanceProcAddr(m_vulkanInstance, "vkGetPhysicalDeviceProperties2KHR"));
+
+#if defined(RUSH_PLATFORM_MAC)
+	vkCreateMetalSurfaceEXT = reinterpret_cast<PFN_vkCreateMetalSurfaceEXT>(
+		vkGetInstanceProcAddr(m_vulkanInstance, "vkCreateMetalSurfaceEXT"));
+#endif
 
 	/*
 	PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
@@ -709,6 +722,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	};
 
 	enableDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
+
+	m_supportedExtensions.KHR_portability_subset = enableDeviceExtension(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME, false);
 
 	m_supportedExtensions.NV_geometry_shader_passthrough =
 	    enableDeviceExtension(VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME, false);
@@ -948,7 +963,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		V(vkCreateQueryPool(m_vulkanDevice, &timestampPoolCreateInfo, g_allocationCallbacks, &it.timestampPool));
 		it.timestampPoolData.resize(timestampPoolCreateInfo.queryCount);
 		it.timestampSlotMap.resize(timestampPoolCreateInfo.queryCount);
-
 	}
 
 	m_transientLocalAllocator.init(m_memoryTypes.local, false);
@@ -1652,6 +1666,10 @@ void GfxDevice::createSwapChain()
 		surfaceCreateInfo.connection                = (xcb_connection_t*)m_window->nativeConnection();
 		surfaceCreateInfo.window                    = (xcb_window_t)(uintptr_t(m_window->nativeHandle()) & 0xFFFFFFFF);
 		V(vkCreateXcbSurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, g_allocationCallbacks, &m_swapChainSurface));
+#elif defined(RUSH_PLATFORM_MAC)
+		VkMetalSurfaceCreateInfoEXT surfaceCreateInfo = {VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT};
+		surfaceCreateInfo.pLayer                      = static_cast<WindowMac*>(m_window)->getMetalLayer();
+		V(vkCreateMetalSurfaceEXT(m_vulkanInstance, &surfaceCreateInfo, g_allocationCallbacks, &m_swapChainSurface));
 #else
 		RUSH_LOG_FATAL("GfxDevice::createSwapChain() is not implemented");
 #endif
@@ -1664,7 +1682,7 @@ void GfxDevice::createSwapChain()
 
 	RUSH_ASSERT(graphicsQueueSupportsPresent); // TODO: support configurations when this is not the case
 
-	VkSurfaceCapabilitiesKHR surfCaps;
+	VkSurfaceCapabilitiesKHR surfCaps = {};
 	V(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, m_swapChainSurface, &surfCaps));
 
 	m_swapChainExtent = surfCaps.currentExtent;
@@ -1812,9 +1830,27 @@ void GfxDevice::beginFrame()
 		VkResult result = vkAcquireNextImageKHR(
 		    m_vulkanDevice, m_swapChain, UINT64_MAX, m_presentCompleteSemaphore, VK_NULL_HANDLE, &m_swapChainIndex);
 
-		if (result != VK_SUCCESS)
+		bool success = false;
+		switch (result)
 		{
-			// TODO: handle VK_ERROR_OUT_OF_DATE_KHR and VK_SUBOPTIMAL_KHR
+		default:
+			success = false;
+			break;
+		case VK_SUBOPTIMAL_KHR:
+			// TODO: re-create the swap chain next frame
+			success = true;
+			break;
+		case VK_SUCCESS:
+		//case VK_TIMEOUT:
+		//case VK_NOT_READY:
+			success = true;
+			break;
+		}
+
+		// TODO: handle VK_ERROR_OUT_OF_DATE_KHR
+
+		if (!success)
+		{
 			RUSH_LOG_FATAL("vkAcquireNextImageKHR returned code %d (%s)", result, toString(result));
 		}
 	}
@@ -3993,6 +4029,8 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 	RUSH_ASSERT(data || isDepthBuffer || isRenderTarget || isStorageImage);
 	RUSH_ASSERT(desc.type == TextureType::Tex2D || desc.type == TextureType::TexCube);
 	RUSH_ASSERT(desc.mips != 0);
+	RUSH_ASSERT(desc.width != 0);
+	RUSH_ASSERT(desc.height != 0);
 	RUSH_ASSERT(desc.depth != 0);
 	RUSH_ASSERT(desc.usage != GfxUsageFlags::None);
 

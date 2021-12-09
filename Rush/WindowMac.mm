@@ -3,6 +3,8 @@
 
 #if defined(RUSH_PLATFORM_MAC)
 
+#import <QuartzCore/CAMetalLayer.h>
+
 using namespace Rush;
 
 @interface RushWindow: NSWindow
@@ -137,7 +139,6 @@ WindowMac::WindowMac(const WindowDesc& desc)
 
 	NSScreen* mainScreen = [NSScreen mainScreen];
 
-
 	NSRect screenRect = [mainScreen frame];
 	const float centerX = (screenRect.size.width  - (float)desc.width)*0.5f;
 	const float centerY = (screenRect.size.height - (float)desc.height)*0.5f;
@@ -152,6 +153,8 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	m_nativeWindow = window;
 	window->parent = this;
 
+	[window.contentView setWantsLayer:YES];
+
 	NSString* appName = [[NSProcessInfo processInfo] processName];
 	[window setTitle:appName];
 	[window makeKeyAndOrderFront:window];
@@ -163,6 +166,9 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	[window setContentView:view];
 	[window makeFirstResponder:view];
 	[view release];
+
+	m_metalLayer = [CAMetalLayer layer];
+	[window.contentView setLayer:m_metalLayer];
 }
 
 WindowMac::~WindowMac()

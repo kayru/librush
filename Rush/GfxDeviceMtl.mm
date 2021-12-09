@@ -6,6 +6,8 @@
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
+#include "WindowMac.h"
+
 namespace Rush
 {
 
@@ -79,7 +81,6 @@ static MTLCompareFunction convertCompareFunc(GfxCompareFunc compareFunc)
 	}
 }
 
-
 static MTLPrimitiveTopologyClass convertPrimitiveTopology(GfxPrimitive primitiveType)
 {
 	switch (primitiveType)
@@ -118,8 +119,10 @@ static MTLPrimitiveType convertPrimitiveType(GfxPrimitive primitiveType)
 	}
 }
 
-GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
+GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 {
+	auto window = static_cast<WindowMac*>(_window);
+
 	m_window = window;
 	m_window->retain();
 
@@ -134,11 +137,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	g_metalDevice = m_metalDevice;
 
-	NSWindow* nsWindow = (NSWindow*)window->nativeHandle();
-	[nsWindow.contentView setWantsLayer:YES];
-	m_metalLayer = [CAMetalLayer layer];
-	[nsWindow.contentView setLayer:m_metalLayer];
-
+	m_metalLayer = window->getMetalLayer();
 	m_metalLayer.device = m_metalDevice;
 	m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 

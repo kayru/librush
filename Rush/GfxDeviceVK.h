@@ -618,6 +618,7 @@ public:
 		bool NV_framebuffer_mixed_samples         = false;
 		bool NV_geometry_shader_passthrough       = false;
 		bool NV_mesh_shader                       = false;
+		bool KHR_portability_subset               = false;
 	} m_supportedExtensions;
 
 	bool m_useNegativeViewport = false;

@@ -4,7 +4,14 @@
 
 #if defined(RUSH_PLATFORM_MAC)
 
+#ifdef __OBJC__
 #import <Cocoa/Cocoa.h>
+@class CAMetalLayer;
+#else
+typedef void CAMetalLayer;
+typedef void NSWindow;
+typedef void NSEvent;
+#endif
 
 namespace Rush
 {
@@ -24,10 +31,13 @@ public:
 
 	bool processEvent(NSEvent* event);
 	void processResize(float newWidth, float newHeight);
+
+	CAMetalLayer* getMetalLayer() const { return m_metalLayer; }
+
 private:
 
 	NSWindow* m_nativeWindow = nullptr;
-
+	CAMetalLayer* m_metalLayer = nullptr;
 };
 
 }
