@@ -39,7 +39,11 @@ static PFN_vkCmdDebugMarkerInsertEXT         vkCmdDebugMarkerInsert            =
 static PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = VK_NULL_HANDLE;
 
 #if defined(RUSH_PLATFORM_MAC)
-static PFN_vkCreateMetalSurfaceEXT           vkCreateMetalSurfaceEXT           = VK_NULL_HANDLE;
+static PFN_vkCreateMetalSurfaceEXT              vkCreateMetalSurfaceEXT             = VK_NULL_HANDLE;
+// TODO: use MVK extensions to tweak its configuration
+// static PFN_vkGetMoltenVKConfigurationMVK        vkGetMoltenVKConfigurationMVK       = VK_NULL_HANDLE;
+// static PFN_vkSetMoltenVKConfigurationMVK        vkSetMoltenVKConfigurationMVK       = VK_NULL_HANDLE;
+// static PFN_vkGetPhysicalDeviceMetalFeaturesMVK  vkGetPhysicalDeviceMetalFeaturesMVK = VK_NULL_HANDLE;
 #endif
 
 #define VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD ((VkStructureType)(1000045000ull))
@@ -528,6 +532,17 @@ inline void validateBufferUse(const BufferVK& buffer, bool allowTransientBuffers
 
 GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 {
+#if defined(RUSH_PLATFORM_MAC)
+	// TODO: use MVK extensions to tweak its configuration
+	// Negative viewport does not work correctly on Intel GPU Macs.
+	// This can be worked around by simply using the Metal native coordinate system
+	// (i.e. not doing the double flip).
+	setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "0", 1);
+	const bool needNegativeViewport = false;
+#else
+	const bool needNegativeViewport = true;
+#endif
+
 	volkInitialize();
 
 	g_device = this;
@@ -552,6 +567,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_XCB_SURFACE_EXTENSION_NAME, true);
 #elif defined(RUSH_PLATFORM_MAC)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_METAL_SURFACE_EXTENSION_NAME, true);
+	//enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_MVK_MOLTENVK_EXTENSION_NAME, true);
 #else
 	RUSH_LOG_FATAL("Vulkan surface extension is not implemented for this platform");
 #endif
@@ -988,11 +1004,16 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	// Done!
 
-	if (m_supportedExtensions.AMD_negative_viewport_height || m_supportedExtensions.KHR_maintenance1)
+	if (needNegativeViewport && (m_supportedExtensions.AMD_negative_viewport_height || m_supportedExtensions.KHR_maintenance1))
 	{
 		m_useNegativeViewport = true;
 	}
 	else
+	{
+		m_useNegativeViewport = false;
+	}
+
+	if(needNegativeViewport && !m_useNegativeViewport)
 	{
 		RUSH_LOG_FATAL("Negative viewport height is required for Vulkan renderer, but it is not supported on this system.");
 	}
@@ -3142,6 +3163,11 @@ void Gfx_BeginFrame()
 
 		double nanoSecondsPerTick = g_device->m_physicalDeviceProps.limits.timestampPeriod;
 		double secondsPerTick     = 1e-9 * nanoSecondsPerTick;
+
+		#if defined(RUSH_PLATFORM_MAC)
+		// hack/workaround for borked timestamp units with MoltenVK
+		secondsPerTick *= 100;
+		#endif
 
 		for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
 		{
