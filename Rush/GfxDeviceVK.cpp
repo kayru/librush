@@ -37,7 +37,10 @@ static PFN_vkCmdDebugMarkerBeginEXT          vkCmdDebugMarkerBegin             =
 static PFN_vkCmdDebugMarkerEndEXT            vkCmdDebugMarkerEnd               = VK_NULL_HANDLE;
 static PFN_vkCmdDebugMarkerInsertEXT         vkCmdDebugMarkerInsert            = VK_NULL_HANDLE;
 static PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = VK_NULL_HANDLE;
+
+#if defined(RUSH_PLATFORM_MAC)
 static PFN_vkCreateMetalSurfaceEXT           vkCreateMetalSurfaceEXT           = VK_NULL_HANDLE;
+#endif
 
 #define VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD ((VkStructureType)(1000045000ull))
 #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD ((VkStructureType)(1000045001ull))
