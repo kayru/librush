@@ -2079,6 +2079,11 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 		bufferCreateInfo.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	}
 
+	if (g_device->m_supportedExtensions.KHR_ray_tracing)
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+	}
+
 	bufferCreateInfo.size = blockSize;
 
 	V(vkCreateBuffer(g_vulkanDevice, &bufferCreateInfo, g_allocationCallbacks, &block.buffer));
