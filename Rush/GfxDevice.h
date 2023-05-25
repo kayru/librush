@@ -266,7 +266,9 @@ void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport);
 void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect);
 void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h);
 void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type);
+void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h);
 void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h);
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h);
 void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h);
 void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h);
 void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h);
@@ -326,6 +328,9 @@ template <typename T> inline void Gfx_SetScissorRect(GfxContext* rc, const Tuple
 	rect.bottom = (int)size.y;
 	Gfx_SetScissorRect(rc, rect);
 }
+
+inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) { Gfx_SetVertexStream(rc, idx, 0, ~0u, h); }
+inline void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h) { Gfx_SetIndexStream(rc, 0, GfxFormat_Unknown, h); }
 
 inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(GfxBufferFlags flags, GfxFormat format, u32 count = 0, u32 stride = 0, const void* data = nullptr)
 {

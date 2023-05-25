@@ -2884,7 +2884,7 @@ void GfxContext::applyState()
 			BufferVK& buffer = g_device->m_buffers[m_pending.vertexBuffer[i]];
 			validateBufferUse(buffer, true);
 
-			VkDeviceSize bufferOffset = buffer.info.offset;
+			VkDeviceSize bufferOffset = buffer.info.offset + m_pending.vertexBufferOffsets[i];
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
 		}
 
@@ -2896,7 +2896,18 @@ void GfxContext::applyState()
 		BufferVK& buffer = g_device->m_buffers[m_pending.indexBuffer];
 		validateBufferUse(buffer, true);
 
-		VkDeviceSize offset = buffer.info.offset;
+		VkIndexType nativeFormat = VK_INDEX_TYPE_MAX_ENUM;
+		switch (m_pending.indexBufferFormat)
+		{
+		default:
+		case GfxFormat_Unknown:
+			nativeFormat = buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
+			break;
+		case GfxFormat_R16_Uint: nativeFormat = VK_INDEX_TYPE_UINT16; break;
+		case GfxFormat_R32_Uint: nativeFormat = VK_INDEX_TYPE_UINT32; break;
+		}
+
+		VkDeviceSize offset = buffer.info.offset + m_pending.indexBufferOffset;
 		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
 			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 
@@ -5051,31 +5062,43 @@ void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
 	}
 }
 
-void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h)
+void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h)
 {
-	if (rc->m_pending.indexBuffer != h)
+	if (rc->m_pending.indexBuffer != h || rc->m_pending.indexBufferFormat != format ||
+	    rc->m_pending.indexBufferOffset != offset)
 	{
+		RUSH_ASSERT(format == GfxFormat_R16_Uint || format == GfxFormat_R32_Uint || format == GfxFormat_Unknown);
 		rc->m_pending.indexBuffer = h;
+		rc->m_pending.indexBufferOffset = offset;
+		rc->m_pending.indexBufferFormat = format;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
 	}
 }
 
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h)
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
 
-	if (rc->m_pending.vertexBuffer[idx] != h)
+	if (rc->m_pending.vertexBuffer[idx] != h || rc->m_pending.vertexBufferOffsets[idx] != offset ||
+	    rc->m_pending.vertexBufferStride[idx] != stride)
 	{
 		rc->m_pending.vertexBuffer[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 
 		if (h.valid())
 		{
-			rc->m_pending.vertexBufferStride[idx] = g_device->m_buffers[h].desc.stride;
+			if (stride == ~0u)
+			{
+				stride = g_device->m_buffers[h].desc.stride;
+			}
+
+			rc->m_pending.vertexBufferStride[idx] = stride;
+			rc->m_pending.vertexBufferOffsets[idx] = offset;
 		}
 		else
 		{
 			rc->m_pending.vertexBufferStride[idx] = 0;
+			rc->m_pending.vertexBufferOffsets[idx] = 0;
 		}
 	}
 }

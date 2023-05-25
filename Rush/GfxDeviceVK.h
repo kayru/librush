@@ -743,6 +743,9 @@ public:
 		GfxRasterizerState       rasterizerState;
 		u32                      constantBufferOffsets[MaxConstantBuffers] = {};
 		u32                      vertexBufferStride[MaxVertexStreams]      = {};
+		u32                      vertexBufferOffsets[MaxVertexStreams]     = {};
+		u32                      indexBufferOffset                         = 0;
+		GfxFormat                indexBufferFormat                         = GfxFormat_Unknown;
 		GfxDescriptorSet         descriptorSets[MaxDescriptorSets]         = {};
 	} m_pending;
 
