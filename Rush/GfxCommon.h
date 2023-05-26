@@ -616,6 +616,14 @@ enum class GfxCullMode : u8
 	CCW = RUSH_GFX_CULL_MODE_CCW,
 };
 
+enum class GfxCullFace : u8
+{
+	None         = 0,
+	Front        = 1,
+	Back         = 2,
+	FrontAndBack = 3,
+};
+
 inline GfxFormatType      getGfxFormatType(GfxFormat fmt) { return (GfxFormatType)(fmt & 0x000000FF); }
 inline GfxFormatStorage   getGfxFormatStorage(GfxFormat fmt) { return (GfxFormatStorage)(fmt & 0x0000FF00); }
 inline GfxFormatComponent getGfxFormatComponent(GfxFormat fmt) { return (GfxFormatComponent)(fmt & 0x00FF0000); }
@@ -739,6 +747,7 @@ struct GfxRasterizerDesc
 {
 	GfxFillMode fillMode            = GfxFillMode::Solid;
 	GfxCullMode cullMode            = GfxCullMode::None;
+	GfxCullFace cullFace            = GfxCullFace::Back;
 	float       depthBias           = 0.0f;
 	float       depthBiasSlopeScale = 0.0f;
 };

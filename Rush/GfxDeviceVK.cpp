@@ -1375,9 +1375,12 @@ VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
 		rs.depthClampEnable                       = false;
 		rs.rasterizerDiscardEnable                = false;
 		rs.polygonMode = rasterizerDesc.fillMode == GfxFillMode::Solid ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
-		rs.cullMode    = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+
+		rs.cullMode = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE
+		                                                           : VkCullModeFlagBits(rasterizerDesc.cullFace);
 		rs.frontFace =
 		    rasterizerDesc.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+
 		rs.depthBiasEnable         = rasterizerDesc.depthBias != 0;
 		rs.depthBiasConstantFactor = rasterizerDesc.depthBias;
 		rs.depthBiasClamp          = 0.0f;
