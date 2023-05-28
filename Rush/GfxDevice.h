@@ -182,6 +182,18 @@ GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDe
 GfxOwn<GfxRasterizerState>   Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc);
 GfxOwn<GfxBuffer>            Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = nullptr);
 
+#ifdef RUSH_RENDER_SUPPORT_QUERY
+GfxOwn<GfxQueryPool> Gfx_CreateQueryPool(const GfxQueryPoolDesc& desc);
+void                 Gfx_Retain(GfxQueryPool h);
+void                 Gfx_Release(GfxQueryPool h);
+void                 Gfx_ResetQuery(GfxContext* ctx, GfxQueryPool pool, u32 index, u32 count);
+void                 Gfx_BeginQuery(
+                    GfxContext* ctx, GfxQueryPool pool, u32 index, GfxQueryControlFlags flags = GfxQueryControlFlags::None);
+void Gfx_EndQuery(GfxContext* ctx, GfxQueryPool pool, u32 index);
+bool Gfx_GetQueryResults(
+    GfxQueryPool pool, u32 index, u32 count, size_t dataSize, void* outData, u32 stride, GfxQueryResultFlags flags);
+#endif // RUSH_RENDER_SUPPORT_QUERY
+
 GfxOwn<GfxRayTracingPipeline>    Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc);
 GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc);
 const u8*                        Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg h, GfxRayTracingShaderType type, u32 index);

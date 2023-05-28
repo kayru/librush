@@ -644,6 +644,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_physicalDeviceFeatures2.pNext = &m_nvMeshShaderFeatures;
 	m_nvMeshShaderFeatures.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
 	m_physicalDeviceDescriptorIndexingFeatures.pNext = &m_bufferDeviceAddressFeatures;
+	m_bufferDeviceAddressFeatures.pNext = &m_shaderDrawParametersFeatures;
 
 	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
@@ -1147,6 +1148,7 @@ GfxDevice::~GfxDevice()
 		}
 	}
 
+	m_queryPools.reset();
 	m_accelerationStructures.reset();
 	m_rayTracingPipelines.reset();
 	m_techniques.reset();
@@ -1977,6 +1979,11 @@ void GfxDevice::enqueueDestroyDescriptorPool(DescriptorPoolVK* object)
 void GfxDevice::enqueueDestroyAccelerationStructure(VkAccelerationStructureKHR object)
 {
 	m_currentFrame->destructionQueue.accelerationStructures.push_back(object);
+}
+
+void GfxDevice::enqueueDestroyQueryPool(VkQueryPool object)
+{
+	m_currentFrame->destructionQueue.queryPools.push_back(object);
 }
 
 void GfxDevice::enqueueDestroySampler(VkSampler object) { m_currentFrame->destructionQueue.samplers.push_back(object); }
@@ -5566,8 +5573,13 @@ void GfxDevice::DestructionQueue::flush(GfxDevice* device)
 	{
 		vkDestroyAccelerationStructureKHR(g_vulkanDevice, object, g_allocationCallbacks);
 	}
-
 	accelerationStructures.clear();
+
+	for (VkQueryPool& object : queryPools)
+	{
+		vkDestroyQueryPool(g_vulkanDevice, object, g_allocationCallbacks);
+	}
+	queryPools.clear();
 }
 
 const char* toString(VkResult value)
@@ -6138,6 +6150,67 @@ void AccelerationStructureVK::destroy()
 	}
 
 	buffer.destroy();
+}
+
+void QueryPoolVK::destroy()
+{
+	if (native != VK_NULL_HANDLE)
+	{
+		g_device->enqueueDestroyQueryPool(native);
+		native = VK_NULL_HANDLE;
+	}
+}
+
+static QueryPoolVK createQueryPool(const GfxQueryPoolDesc& desc)
+{ 
+	QueryPoolVK res;
+
+	res.desc = desc;
+
+	VkQueryPoolCreateInfo info = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+	info.queryCount            = desc.count;
+	info.queryType             = VK_QUERY_TYPE_MAX_ENUM;
+	switch (desc.type)
+	{
+	case GfxQuueryType::Occlusion: info.queryType = VK_QUERY_TYPE_OCCLUSION; break;
+	case GfxQuueryType::Timestamp: info.queryType = VK_QUERY_TYPE_TIMESTAMP; break;
+	default: RUSH_LOG_ERROR("Unexpected query type"); break;
+	}
+
+	V(vkCreateQueryPool(g_vulkanDevice, &info, g_allocationCallbacks, &res.native));
+
+	return res;
+}
+
+GfxOwn<GfxQueryPool> Gfx_CreateQueryPool(const GfxQueryPoolDesc& desc)
+{
+	return retainResource(g_device->m_queryPools, createQueryPool(desc));
+}
+
+void Gfx_Retain(GfxQueryPool h) { g_device->m_queryPools[h].addReference(); }
+void Gfx_Release(GfxQueryPool h) { releaseResource(g_device->m_queryPools, h); }
+
+void Gfx_ResetQuery(GfxContext* ctx, GfxQueryPool pool, u32 index, u32 count)
+{
+	vkCmdResetQueryPool(ctx->m_commandBuffer, g_device->m_queryPools[pool].native, index, count);
+}
+
+void Gfx_BeginQuery(GfxContext* ctx, GfxQueryPool pool, u32 index, GfxQueryControlFlags flags)
+{
+	vkCmdBeginQuery(ctx->m_commandBuffer, g_device->m_queryPools[pool].native, index, VkQueryControlFlags(flags));
+}
+
+void Gfx_EndQuery(GfxContext* ctx, GfxQueryPool pool, u32 index)
+{
+	vkCmdEndQuery(ctx->m_commandBuffer, g_device->m_queryPools[pool].native, index);
+}
+
+bool Gfx_GetQueryResults(
+    GfxQueryPool pool, u32 index, u32 count, size_t dataSize, void* outData, u32 stride, GfxQueryResultFlags flags)
+{
+	VkResult res = vkGetQueryPoolResults(g_vulkanDevice, g_device->m_queryPools[pool].native, index, count, dataSize,
+	    outData, VkDeviceSize(stride), VkQueryResultFlags(flags));
+	return res == VK_SUCCESS;
 }
 
 } // namespace Rush

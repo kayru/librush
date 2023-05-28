@@ -218,6 +218,14 @@ struct AccelerationStructureVK : GfxResourceBase
 	void destroy();
 };
 
+struct QueryPoolVK : GfxResourceBase
+{
+	GfxQueryPoolDesc desc   = {};
+	VkQueryPool      native = VK_NULL_HANDLE;
+
+	void destroy();
+};
+
 struct PipelineInfoVK
 {
 	enum
@@ -332,6 +340,7 @@ public:
 	void enqueueDestroyContext(GfxContext* object);
 	void enqueueDestroyDescriptorPool(DescriptorPoolVK* object);
 	void enqueueDestroyAccelerationStructure(VkAccelerationStructureKHR object);
+	void enqueueDestroyQueryPool(VkQueryPool object);
 
 	void captureScreenshot();
 
@@ -471,6 +480,7 @@ public:
 	VkPhysicalDeviceDescriptorIndexingFeatures m_physicalDeviceDescriptorIndexingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
 	VkPhysicalDeviceBufferDeviceAddressFeatures m_bufferDeviceAddressFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
+	VkPhysicalDeviceShaderDrawParametersFeatures m_shaderDrawParametersFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES };
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
 	VkPhysicalDeviceAccelerationStructurePropertiesKHR m_accelerationStructureProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR };
 	VkPhysicalDeviceRayTracingPipelinePropertiesKHR m_rayTracingPipelineProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
@@ -537,24 +547,25 @@ public:
 	ResourcePool<DescriptorSetVK, GfxDescriptorSet>                 m_descriptorSets;
 	ResourcePool<RayTracingPipelineVK, GfxRayTracingPipeline>       m_rayTracingPipelines;
 	ResourcePool<AccelerationStructureVK, GfxAccelerationStructure> m_accelerationStructures;
+	ResourcePool<QueryPoolVK, GfxQueryPool>                         m_queryPools;
 
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
 
 	struct DestructionQueue
 	{
-		DynamicArray<VkPipeline>        pipelines;
-		DynamicArray<VkDeviceMemory>    memory;
-		DynamicArray<VkBuffer>          buffers;
-		DynamicArray<VkImage>           images;
-		DynamicArray<VkImageView>       imageViews;
-		DynamicArray<VkBufferView>      bufferViews;
-		DynamicArray<GfxContext*>       contexts;
-		DynamicArray<VkSampler>         samplers;
-		DynamicArray<DescriptorPoolVK*> descriptorPools;
-		DynamicArray<MemoryBlockVK>     transientHostMemory;
-
+		DynamicArray<VkPipeline>                 pipelines;
+		DynamicArray<VkDeviceMemory>             memory;
+		DynamicArray<VkBuffer>                   buffers;
+		DynamicArray<VkImage>                    images;
+		DynamicArray<VkImageView>                imageViews;
+		DynamicArray<VkBufferView>               bufferViews;
+		DynamicArray<GfxContext*>                contexts;
+		DynamicArray<VkSampler>                  samplers;
+		DynamicArray<DescriptorPoolVK*>          descriptorPools;
+		DynamicArray<MemoryBlockVK>              transientHostMemory;
 		DynamicArray<VkAccelerationStructureKHR> accelerationStructures;
+		DynamicArray<VkQueryPool>                queryPools;
 
 		void flush(GfxDevice* device);
 	};

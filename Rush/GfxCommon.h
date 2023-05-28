@@ -73,6 +73,7 @@
 #define RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS 1
 #define RUSH_RENDER_SUPPORT_RAY_TRACING     1
 #define RUSH_RENDER_SUPPORT_BUFFER_ADDRESS  1
+#define RUSH_RENDER_SUPPORT_QUERY           1
 #else // RUSH_RENDER_API_EXTERNAL
 #define RUSH_RENDER_API_NAME "Unknown"
 #endif
@@ -104,6 +105,7 @@ struct GfxRasterizerDesc;
 struct GfxDescriptorSetDesc;
 struct GfxRayTracingPipelineDesc;
 struct GfxAccelerationStructureDesc;
+struct GfxQueryPoolDesc;
 
 typedef ResourceHandle<GfxVertexFormatDesc>          GfxVertexFormat;
 typedef ResourceHandle<GfxVertexShaderDesc>          GfxVertexShader;
@@ -121,6 +123,7 @@ typedef ResourceHandle<GfxDepthStencilDesc>          GfxDepthStencilState;
 typedef ResourceHandle<GfxRasterizerDesc>            GfxRasterizerState;
 typedef ResourceHandle<GfxTechniqueDesc>             GfxTechnique;
 typedef ResourceHandle<GfxDescriptorSetDesc>         GfxDescriptorSet;
+typedef ResourceHandle<GfxQueryPoolDesc>             GfxQueryPool;
 
 u32 Gfx_GenerateUniqueId();
 
@@ -291,6 +294,7 @@ typedef GfxArg<GfxTechnique>             GfxTechniqueArg;
 typedef GfxArg<GfxDescriptorSet>         GfxDescriptorSetArg;
 typedef GfxArg<GfxRayTracingPipeline>    GfxRayTracingPipelineArg;
 typedef GfxArg<GfxAccelerationStructure> GfxAccelerationStructureArg;
+typedef GfxArg<GfxQueryPool>             GfxQueryPoolArg;
 
 enum class GfxContextType : u8
 {
@@ -1080,6 +1084,34 @@ struct GfxRayTracingPipelineDesc
 
 	u32 maxRecursionDepth = 1;
 };
+
+enum class GfxQuueryType : u8
+{
+	Occlusion = 0,
+	Timestamp = 1,
+};
+
+struct GfxQueryPoolDesc
+{
+	GfxQuueryType type  = GfxQuueryType::Occlusion;
+	u32           count = 0;
+};
+
+enum class GfxQueryControlFlags : u8
+{
+	None    = 0,
+	Precise = 1 << 0,
+};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxQueryControlFlags, u8);
+
+enum class GfxQueryResultFlags : u8
+{
+	None        = 0,
+	Value64Bit  = 0x01,
+	Wait        = 0x02,
+	Partial     = 0x08,
+};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxQueryResultFlags, u8);
 
 inline u32 computeSubresourceCount(TextureType type, u32 mipCount, u32 layerCount)
 {
