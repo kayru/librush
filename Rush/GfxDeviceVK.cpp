@@ -7,6 +7,7 @@
 #include "Window.h"
 
 #include <algorithm>
+#include <variant>
 
 #if defined(RUSH_PLATFORM_WINDOWS)
 #include <Windows.h> // only needed for GetModuleHandle()
@@ -1112,6 +1113,31 @@ static void extendDescriptorPool(GfxDevice::FrameData* frameData)
 	frameData->currentDescriptorPool = frameData->descriptorPools.back().m_descriptorPool;
 }
 
+struct TransientHostMemoryBlockVK : MemoryBlockVK {};
+
+struct DestructionQueueVK
+{
+	RUSH_DISALLOW_COPY_AND_ASSIGN(DestructionQueueVK);
+
+	DestructionQueueVK() = default;
+	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
+
+	using Item = std::variant<VkPipeline, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
+	    VkAccelerationStructureKHR, VkQueryPool, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
+
+	DynamicArray<Item> items;
+
+	template <typename T> void push(T val)
+	{
+		items.push(val);
+	}
+
+	void flush(GfxDevice* device);
+};
+
+template <typename T> void enqueueDestroy(GfxDevice::FrameData* frame, T x) { frame->destructionQueue->push(x); }
+template <typename T> void enqueueDestroy(T x) { enqueueDestroy(g_device->m_currentFrame, x); }
+
 GfxDevice::~GfxDevice()
 {
 	m_resizeEvents.setOwner(nullptr);
@@ -1134,11 +1160,6 @@ GfxDevice::~GfxDevice()
 	V(vkDeviceWaitIdle(m_vulkanDevice));
 
 	// Release everything
-
-	for (FrameData& it : m_frameData)
-	{
-		it.destructionQueue.flush(this);
-	}
 
 	for (auto& contextPool : m_freeContexts)
 	{
@@ -1179,8 +1200,10 @@ GfxDevice::~GfxDevice()
 
 		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, g_allocationCallbacks);
 
-		it.destructionQueue.flush(this);
+		it.destructionQueue->flush(this);
 	}
+
+	m_frameData.clear();
 
 	m_transientLocalAllocator.releaseBlocks(true);
 	m_transientHostAllocator.releaseBlocks(true);
@@ -1837,6 +1860,8 @@ void GfxDevice::createSwapChain()
 	m_swapChainValid = true;
 }
 
+GfxDevice::FrameData::FrameData() : destructionQueue(new DestructionQueueVK) {}
+
 inline void recycleContext(GfxContext* context)
 {
 	GfxContext* temp = allocateContext(context->m_type, "Recycled");
@@ -1844,7 +1869,7 @@ inline void recycleContext(GfxContext* context)
 	std::swap(context->m_commandBuffer, temp->m_commandBuffer);
 	std::swap(context->m_fence, temp->m_fence);
 
-	g_device->enqueueDestroyContext(temp);
+	enqueueDestroy(temp);
 }
 
 void GfxDevice::beginFrame()
@@ -1893,7 +1918,7 @@ void GfxDevice::beginFrame()
 		m_currentFrame->lastGraphicsFence = VK_NULL_HANDLE;
 	}
 
-	m_currentFrame->destructionQueue.flush(this);
+	m_currentFrame->destructionQueue->flush(this);
 
 	m_currentFrame->presentSemaphoreWaited = false;
 
@@ -1913,7 +1938,7 @@ void GfxDevice::endFrame()
 {
 	for (MemoryBlockVK& block : m_transientHostAllocator.m_fullBlocks)
 	{
-		m_currentFrame->destructionQueue.transientHostMemory.push_back(block);
+		m_currentFrame->destructionQueue->push(TransientHostMemoryBlockVK(block));
 	}
 	m_transientHostAllocator.m_fullBlocks.clear();
 }
@@ -1941,52 +1966,6 @@ u32 GfxDevice::memoryTypeFromProperties(u32 memoryTypeBits, VkFlags requiredFlag
 
 	return 0xFFFFFFFF;
 }
-
-void GfxDevice::euqneueDestroyPipeline(VkPipeline object)
-{
-	m_currentFrame->destructionQueue.pipelines.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyMemory(VkDeviceMemory object)
-{
-	m_currentFrame->destructionQueue.memory.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyBuffer(VkBuffer object) { m_currentFrame->destructionQueue.buffers.push_back(object); }
-
-void GfxDevice::enqueueDestroyImage(VkImage object) { m_currentFrame->destructionQueue.images.push_back(object); }
-
-void GfxDevice::enqueueDestroyImageView(VkImageView object)
-{
-	m_currentFrame->destructionQueue.imageViews.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyBufferView(VkBufferView object)
-{
-	m_currentFrame->destructionQueue.bufferViews.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyContext(GfxContext* object)
-{
-	m_currentFrame->destructionQueue.contexts.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyDescriptorPool(DescriptorPoolVK* object)
-{
-	m_currentFrame->destructionQueue.descriptorPools.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyAccelerationStructure(VkAccelerationStructureKHR object)
-{
-	m_currentFrame->destructionQueue.accelerationStructures.push_back(object);
-}
-
-void GfxDevice::enqueueDestroyQueryPool(VkQueryPool object)
-{
-	m_currentFrame->destructionQueue.queryPools.push_back(object);
-}
-
-void GfxDevice::enqueueDestroySampler(VkSampler object) { m_currentFrame->destructionQueue.samplers.push_back(object); }
 
 void MemoryAllocatorVK::init(u32 memoryType, bool hostVisible)
 {
@@ -2142,8 +2121,8 @@ void MemoryAllocatorVK::freeBlock(MemoryBlockVK block, bool immediate)
 	}
 	else
 	{
-		g_device->enqueueDestroyBuffer(block.buffer);
-		g_device->enqueueDestroyMemory(block.memory);
+		enqueueDestroy(block.buffer);
+		enqueueDestroy(block.memory);
 	}
 }
 
@@ -3133,7 +3112,7 @@ void GfxDevice::flushUploadContext(GfxContext* dependentContext, bool waitForCom
 
 	m_currentUploadContext->submit(queue);
 
-	enqueueDestroyContext(m_currentUploadContext);
+	enqueueDestroy(m_currentUploadContext);
 	m_currentUploadContext = nullptr;
 
 	if (waitForCompletion)
@@ -3762,7 +3741,7 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	DescriptorSetVK& ds = g_device->m_descriptorSets[d];
 	if (ds.native)
 	{
-		g_device->enqueueDestroyDescriptorPool(ds.pool);
+		enqueueDestroy(ds.pool);
 		const auto& desc = ds.desc;
 
 		DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
@@ -3807,7 +3786,7 @@ void DescriptorSetVK::destroy()
 {
 	if (pool)
 	{
-		g_device->enqueueDestroyDescriptorPool(pool);
+		enqueueDestroy(pool);
 		pool = nullptr;
 	}
 }
@@ -4350,25 +4329,25 @@ void TextureVK::destroy()
 
 	if (imageView)
 	{
-		g_device->enqueueDestroyImageView(imageView);
+		enqueueDestroy(imageView);
 		imageView = VK_NULL_HANDLE;
 	}
 
 	if (depthStencilImageView)
 	{
-		g_device->enqueueDestroyImageView(depthStencilImageView);
+		enqueueDestroy(depthStencilImageView);
 		depthStencilImageView = VK_NULL_HANDLE;
 	}
 
 	if (image && ownsImage)
 	{
-		g_device->enqueueDestroyImage(image);
+		enqueueDestroy(image);
 		image = VK_NULL_HANDLE;
 	}
 
 	if (memory && ownsMemory)
 	{
-		g_device->enqueueDestroyMemory(memory);
+		enqueueDestroy(memory);
 		memory = VK_NULL_HANDLE;
 	}
 }
@@ -4418,7 +4397,7 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 void SamplerVK::destroy()
 {
 	RUSH_ASSERT(m_refs == 0);
-	g_device->enqueueDestroySampler(native);
+	enqueueDestroy(native);
 }
 
 void Gfx_Release(GfxSampler h) { releaseResource(g_device->m_samplers, h); }
@@ -4824,17 +4803,17 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 	{
 		if (buffer.bufferView)
 		{
-			g_device->enqueueDestroyBufferView(buffer.bufferView);
+			enqueueDestroy(buffer.bufferView);
 		}
 
 		if (buffer.memory && buffer.ownsMemory)
 		{
-			g_device->enqueueDestroyMemory(buffer.memory);
+			enqueueDestroy(buffer.memory);
 		}
 
 		if (buffer.info.buffer && buffer.ownsBuffer)
 		{
-			g_device->enqueueDestroyBuffer(buffer.info.buffer);
+			enqueueDestroy(buffer.info.buffer);
 		}
 
 		MemoryBlockVK block = g_device->m_transientLocalAllocator.alloc(size, alignment);
@@ -4952,7 +4931,7 @@ void Gfx_EndAsyncCompute(GfxContext* parentContext, GfxContext* asyncContext)
 
 	parentContext->addDependency(asyncContext->m_completionSemaphore, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-	g_device->enqueueDestroyContext(asyncContext);
+	enqueueDestroy(asyncContext);
 }
 
 GfxContext* Gfx_AcquireContext()
@@ -5479,7 +5458,7 @@ void BufferVK::destroy()
 
 	if (info.buffer && ownsBuffer)
 	{
-		g_device->enqueueDestroyBuffer(info.buffer);
+		enqueueDestroy(info.buffer);
 		info.buffer = VK_NULL_HANDLE;
 	}
 
@@ -5491,95 +5470,61 @@ void BufferVK::destroy()
 
 	if (memory && ownsMemory)
 	{
-		g_device->enqueueDestroyMemory(memory);
+		enqueueDestroy(memory);
 		memory = VK_NULL_HANDLE;
 	}
 
 	if (bufferView)
 	{
-		g_device->enqueueDestroyBufferView(bufferView);
+		enqueueDestroy(bufferView);
 		bufferView = VK_NULL_HANDLE;
 	}
 }
 
 const GfxCapability& Gfx_GetCapability() { return g_device->m_caps; }
 
-void GfxDevice::DestructionQueue::flush(GfxDevice* device)
+
+void DestructionQueueVK::flush(GfxDevice* device)
 {
-	VkDevice vulkanDevice = device->m_vulkanDevice;
-
-	for (VkPipeline x : pipelines)
+	struct DestructionDispatcher
 	{
-		vkDestroyPipeline(vulkanDevice, x, g_allocationCallbacks);
-	}
-	pipelines.clear();
+		GfxDevice* device;
+		VkDevice   vulkanDevice;
+		DestructionDispatcher(GfxDevice* in_device) : device(in_device), vulkanDevice(in_device->m_vulkanDevice) 
+		{
+			RUSH_ASSERT(device != nullptr);
+			RUSH_ASSERT(vulkanDevice != VK_NULL_HANDLE);
+		}
 
-	for (VkSampler s : samplers)
-	{
-		vkDestroySampler(vulkanDevice, s, g_allocationCallbacks);
-	}
-	samplers.clear();
+		// Vulkan objects
+		void operator()(VkPipeline x) { vkDestroyPipeline(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkSampler x) { vkDestroySampler(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkDeviceMemory x) { vkFreeMemory(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkBuffer x) { vkDestroyBuffer(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkImage x) { vkDestroyImage(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkImageView x) { vkDestroyImageView(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkBufferView x) { vkDestroyBufferView(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkAccelerationStructureKHR x)
+		{
+			vkDestroyAccelerationStructureKHR(vulkanDevice, x, g_allocationCallbacks);
+		};
+		void operator()(VkQueryPool x) { vkDestroyQueryPool(vulkanDevice, x, g_allocationCallbacks); };
 
-	for (VkDeviceMemory p : memory)
-	{
-		vkFreeMemory(vulkanDevice, p, g_allocationCallbacks);
-	}
-	memory.clear();
+		// Custom objects
+		void operator()(GfxContext* x) { device->m_freeContexts[u32(x->m_type)].push_back(x); };
+		void operator()(DescriptorPoolVK* x) { delete x; };
+		void operator()(TransientHostMemoryBlockVK& x)
+		{
+			x.offset = 0;
+			device->m_transientHostAllocator.addBlock(x);
+		};
+	} dispatcher(device);
 
-	for (VkBuffer p : buffers)
+	for (DestructionQueueVK::Item& item : items)
 	{
-		vkDestroyBuffer(vulkanDevice, p, g_allocationCallbacks);
+		std::visit(dispatcher, item);
 	}
-	buffers.clear();
-
-	for (VkImage p : images)
-	{
-		vkDestroyImage(vulkanDevice, p, g_allocationCallbacks);
-	}
-	images.clear();
-
-	for (VkImageView p : imageViews)
-	{
-		vkDestroyImageView(vulkanDevice, p, g_allocationCallbacks);
-	}
-	imageViews.clear();
-
-	for (VkBufferView p : bufferViews)
-	{
-		vkDestroyBufferView(vulkanDevice, p, g_allocationCallbacks);
-	}
-	bufferViews.clear();
-
-	for (GfxContext* p : contexts)
-	{
-		g_device->m_freeContexts[u32(p->m_type)].push_back(p);
-	}
-	contexts.clear();
-
-	for (DescriptorPoolVK* p : descriptorPools)
-	{
-		delete p;
-	}
-	descriptorPools.clear();
-
-	for (MemoryBlockVK& block : transientHostMemory)
-	{
-		block.offset = 0;
-		device->m_transientHostAllocator.addBlock(block);
-	}
-	transientHostMemory.clear();
-
-	for (VkAccelerationStructureKHR& object : accelerationStructures)
-	{
-		vkDestroyAccelerationStructureKHR(g_vulkanDevice, object, g_allocationCallbacks);
-	}
-	accelerationStructures.clear();
-
-	for (VkQueryPool& object : queryPools)
-	{
-		vkDestroyQueryPool(g_vulkanDevice, object, g_allocationCallbacks);
-	}
-	queryPools.clear();
+	items.clear();
 }
 
 const char* toString(VkResult value)
@@ -6066,7 +6011,7 @@ void RayTracingPipelineVK::destroy()
 		miss = VK_NULL_HANDLE;
 	}
 
-	g_device->euqneueDestroyPipeline(pipeline);
+	enqueueDestroy(pipeline);
 
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
@@ -6145,7 +6090,7 @@ void AccelerationStructureVK::destroy()
 {
 	if (native != VK_NULL_HANDLE)
 	{
-		g_device->enqueueDestroyAccelerationStructure(native);
+		enqueueDestroy(native);
 		native = VK_NULL_HANDLE;
 	}
 
@@ -6156,7 +6101,7 @@ void QueryPoolVK::destroy()
 {
 	if (native != VK_NULL_HANDLE)
 	{
-		g_device->enqueueDestroyQueryPool(native);
+		enqueueDestroy(native);
 		native = VK_NULL_HANDLE;
 	}
 }

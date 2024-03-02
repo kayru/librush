@@ -11,6 +11,7 @@
 #include "Window.h"
 #include "UtilArray.h"
 #include "UtilHash.h"
+#include "UtilMemory.h"
 
 #include <unordered_map>
 
@@ -21,6 +22,8 @@ namespace Rush
 
 struct VkPipelineShaderStageCreateInfoWaveLimitAMD;
 struct DescriptorPoolVK;
+
+struct DestructionQueueVK;
 
 union MemoryTraitsVK {
 	struct
@@ -329,19 +332,6 @@ public:
 
 	void flushUploadContext(GfxContext* dependentContext = nullptr, bool waitForCompletion = false);
 
-	// TODO: destruction queue shoult be tied to main queue command buffer execution rather than frames
-	void euqneueDestroyPipeline(VkPipeline pipeline);
-	void enqueueDestroyMemory(VkDeviceMemory object);
-	void enqueueDestroyBuffer(VkBuffer object);
-	void enqueueDestroyImage(VkImage object);
-	void enqueueDestroyImageView(VkImageView object);
-	void enqueueDestroyBufferView(VkBufferView object);
-	void enqueueDestroySampler(VkSampler object);
-	void enqueueDestroyContext(GfxContext* object);
-	void enqueueDestroyDescriptorPool(DescriptorPoolVK* object);
-	void enqueueDestroyAccelerationStructure(VkAccelerationStructureKHR object);
-	void enqueueDestroyQueryPool(VkQueryPool object);
-
 	void captureScreenshot();
 
 	struct FrameBufferKey
@@ -552,26 +542,10 @@ public:
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
 
-	struct DestructionQueue
-	{
-		DynamicArray<VkPipeline>                 pipelines;
-		DynamicArray<VkDeviceMemory>             memory;
-		DynamicArray<VkBuffer>                   buffers;
-		DynamicArray<VkImage>                    images;
-		DynamicArray<VkImageView>                imageViews;
-		DynamicArray<VkBufferView>               bufferViews;
-		DynamicArray<GfxContext*>                contexts;
-		DynamicArray<VkSampler>                  samplers;
-		DynamicArray<DescriptorPoolVK*>          descriptorPools;
-		DynamicArray<MemoryBlockVK>              transientHostMemory;
-		DynamicArray<VkAccelerationStructureKHR> accelerationStructures;
-		DynamicArray<VkQueryPool>                queryPools;
-
-		void flush(GfxDevice* device);
-	};
-
 	struct FrameData
 	{
+		FrameData();
+
 		VkDescriptorPool currentDescriptorPool = VK_NULL_HANDLE;
 		DynamicArray<DescriptorPoolVK> descriptorPools;
 		DynamicArray<DescriptorPoolVK> availableDescriptorPools;
@@ -581,7 +555,7 @@ public:
 		DynamicArray<u16> timestampSlotMap;
 		u32               timestampIssuedCount = 0;
 
-		DestructionQueue destructionQueue;
+		UniquePtr<DestructionQueueVK> destructionQueue;
 
 		u32     frameIndex             = ~0u;
 		VkFence lastGraphicsFence      = VK_NULL_HANDLE;
@@ -589,7 +563,7 @@ public:
 	};
 
 	DynamicArray<FrameData> m_frameData;
-	FrameData*             m_currentFrame = nullptr;
+	FrameData*              m_currentFrame = nullptr;
 
 	MemoryAllocatorVK m_transientLocalAllocator;
 	MemoryAllocatorVK m_transientHostAllocator;
