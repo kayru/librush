@@ -84,6 +84,8 @@ add_library(Rush STATIC
 	Rush/WindowXCB.h
 )
 
+set_property(TARGET Rush PROPERTY CXX_STANDARD 20)
+
 target_include_directories(Rush INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(Rush PUBLIC cxx_std_14)
 
@@ -189,3 +191,4 @@ if (MSVC)
 else()
 	target_compile_options(Rush PRIVATE -Wall)
 endif()
+

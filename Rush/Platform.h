@@ -87,4 +87,6 @@ GfxContext* Platform_GetGfxContext();
 Window*     Platform_GetWindow();
 Window*     Platform_CreateWindow(const WindowDesc& desc);
 
+bool Platform_IsDebuggerPresent();
+
 }

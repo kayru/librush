@@ -21,7 +21,7 @@
 
 namespace Rush
 {
-bool Log::breakOnError   = false;
+bool Log::breakOnError   = IsDebuggerPresent();
 bool Log::breakOnWarning = false;
 
 Log::LogMessageCallback Log::callbackDebug   = nullptr;

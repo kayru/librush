@@ -74,4 +74,11 @@ int Platform_Main(const AppConfig& cfg)
 	return 0;
 }
 
+#ifndef RUSH_PLATFORM_WINDOWS
+bool Platform_IsDebuggerPresent()
+{
+	return false;
+}
+#endif // RUSH_PLATFORM_WINDOWS
+
 }

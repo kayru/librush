@@ -6,6 +6,7 @@
 #include "GfxDevice.h"
 #include "WindowWin32.h"
 
+#include <debugapi.h>
 #include <string.h>
 
 namespace Rush
@@ -71,6 +72,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 		Gfx_EndFrame();
 		Gfx_Present();
 	}
+}
+
+bool Platform_IsDebuggerPresent()
+{
+	return IsDebuggerPresent();
 }
 
 }
