@@ -182,12 +182,9 @@ static void debugRegister(u64 p, VkObjectType objectType, const char* name)
 		vkSetDebugUtilsObjectNameEXT(g_vulkanDevice, &nameInfo);
 	}
 
-	if (vkDebugMarkerSetObjectNameEXT && (objectType == VK_OBJECT_TYPE_IMAGE || objectType == VK_OBJECT_TYPE_BUFFER))
+	if (vkDebugMarkerSetObjectNameEXT)
 	{
 		VkDebugMarkerObjectNameInfoEXT nameInfo = {VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT};
-
-		static_assert(VK_OBJECT_TYPE_IMAGE == (VkObjectType)VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Unexpected object type");
-		static_assert(VK_OBJECT_TYPE_BUFFER == (VkObjectType)VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, "Unexpected object type");
 
 		nameInfo.object      = p;
 		nameInfo.objectType  = (VkDebugReportObjectTypeEXT)objectType;
@@ -197,15 +194,11 @@ static void debugRegister(u64 p, VkObjectType objectType, const char* name)
 	}
 }
 
-static void debugRegister(VkImage p, const char* name)
-{
-	debugRegister((u64)p, VK_OBJECT_TYPE_IMAGE, name);
-}
+static void debugRegister(VkImage p, const char* name) { debugRegister((u64)p, VK_OBJECT_TYPE_IMAGE, name); }
+static void debugRegister(VkBuffer p, const char* name) { debugRegister((u64)p, VK_OBJECT_TYPE_BUFFER, name); }
+static void debugRegister(VkFence p, const char* name) { debugRegister((u64)p, VK_OBJECT_TYPE_FENCE, name); }
+static void debugRegister(VkSemaphore p, const char* name) { debugRegister((u64)p, VK_OBJECT_TYPE_SEMAPHORE, name); }
 
-static void debugRegister(VkBuffer p, const char* name)
-{ 
-	debugRegister((u64)p, VK_OBJECT_TYPE_BUFFER, name);
-}
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
     VkDebugReportObjectTypeEXT                                           objectType,
@@ -934,9 +927,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_desiredSwapChainImageCount = cfg.minimizeLatency ? 1 : 2;
 
-	VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-	V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_presentCompleteSemaphore));
-
 	createSwapChain();
 
 	// Command pool
@@ -989,8 +979,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_transientLocalAllocator.init(m_memoryTypes.local, false);
 	m_transientHostAllocator.init(m_memoryTypes.host, true);
 
-	m_currentFrame                         = &m_frameData.back();
-	m_currentFrame->presentSemaphoreWaited = true;
+	m_currentFrame = &m_frameData.back();
 
 	{
 		BlendStateVK defaultBlendState;
@@ -1123,7 +1112,7 @@ struct DestructionQueueVK
 	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
 
 	using Item = std::variant<VkPipeline, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
-	    VkAccelerationStructureKHR, VkQueryPool, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
+	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
 
 	DynamicArray<Item> items;
 
@@ -1161,14 +1150,6 @@ GfxDevice::~GfxDevice()
 
 	// Release everything
 
-	for (auto& contextPool : m_freeContexts)
-	{
-		for (GfxContext* p : contextPool)
-		{
-			Gfx_Release(p);
-		}
-	}
-
 	m_queryPools.reset();
 	m_accelerationStructures.reset();
 	m_rayTracingPipelines.reset();
@@ -1200,7 +1181,20 @@ GfxDevice::~GfxDevice()
 
 		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, g_allocationCallbacks);
 
+		if (it.presentCompleteSemaphore)
+		{
+			vkDestroySemaphore(m_vulkanDevice, it.presentCompleteSemaphore, g_allocationCallbacks);
+		}
+
 		it.destructionQueue->flush(this);
+	}
+
+	for (auto& contextPool : m_freeContexts)
+	{
+		for (GfxContext* p : contextPool)
+		{
+			Gfx_Release(p);
+		}
 	}
 
 	m_frameData.clear();
@@ -1230,8 +1224,14 @@ GfxDevice::~GfxDevice()
 	{
 		vkDestroyCommandPool(m_vulkanDevice, m_transferCommandPool, g_allocationCallbacks);
 	}
+
+	for (VkSemaphore x : m_semaphorePool)
+	{
+		vkDestroySemaphore(m_vulkanDevice, x, g_allocationCallbacks);
+	}
+	m_semaphorePool.clear();
+
 	vkDestroySurfaceKHR(m_vulkanInstance, m_swapChainSurface, g_allocationCallbacks);
-	vkDestroySemaphore(m_vulkanDevice, m_presentCompleteSemaphore, g_allocationCallbacks);
 	vkDestroyDevice(m_vulkanDevice, g_allocationCallbacks);
 
 	if (m_debugReportCallbackExt)
@@ -1827,6 +1827,23 @@ void GfxDevice::createSwapChain()
 	RUSH_ASSERT(m_frameData.empty() || m_frameData.size() == swapChainImageCount);
 
 	m_frameData.resize(swapChainImageCount);
+	for (auto& it : m_frameData)
+	{
+		if (it.presentCompleteSemaphore)
+		{
+			if (it.presentCompleteSemaphoreWaited)
+			{
+				freeSemaphore(it.presentCompleteSemaphore);
+			}
+			else
+			{
+				vkDestroySemaphore(m_vulkanDevice, it.presentCompleteSemaphore, g_allocationCallbacks);
+			}
+			it.presentCompleteSemaphore = VK_NULL_HANDLE;
+		}
+		it.presentCompleteSemaphoreWaited = false;
+	}
+
 	m_swapChainImages.resize(swapChainImageCount);
 
 	for (auto& it : m_swapChainTextures)
@@ -1881,8 +1898,11 @@ void GfxDevice::beginFrame()
 
 	if (m_swapChainValid)
 	{
-		VkResult result = vkAcquireNextImageKHR(
-		    m_vulkanDevice, m_swapChain, UINT64_MAX, m_presentCompleteSemaphore, VK_NULL_HANDLE, &m_swapChainIndex);
+		VkSemaphore presentCompleteSemaphore = allocSemaphore();
+
+		u32      nextSwapChainIndex = ~0u;
+		VkResult result             = vkAcquireNextImageKHR(
+            m_vulkanDevice, m_swapChain, UINT64_MAX, presentCompleteSemaphore, VK_NULL_HANDLE, &nextSwapChainIndex);
 
 		bool success = false;
 		switch (result)
@@ -1907,6 +1927,19 @@ void GfxDevice::beginFrame()
 		{
 			RUSH_LOG_FATAL("vkAcquireNextImageKHR returned code %d (%s)", result, toString(result));
 		}
+
+		FrameData& nextFrame = m_frameData[nextSwapChainIndex];
+		if (nextFrame.presentCompleteSemaphore)
+		{
+			RUSH_ASSERT(nextFrame.presentCompleteSemaphoreWaited);
+			freeSemaphore(nextFrame.presentCompleteSemaphore);
+			nextFrame.presentCompleteSemaphore = VK_NULL_HANDLE;
+		}
+
+		nextFrame.presentCompleteSemaphore = presentCompleteSemaphore;
+		nextFrame.presentCompleteSemaphoreWaited = false;
+
+		m_swapChainIndex = nextSwapChainIndex;
 	}
 
 	m_currentFrame             = &m_frameData[m_swapChainIndex];
@@ -1919,8 +1952,6 @@ void GfxDevice::beginFrame()
 	}
 
 	m_currentFrame->destructionQueue->flush(this);
-
-	m_currentFrame->presentSemaphoreWaited = false;
 
 	for (auto& it : m_currentFrame->descriptorPools)
 	{
@@ -2151,6 +2182,7 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 	VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 	fenceCreateInfo.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
 	vkCreateFence(g_vulkanDevice, &fenceCreateInfo, g_allocationCallbacks, &m_fence);
+	debugRegister(m_fence, "GfxContext::m_fence");
 
 	VkCommandBufferAllocateInfo allocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 	allocateInfo.commandPool                 = commandPool;
@@ -2161,6 +2193,7 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 	V(vkCreateSemaphore(g_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_completionSemaphore));
+	debugRegister(m_fence, "GfxContext::m_completionSemaphore");
 }
 
 GfxContext::~GfxContext()
@@ -2218,6 +2251,8 @@ void GfxContext::endBuild()
 
 void GfxContext::addDependency(VkSemaphore waitSemaphore, VkPipelineStageFlags waitDstStageMask)
 {
+	RUSH_ASSERT(waitSemaphore != VK_NULL_HANDLE);
+
 	m_waitSemaphores.push_back(waitSemaphore);
 	m_waitDstStageMasks.push_back(waitDstStageMask);
 }
@@ -2248,13 +2283,6 @@ void GfxContext::submit(VkQueue queue)
 		m_pendingBufferUploads.clear();
 	}
 
-	if (queue == g_device->m_graphicsQueue && !g_device->m_currentFrame->presentSemaphoreWaited &&
-	    g_device->m_swapChainValid)
-	{
-		addDependency(g_device->m_presentCompleteSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-		g_device->m_currentFrame->presentSemaphoreWaited = true;
-	}
-
 	VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
 
 	submitInfo.waitSemaphoreCount   = (u32)m_waitSemaphores.size();
@@ -2277,7 +2305,7 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 		return nextLayout;
 	}
 
-	for (VkImageMemoryBarrier imageBarrier : m_pendingBarriers.imageBarriers)
+	for (const VkImageMemoryBarrier& imageBarrier : m_pendingBarriers.imageBarriers)
 	{
 		if (imageBarrier.image == image)
 		{
@@ -3286,6 +3314,7 @@ void Gfx_EndFrame()
 
 	TextureVK& backBufferTexture =
 	    g_device->m_textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
+
 	backBufferTexture.currentLayout = g_context->addImageBarrier(
 	    backBufferTexture.image, backBufferTexture.currentLayout, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
@@ -3673,6 +3702,29 @@ VkDescriptorSetLayout GfxDevice::createDescriptorSetLayout(
 	m_descriptorSetLayouts.insert(std::make_pair(key, res));
 
 	return res;
+}
+
+VkSemaphore GfxDevice::allocSemaphore()
+{
+	VkSemaphore result = VK_NULL_HANDLE;
+	if (m_semaphorePool.empty())
+	{
+		VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+		V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &result));
+		debugRegister(result, "PooledSemaphore");
+	}
+	else
+	{
+		result = m_semaphorePool.back();
+		m_semaphorePool.pop_back();
+	}
+
+	return result;
+}
+
+void GfxDevice::freeSemaphore(VkSemaphore x)
+{
+	m_semaphorePool.push(x);
 }
 
 DescriptorSetLayoutArray GfxDevice::createDescriptorSetLayouts(
@@ -4952,7 +5004,9 @@ GfxContext* Gfx_AcquireContext()
 void Gfx_Release(GfxContext* rc)
 {
 	if (rc->removeReference() > 1)
+	{
 		return;
+	}
 
 	if (rc == g_context)
 	{
@@ -5187,10 +5241,6 @@ void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t off
 	}
 }
 
-GfxTexture Gfx_GetBackBufferColorTexture() { return g_device->m_swapChainTextures[g_device->m_swapChainIndex].get(); }
-
-GfxTexture Gfx_GetBackBufferDepthTexture() { return g_device->m_depthBufferTexture.get(); }
-
 void Gfx_AddImageBarrier(
     GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
 {
@@ -5217,9 +5267,22 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 
 	if (!desc.depth.valid() && !desc.color[0].valid())
 	{
+		GfxTexture swapChainTexture = g_device->m_swapChainTextures[g_device->m_swapChainIndex].get();
+
+		if (g_device->m_swapChainValid)
+		{
+			GfxDevice::FrameData* currentFrame = g_device->m_currentFrame;
+			if (!currentFrame->presentCompleteSemaphoreWaited)
+			{
+				rc->addDependency(currentFrame->presentCompleteSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+				currentFrame->presentCompleteSemaphoreWaited = true;
+			}
+		}
+
 		GfxPassDesc backBufferPassDesc = desc;
-		backBufferPassDesc.depth       = Gfx_GetBackBufferDepthTexture();
-		backBufferPassDesc.color[0]    = Gfx_GetBackBufferColorTexture();
+		backBufferPassDesc.depth       = g_device->m_depthBufferTexture.get();
+		backBufferPassDesc.color[0]    = swapChainTexture;
+
 		rc->beginRenderPass(backBufferPassDesc);
 	}
 	else
@@ -5504,6 +5567,7 @@ void DestructionQueueVK::flush(GfxDevice* device)
 		void operator()(VkImage x) { vkDestroyImage(vulkanDevice, x, g_allocationCallbacks); };
 		void operator()(VkImageView x) { vkDestroyImageView(vulkanDevice, x, g_allocationCallbacks); };
 		void operator()(VkBufferView x) { vkDestroyBufferView(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkSemaphore x) { vkDestroySemaphore(vulkanDevice, x, g_allocationCallbacks); };
 		void operator()(VkAccelerationStructureKHR x)
 		{
 			vkDestroyAccelerationStructureKHR(vulkanDevice, x, g_allocationCallbacks);

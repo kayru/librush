@@ -750,8 +750,6 @@ void rush_gfx_release_rasterizer_state(rush_gfx_rasterizer_state h);
 void rush_gfx_release_buffer(rush_gfx_buffer h);
 void rush_gfx_release_descriptor_set(rush_gfx_descriptor_set h);
 rush_gfx_texture_desc gfx_get_texture_desc(rush_gfx_texture h);
-rush_gfx_texture gfx_get_back_buffer_color_texture();
-rush_gfx_texture gfx_get_back_buffer_depth_texture();
 rush_gfx_mapped_buffer gfx_map_buffer(rush_gfx_buffer h, uint32_t offset, uint32_t size);
 void rush_gfx_unmap_buffer(const rush_gfx_mapped_buffer* in_mapped_buffer);
 void rush_gfx_update_buffer(struct rush_gfx_context* ctx, rush_gfx_buffer h, const void* data, uint32_t size);

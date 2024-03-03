@@ -506,7 +506,9 @@ public:
 	u32 m_computeQueueIndex  = 0xFFFFFFFF;
 	u32 m_transferQueueIndex = 0xFFFFFFFF;
 
-	VkSemaphore m_presentCompleteSemaphore = VK_NULL_HANDLE;
+	DynamicArray<VkSemaphore> m_semaphorePool;
+	VkSemaphore               allocSemaphore();
+	void                      freeSemaphore(VkSemaphore x);
 
 	// swap chain
 
@@ -559,7 +561,9 @@ public:
 
 		u32     frameIndex             = ~0u;
 		VkFence lastGraphicsFence      = VK_NULL_HANDLE;
-		bool    presentSemaphoreWaited = false;
+
+		VkSemaphore presentCompleteSemaphore = VK_NULL_HANDLE;
+		bool        presentCompleteSemaphoreWaited = false;
 	};
 
 	DynamicArray<FrameData> m_frameData;

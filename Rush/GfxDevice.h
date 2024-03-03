@@ -249,8 +249,6 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 #endif // RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 
 const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTextureArg h);
-GfxTexture             Gfx_GetBackBufferColorTexture();
-GfxTexture             Gfx_GetBackBufferDepthTexture();
 
 GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg h, u32 offset = 0, u32 size = 0);
 void            Gfx_UnmapBuffer(GfxMappedBuffer& lock);
@@ -493,8 +491,6 @@ inline void Gfx_Release(GfxDepthStencilState h) {}
 inline void Gfx_Release(GfxRasterizerState h) {}
 inline void Gfx_Release(GfxBuffer h) {}
 inline const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h) { static const GfxTextureDesc desc; return desc; }
-inline GfxTexture Gfx_GetBackBufferColorTexture() { return {}; }
-inline GfxTexture Gfx_GetBackBufferDepthTexture() { return {}; }
 inline GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg h, u32 offset, u32 size) { return {}; }
 inline void Gfx_UnmapBuffer(GfxMappedBuffer& lock) {}
 inline void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size) {}

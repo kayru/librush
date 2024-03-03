@@ -863,16 +863,6 @@ rush_gfx_texture_desc gfx_get_texture_desc(rush_gfx_texture h)
 	return result;
 }
 
-rush_gfx_texture gfx_get_back_buffer_color_texture()
-{
-	return { Gfx_GetBackBufferColorTexture().index() };
-}
-
-rush_gfx_texture gfx_get_back_buffer_depth_texture()
-{
-	return { Gfx_GetBackBufferDepthTexture().index() };
-}
-
 rush_gfx_mapped_buffer gfx_map_buffer(rush_gfx_buffer h, uint32_t offset, uint32_t size)
 {
 	rush_gfx_mapped_buffer result;
