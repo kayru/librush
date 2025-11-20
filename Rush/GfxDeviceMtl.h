@@ -48,7 +48,7 @@ struct DescriptorSetMTL : GfxRefCount
 {
 	u32                      uniqueId = 0;
 	GfxDescriptorSetDesc     desc;
-	DynamicArray<u32>        constantBufferOffsets;
+	DynamicArray<u64>        constantBufferOffsets;
 	DynamicArray<GfxBuffer>  constantBuffers;
 	DynamicArray<GfxTexture> textures;
 	DynamicArray<GfxSampler> samplers;
@@ -57,8 +57,8 @@ struct DescriptorSetMTL : GfxRefCount
 
 	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc
 	id<MTLBuffer> argBuffer = nil;
-	u32 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
-	u32 argBufferSize = 0;
+	u64 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
+	u64 argBufferSize = 0;
 
 	void destroy();
 };
@@ -226,7 +226,7 @@ public:
 	GfxRef<GfxRasterizerState> m_pendingRasterizerState;
 	GfxRef<GfxDepthStencilState> m_pendingDepthStencilState;
 	GfxRef<GfxBuffer> m_constantBuffers[MaxConstantBuffers];
-	u32 m_constantBufferOffsets[MaxConstantBuffers] = {};
+	u64 m_constantBufferOffsets[MaxConstantBuffers] = {};
 	GfxRef<GfxSampler> m_samplers[MaxSamplers];
 	GfxRef<GfxTexture> m_sampledImages[MaxSampledImages];
 	GfxRef<GfxTexture> m_storageImages[MaxStorageImages];
@@ -236,6 +236,7 @@ public:
 
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;
 	u32 m_indexStride = 4;
+	u32 m_indexBufferOffset = 0;
 	id<MTLBuffer> m_indexBuffer = nil;
 
 	MTLPrimitiveType m_primitiveType = MTLPrimitiveTypeTriangle;

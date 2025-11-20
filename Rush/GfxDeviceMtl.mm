@@ -14,7 +14,7 @@ namespace Rush
 static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc);
 static void updateDescriptorSet(DescriptorSetMTL& ds,
 	const GfxBuffer* constantBuffers,
-	const u32* constantBufferOffsets,
+	const u64* constantBufferOffsets,
 	const GfxSampler* samplers,
 	const GfxTexture* textures,
 	const GfxTexture* storageImages,
@@ -1016,7 +1016,7 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 	{
 		[commandEncoder
 		 useResource:g_device->m_textures[ds.textures[j]].native
-		 usage:MTLResourceUsageSample];
+		 usage:MTLResourceUsageRead];
 	}
 
 	for (u64 j=0; j<ds.storageImages.size(); ++j)
@@ -1372,19 +1372,23 @@ void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
 }
 
-void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h)
+void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h)
 {
+	RUSH_ASSERT_MSG(offset==0, "Index buffer offset is not implemented");
+
 	[rc->m_indexBuffer release];
 
 	rc->m_indexType = g_device->m_buffers[h].indexType;
 	rc->m_indexStride = g_device->m_buffers[h].stride;
 	rc->m_indexBuffer = g_device->m_buffers[h].native;
+	rc->m_indexBufferOffset = offset;
+
 	[rc->m_indexBuffer retain];
 }
 
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h)
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h)
 {
-	[rc->m_commandEncoder setVertexBuffer:g_device->m_buffers[h].native offset:0 atIndex:(GfxContext::MaxConstantBuffers+idx)];
+	[rc->m_commandEncoder setVertexBuffer:g_device->m_buffers[h].native offset:offset atIndex:(GfxContext::MaxConstantBuffers+idx)];
 }
 
 void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
@@ -1481,7 +1485,7 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 	 indexCount:indexCount
 	 indexType:rc->m_indexType
 	 indexBuffer:rc->m_indexBuffer
-	 indexBufferOffset:firstIndex * rc->m_indexStride
+	 indexBufferOffset:firstIndex * rc->m_indexStride + rc->m_indexBufferOffset
 	 instanceCount:1
 	 baseVertex:baseVertex
 	 baseInstance:0];
@@ -1507,7 +1511,7 @@ void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u3
 	 indexCount:indexCount
 	 indexType:rc->m_indexType
 	 indexBuffer:rc->m_indexBuffer
-	 indexBufferOffset:firstIndex * rc->m_indexStride
+	 indexBufferOffset:firstIndex * rc->m_indexStride + rc->m_indexBufferOffset
 	 instanceCount:instanceCount
 	 baseVertex:baseVertex
 	 baseInstance:instanceOffset];
@@ -1656,7 +1660,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypePointer];
 		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLArgumentAccessReadOnly];
+		[descriptor setAccess: MTLBindingAccessReadOnly];
 		[descriptors addObject: descriptor];
 		++argumentIndex;
 	}
@@ -1668,7 +1672,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypeSampler];
 		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLArgumentAccessReadOnly];
+		[descriptor setAccess: MTLBindingAccessReadOnly];
 		[descriptors addObject: descriptor];
 		++argumentIndex;
 	}
@@ -1679,7 +1683,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypeTexture];
 		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLArgumentAccessReadOnly];
+		[descriptor setAccess: MTLBindingAccessReadOnly];
 		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
 		[descriptors addObject: descriptor];
 		++argumentIndex;
@@ -1691,7 +1695,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypeTexture];
 		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLArgumentAccessReadWrite];
+		[descriptor setAccess: MTLBindingAccessReadWrite];
 		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
 		[descriptors addObject: descriptor];
 		++argumentIndex;
@@ -1702,7 +1706,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	{
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypePointer];
-		[descriptor setAccess: MTLArgumentAccessReadWrite];
+		[descriptor setAccess: MTLBindingAccessReadWrite];
 		[descriptor setIndex: argumentIndex];
 		[descriptors addObject: descriptor];
 		++argumentIndex;
@@ -1712,7 +1716,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	{
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypePointer];
-		[descriptor setAccess: MTLArgumentAccessReadWrite];
+		[descriptor setAccess: MTLBindingAccessReadWrite];
 		[descriptor setIndex: argumentIndex];
 		[descriptors addObject: descriptor];
 		++argumentIndex;
@@ -1757,7 +1761,7 @@ void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 
 static void updateDescriptorSet(DescriptorSetMTL& ds,
 	 const GfxBuffer* constantBuffers,
-	 const u32* constantBufferOffsets,
+	 const u64* constantBufferOffsets,
 	 const GfxSampler* samplers,
 	 const GfxTexture* textures,
 	 const GfxTexture* storageImages,
@@ -1777,7 +1781,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	for(u32 i=0; i<desc.constantBuffers; ++i)
 	{
 		BufferMTL& buf = g_device->m_buffers[constantBuffers[i]];
-		u32 offset = constantBufferOffsets ? constantBufferOffsets[i] : 0;
+		u64 offset = constantBufferOffsets ? constantBufferOffsets[i] : 0;
 		ds.constantBufferOffsets[i] = offset;
 		ds.constantBuffers[i] = constantBuffers[i];
 		[ds.encoder setBuffer:buf.native offset:offset atIndex:idxOffset+i];
