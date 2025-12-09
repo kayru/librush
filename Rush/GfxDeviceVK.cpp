@@ -537,7 +537,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	const bool needNegativeViewport = true;
 #endif
 
-	volkInitialize();
+	VkResult volkInitResult = volkInitialize();
+	if (volkInitResult != VK_SUCCESS)
+	{
+		RUSH_LOG_FATAL("Failed to initialize Vulkan loader");
+	}
 
 	g_device = this;
 
@@ -566,6 +570,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	RUSH_LOG_FATAL("Vulkan surface extension is not implemented for this platform");
 #endif
 
+	bool enablePortability = false;
+#if defined(RUSH_PLATFORM_MAC)
+	enablePortability = enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions,
+	    VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, false);
+#endif
+
 	if (cfg.debug)
 	{
 		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_KHRONOS_validation", false);
@@ -582,6 +592,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	VkInstanceCreateInfo instanceCreateInfo    = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
 	instanceCreateInfo.pApplicationInfo        = &appInfo;
+	if (enablePortability)
+	{
+		instanceCreateInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	}
 	instanceCreateInfo.enabledLayerCount       = (u32)enabledInstanceLayers.size();
 	instanceCreateInfo.ppEnabledLayerNames     = enabledInstanceLayers.data();
 	instanceCreateInfo.enabledExtensionCount   = (u32)enabledInstanceExtensions.size();
