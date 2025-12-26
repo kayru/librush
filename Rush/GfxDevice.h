@@ -505,8 +505,8 @@ inline void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport) {}
 inline void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect) {}
 inline void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h) {}
 inline void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type) {}
-inline void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h) {}
-inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) {}
+inline void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h) {}
+inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h) {}
 inline void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h) {}
 inline void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h) {}
 inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h) {}
