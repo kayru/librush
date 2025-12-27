@@ -655,7 +655,7 @@ public:
 		MaxDescriptorSets  = GfxShaderBindingDesc::MaxDescriptorSets,
 	};
 
-	GfxContext(GfxContextType contextType = GfxContextType::Graphics);
+	GfxContext(GfxDevice* device, GfxContextType contextType = GfxContextType::Graphics);
 	~GfxContext();
 
 	void setName(const char* name) { m_name = name; }
@@ -779,6 +779,9 @@ public:
 	};
 
 	DynamicArray<BufferCopyCommand> m_pendingBufferUploads;
+
+	GfxDevice* m_device = nullptr;
+	VkDevice m_vulkanDevice = VK_NULL_HANDLE;
 };
 
 void Gfx_vkFillBuffer(GfxContext* ctx, GfxBuffer h, u32 value);

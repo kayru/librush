@@ -525,6 +525,9 @@ inline void validateBufferUse(const BufferVK& buffer, bool allowTransientBuffers
 }
 
 GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
+    : m_cfg(cfg)
+    , m_refs(1)
+    , m_window(window)
 {
 #if defined(RUSH_PLATFORM_MAC)
 	// TODO: use MVK extensions to tweak its configuration
@@ -545,10 +548,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	g_device = this;
 
-	m_cfg = cfg;
-	m_refs = 1;
-
-	m_window = window;
 	m_window->retain();
 
 	auto enumeratedInstanceLayers     = enumarateInstanceLayers();
@@ -2171,22 +2170,25 @@ void MemoryAllocatorVK::freeBlock(MemoryBlockVK block, bool immediate)
 	}
 }
 
-inline VkCommandPool getCommandPoolByContextType(GfxContextType contextType)
+inline VkCommandPool getCommandPoolByContextType(GfxDevice* device, GfxContextType contextType)
 {
 	switch (contextType)
 	{
 	default: return VK_NULL_HANDLE;
-	case GfxContextType::Graphics: return g_device->m_graphicsCommandPool;
-	case GfxContextType::Compute: return g_device->m_computeCommandPool;
-	case GfxContextType::Transfer: return g_device->m_transferCommandPool;
+	case GfxContextType::Graphics: return device->m_graphicsCommandPool;
+	case GfxContextType::Compute: return device->m_computeCommandPool;
+	case GfxContextType::Transfer: return device->m_transferCommandPool;
 	}
 }
 
-GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
+GfxContext::GfxContext(GfxDevice* device, GfxContextType contextType)
+    : m_type(contextType)
+    , m_device(device)
+    , m_vulkanDevice(device->m_vulkanDevice)
 {
-	VkCommandPool commandPool = getCommandPoolByContextType(contextType);
+	VkCommandPool commandPool = getCommandPoolByContextType(m_device, contextType);
 
-	RUSH_ASSERT(g_vulkanDevice);
+	RUSH_ASSERT(m_vulkanDevice);
 	RUSH_ASSERT(commandPool);
 
 	memset(&m_currentRenderRect, 0, sizeof(m_currentRenderRect));
@@ -2195,7 +2197,7 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 
 	VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 	fenceCreateInfo.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
-	vkCreateFence(g_vulkanDevice, &fenceCreateInfo, g_allocationCallbacks, &m_fence);
+	vkCreateFence(m_vulkanDevice, &fenceCreateInfo, g_allocationCallbacks, &m_fence);
 	debugRegister(m_fence, "GfxContext::m_fence");
 
 	VkCommandBufferAllocateInfo allocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
@@ -2203,24 +2205,24 @@ GfxContext::GfxContext(GfxContextType contextType) : m_type(contextType)
 	allocateInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocateInfo.commandBufferCount          = 1;
 
-	V(vkAllocateCommandBuffers(g_vulkanDevice, &allocateInfo, &m_commandBuffer));
+	V(vkAllocateCommandBuffers(m_vulkanDevice, &allocateInfo, &m_commandBuffer));
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-	V(vkCreateSemaphore(g_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_completionSemaphore));
+	V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_completionSemaphore));
 	debugRegister(m_fence, "GfxContext::m_completionSemaphore");
 }
 
 GfxContext::~GfxContext()
 {
-	V(vkWaitForFences(g_vulkanDevice, 1, &m_fence, true, UINT64_MAX));
+	V(vkWaitForFences(m_vulkanDevice, 1, &m_fence, true, UINT64_MAX));
 
-	VkCommandPool commandPool = getCommandPoolByContextType(m_type);
+	VkCommandPool commandPool = getCommandPoolByContextType(m_device, m_type);
 
 	RUSH_ASSERT(!m_isActive);
-	vkFreeCommandBuffers(g_vulkanDevice, commandPool, 1, &m_commandBuffer);
+	vkFreeCommandBuffers(m_vulkanDevice, commandPool, 1, &m_commandBuffer);
 
-	vkDestroyFence(g_vulkanDevice, m_fence, g_allocationCallbacks);
-	vkDestroySemaphore(g_vulkanDevice, m_completionSemaphore, g_allocationCallbacks);
+	vkDestroyFence(m_vulkanDevice, m_fence, g_allocationCallbacks);
+	vkDestroySemaphore(m_vulkanDevice, m_completionSemaphore, g_allocationCallbacks);
 }
 
 void GfxContext::beginBuild()
@@ -2229,10 +2231,10 @@ void GfxContext::beginBuild()
 
 	m_isActive = true;
 
-	m_lastUsedFrame = g_device->m_frameCount;
+	m_lastUsedFrame = m_device->m_frameCount;
 
-	V(vkWaitForFences(g_vulkanDevice, 1, &m_fence, true, UINT64_MAX));
-	V(vkResetFences(g_vulkanDevice, 1, &m_fence));
+	V(vkWaitForFences(m_vulkanDevice, 1, &m_fence, true, UINT64_MAX));
+	V(vkResetFences(m_vulkanDevice, 1, &m_fence));
 
 	VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 	V(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
@@ -2277,7 +2279,7 @@ void GfxContext::split()
 
 	endBuild();
 
-	submit(g_device->m_graphicsQueue);
+	submit(m_device->m_graphicsQueue);
 
 	recycleContext(this);
 
@@ -2293,7 +2295,7 @@ void GfxContext::submit(VkQueue queue)
 		{
 			vkCmdCopyBuffer(uploadContext->m_commandBuffer, cmd.srcBuffer, cmd.dstBuffer, 1, &cmd.region);
 		}
-		g_device->flushUploadContext(this);
+		m_device->flushUploadContext(this);
 		m_pendingBufferUploads.clear();
 	}
 
@@ -2436,7 +2438,7 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 void GfxContext::addBufferBarrier(GfxBuffer h, VkAccessFlagBits srcAccess, VkAccessFlagBits dstAccess,
     VkPipelineStageFlagBits srcStage, VkPipelineStageFlagBits dstStage)
 {
-	auto& buffer = g_device->m_buffers[h];
+	auto& buffer = m_device->m_buffers[h];
 
 	VkBufferMemoryBarrier barrierDesc = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
 	barrierDesc.srcAccessMask         = srcAccess;
@@ -2504,7 +2506,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	VkClearValue clearValues[1 + GfxPassDesc::MaxTargets];
 	if (desc.depth.valid())
 	{
-		TextureVK& texture                = g_device->m_textures[desc.depth];
+		TextureVK& texture                = m_device->m_textures[desc.depth];
 		depthSampleCount                  = texture.desc.samples;
 		m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 		m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
@@ -2527,7 +2529,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	{
 		if (desc.color[i].valid())
 		{
-			TextureVK& texture = g_device->m_textures[desc.color[i]];
+			TextureVK& texture = m_device->m_textures[desc.color[i]];
 			RUSH_ASSERT(colorSampleCount == 0 || colorSampleCount == texture.desc.samples);
 			colorSampleCount                  = texture.desc.samples;
 			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
@@ -2556,8 +2558,8 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 		depthSampleCount = 1;
 
 	VkRenderPassBeginInfo renderPassBeginInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-	renderPassBeginInfo.renderPass            = g_device->createRenderPass(desc);
-	renderPassBeginInfo.framebuffer           = g_device->createFrameBuffer(desc, renderPassBeginInfo.renderPass);
+	renderPassBeginInfo.renderPass            = m_device->createRenderPass(desc);
+	renderPassBeginInfo.framebuffer           = m_device->createFrameBuffer(desc, renderPassBeginInfo.renderPass);
 	renderPassBeginInfo.renderArea            = m_currentRenderRect;
 	if (m_pendingClear.flags != GfxClearFlags::None)
 	{
@@ -2591,8 +2593,8 @@ void GfxContext::endRenderPass()
 
 void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 {
-	TextureVK& srcTexture = g_device->m_textures[src];
-	TextureVK& dstTexture = g_device->m_textures[dst];
+	TextureVK& srcTexture = m_device->m_textures[src];
+	TextureVK& dstTexture = m_device->m_textures[dst];
 
 	VkImageResolve region = {};
 	region.srcSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
@@ -2618,7 +2620,7 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 	vkCmdResolveImage(m_commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, 1, &region);
 }
 
-static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSetDesc& desc,
+static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDescriptorSet targetSet, const GfxDescriptorSetDesc& desc,
     bool useDynamicUniformBuffers, bool allowTransientBuffers, const GfxBuffer* constantBuffers,
     const GfxSampler* samplers, const GfxTexture* textures, const GfxTexture* storageImages,
     const GfxBuffer* storageBuffers, const GfxAccelerationStructure* accelStructures)
@@ -2654,12 +2656,12 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		writeDescriptorSet.pTexelBufferView = nullptr;
 		bindingIndex += writeDescriptorSet.descriptorCount;
 
-		const VkDeviceSize maxBufferSize = g_device->m_physicalDeviceProps.limits.maxUniformBufferRange;
+		const VkDeviceSize maxBufferSize = device->m_physicalDeviceProps.limits.maxUniformBufferRange;
 		for (u32 i = 0; i < desc.constantBuffers; ++i)
 		{
 			RUSH_ASSERT(constantBuffers[i].valid());
 
-			BufferVK& buffer = g_device->m_buffers[constantBuffers[i]];
+			BufferVK& buffer = device->m_buffers[constantBuffers[i]];
 			validateBufferUse(buffer, allowTransientBuffers);
 
 			VkDescriptorBufferInfo& bufferInfo = pendingConstantBufferInfo[i];
@@ -2699,7 +2701,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		for (u32 i = 0; i < desc.samplers; ++i)
 		{
 			RUSH_ASSERT(samplers[i].valid());
-			SamplerVK& sampler = g_device->m_samplers[samplers[i]];
+			SamplerVK& sampler = device->m_samplers[samplers[i]];
 
 			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
@@ -2732,7 +2734,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		for (u32 i = 0; i < desc.textures; ++i)
 		{
 			RUSH_ASSERT(textures[i].valid());
-			TextureVK& texture = g_device->m_textures[textures[i]];
+			TextureVK& texture = device->m_textures[textures[i]];
 
 			RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 			VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
@@ -2763,7 +2765,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		writeDescriptorSet.pBufferInfo      = nullptr;
 		writeDescriptorSet.pTexelBufferView = nullptr;
 
-		TextureVK& texture = g_device->m_textures[storageImages[i]];
+		TextureVK& texture = device->m_textures[storageImages[i]];
 
 		RUSH_ASSERT(imageInfoCount < maxImageInfoCount);
 		VkDescriptorImageInfo& imageInfo = imageInfos[imageInfoCount++];
@@ -2780,7 +2782,7 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 	for (u32 i = 0; i < u32(desc.rwBuffers) + u32(desc.rwTypedBuffers); ++i)
 	{
 		RUSH_ASSERT(storageBuffers[i].valid());
-		BufferVK& buffer = g_device->m_buffers[storageBuffers[i]];
+		BufferVK& buffer = device->m_buffers[storageBuffers[i]];
 		validateBufferUse(buffer, allowTransientBuffers);
 
 		RUSH_ASSERT(writeDescriptorSetCount < maxWriteDescriptorSetCount);
@@ -2842,12 +2844,12 @@ static void updateDescriptorSet(VkDescriptorSet targetSet, const GfxDescriptorSe
 		for (u32 i = 0; i < desc.accelerationStructures; ++i)
 		{
 			RUSH_ASSERT(accelStructures[i].valid());
-			AccelerationStructureVK& accel = g_device->m_accelerationStructures[accelStructures[i]];
+			AccelerationStructureVK& accel = device->m_accelerationStructures[accelStructures[i]];
 			writeAccelStructures[i] = accel.native;
 		}
 	}
 
-	vkUpdateDescriptorSets(g_vulkanDevice, writeDescriptorSetCount, writeDescriptorSets.m_data, 0, nullptr);
+	vkUpdateDescriptorSets(vulkanDevice, writeDescriptorSetCount, writeDescriptorSets.m_data, 0, nullptr);
 }
 
 void GfxContext::applyState()
@@ -2859,8 +2861,8 @@ void GfxContext::applyState()
 
 	RUSH_ASSERT(m_pending.technique.valid() || m_pending.rayTracingPipeline.valid());
 
-	PipelineBaseVK& pipelineBase = m_pending.technique.valid() ? static_cast<PipelineBaseVK&>(g_device->m_techniques[m_pending.technique])
-	                                                           : static_cast<PipelineBaseVK&>(g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline]);
+	PipelineBaseVK& pipelineBase = m_pending.technique.valid() ? static_cast<PipelineBaseVK&>(m_device->m_techniques[m_pending.technique])
+	                                                           : static_cast<PipelineBaseVK&>(m_device->m_rayTracingPipelines[m_pending.rayTracingPipeline]);
 
 	const GfxShaderBindingDesc& bindingDesc = pipelineBase.bindings;
 	const GfxDescriptorSetDesc& descSet = pipelineBase.bindings.descriptorSets[0];
@@ -2887,14 +2889,14 @@ void GfxContext::applyState()
 			info.colorSampleCount = m_currentColorSampleCount;
 			info.depthSampleCount = m_currentDepthSampleCount;
 
-			m_activePipeline = g_device->createPipeline(info);
+			m_activePipeline = m_device->createPipeline(info);
 
-			const TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
+			const TechniqueVK& technique = m_device->m_techniques[m_pending.technique];
 			m_currentBindPoint = technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 		}
 		else if (m_pending.rayTracingPipeline.valid())
 		{
-			m_activePipeline = g_device->m_rayTracingPipelines[m_pending.rayTracingPipeline].pipeline;
+			m_activePipeline = m_device->m_rayTracingPipelines[m_pending.rayTracingPipeline].pipeline;
 			m_currentBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
 		}
 
@@ -2907,12 +2909,12 @@ void GfxContext::applyState()
 
 	if ((m_dirtyState & DirtyStateFlag_VertexBuffer) && m_pending.technique.valid())
 	{
-		const TechniqueVK& technique = g_device->m_techniques[m_pending.technique];
+		const TechniqueVK& technique = m_device->m_techniques[m_pending.technique];
 		for (u32 i = 0; i < technique.vertexStreamCount; ++i)
 		{
 			RUSH_ASSERT(m_pending.vertexBuffer[i].valid());
 
-			BufferVK& buffer = g_device->m_buffers[m_pending.vertexBuffer[i]];
+			BufferVK& buffer = m_device->m_buffers[m_pending.vertexBuffer[i]];
 			validateBufferUse(buffer, true);
 
 			VkDeviceSize bufferOffset = buffer.info.offset + m_pending.vertexBufferOffsets[i];
@@ -2924,7 +2926,7 @@ void GfxContext::applyState()
 
 	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer) && m_pending.technique.valid())
 	{
-		BufferVK& buffer = g_device->m_buffers[m_pending.indexBuffer];
+		BufferVK& buffer = m_device->m_buffers[m_pending.indexBuffer];
 		validateBufferUse(buffer, true);
 
 		VkIndexType nativeFormat = VK_INDEX_TYPE_MAX_ENUM;
@@ -2955,7 +2957,7 @@ void GfxContext::applyState()
 		for (u32 i = firstDescriptorSet; i < u32(pipelineBase.setLayouts.currentSize); ++i)
 		{
 			RUSH_ASSERT(m_pending.descriptorSets[i].valid());
-			DescriptorSetVK& ds = g_device->m_descriptorSets[m_pending.descriptorSets[i]];
+			DescriptorSetVK& ds = m_device->m_descriptorSets[m_pending.descriptorSets[i]];
 			descriptorSetMask |= 1 << i;
 			descriptorSets[i] = ds.native;
 		}
@@ -2980,10 +2982,10 @@ void GfxContext::applyState()
 		// assume the technique will be used many times and there will be a benefit from batching the allocations
 		// todo: cache descriptors by descriptor set layout, not simply by technique
 
-		if (pipelineBase.descriptorSetCacheFrame != g_device->m_frameCount)
+		if (pipelineBase.descriptorSetCacheFrame != m_device->m_frameCount)
 		{
 			pipelineBase.descriptorSetCache.clear();
-			pipelineBase.descriptorSetCacheFrame = g_device->m_frameCount;
+			pipelineBase.descriptorSetCacheFrame = m_device->m_frameCount;
 		}
 
 		if (pipelineBase.descriptorSetCache.empty())
@@ -3001,13 +3003,13 @@ void GfxContext::applyState()
 			VkDescriptorSetAllocateInfo allocInfo   = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
 			allocInfo.descriptorSetCount            = cacheBatchSize;
 			allocInfo.pSetLayouts                   = setLayouts;
-			allocInfo.descriptorPool                = g_device->m_currentFrame->currentDescriptorPool;
-			allocResult = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
+			allocInfo.descriptorPool                = m_device->m_currentFrame->currentDescriptorPool;
+			allocResult = vkAllocateDescriptorSets(m_vulkanDevice, &allocInfo, cachedDescriptorSets);
 			if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY)
 			{
-				extendDescriptorPool(g_device->m_currentFrame);
-				allocInfo.descriptorPool = g_device->m_currentFrame->currentDescriptorPool;
-				allocResult              = vkAllocateDescriptorSets(g_vulkanDevice, &allocInfo, cachedDescriptorSets);
+				extendDescriptorPool(m_device->m_currentFrame);
+				allocInfo.descriptorPool = m_device->m_currentFrame->currentDescriptorPool;
+				allocResult              = vkAllocateDescriptorSets(m_vulkanDevice, &allocInfo, cachedDescriptorSets);
 			}
 
 			RUSH_ASSERT(allocResult == VK_SUCCESS);
@@ -3024,7 +3026,7 @@ void GfxContext::applyState()
 		for (u32 i = 0; i < descSet.textures; ++i)
 		{
 			RUSH_ASSERT(m_pending.textures[i].valid());
-			TextureVK&              texture          = g_device->m_textures[m_pending.textures[i]];
+			TextureVK&              texture          = m_device->m_textures[m_pending.textures[i]];
 			VkImageSubresourceRange subresourceRange = {
 			    texture.aspectFlags, 0, texture.desc.mips, 0, 1}; // TODO: track subresource states
 			texture.currentLayout = addImageBarrier(
@@ -3034,12 +3036,12 @@ void GfxContext::applyState()
 		for (u32 i = 0; i < descSet.rwImages; ++i)
 		{
 			RUSH_ASSERT(m_pending.storageImages[i].valid());
-			TextureVK& texture = g_device->m_textures[m_pending.storageImages[i]];
+			TextureVK& texture = m_device->m_textures[m_pending.storageImages[i]];
 			texture.currentLayout =
 			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_GENERAL, nullptr, true);
 		}
 
-		updateDescriptorSet(m_currentDescriptorSet, descSet,
+		updateDescriptorSet(m_device, m_vulkanDevice, m_currentDescriptorSet, descSet,
 		    true, // use dynamic uniform buffers
 		    true, // allow transient buffers
 		    m_pending.constantBuffers, m_pending.samplers, m_pending.textures, m_pending.storageImages,
@@ -3070,7 +3072,7 @@ static GfxContext* allocateContext(GfxContextType type, const char* name)
 
 	if (pool.empty())
 	{
-		result = new GfxContext(type);
+		result = new GfxContext(g_device, type);
 		Gfx_Retain(result);
 	}
 	else
@@ -3840,7 +3842,7 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	VkResult allocResult                  = vkAllocateDescriptorSets(ds.pool->m_vulkanDevice, &allocInfo, &ds.native);
 	RUSH_ASSERT(allocResult == VK_SUCCESS);
 
-	updateDescriptorSet(ds.native, ds.desc,
+	updateDescriptorSet(g_device, g_vulkanDevice, ds.native, ds.desc,
 	    false, // useDynamicUniformBuffers
 	    false, // allowTransientBuffers
 	    constantBuffers, samplers, textures, storageImages, storageBuffers,
@@ -5004,7 +5006,7 @@ GfxContext* Gfx_AcquireContext()
 {
 	if (g_context == nullptr)
 	{
-		g_context         = new GfxContext(GfxContextType::Graphics);
+		g_context         = new GfxContext(g_device, GfxContextType::Graphics);
 		g_context->m_refs = 1;
 		g_context->setName("Immediate");
 	}
