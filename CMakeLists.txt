@@ -85,9 +85,10 @@ add_library(Rush STATIC
 )
 
 set_property(TARGET Rush PROPERTY CXX_STANDARD 20)
+set_property(TARGET Rush PROPERTY CXX_STANDARD_REQUIRED ON)
 
 target_include_directories(Rush INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_compile_features(Rush PUBLIC cxx_std_14)
+target_compile_features(Rush PUBLIC cxx_std_20)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
