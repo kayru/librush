@@ -2,10 +2,112 @@
 
 #include "Rush.h"
 #include "UtilBuffer.h"
+#include "UtilLog.h"
 #include <new>
+#include <type_traits>
+#include <utility>
 
 namespace Rush
 {
+
+template <typename T>
+class ArrayView
+{
+public:
+
+	ArrayView() = default;
+	ArrayView(T* ptr, size_t count)
+		: m_data(ptr)
+		, m_size(count)
+	{
+	}
+	template <size_t N>
+	ArrayView(T (&arr)[N])
+		: m_data(arr)
+		, m_size(N)
+	{
+	}
+	template <typename R>
+	requires requires(R& r) { r.data(); r.size(); }
+	    && !std::is_same_v<std::remove_cvref_t<R>, ArrayView<T>>
+	    && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
+	ArrayView(R& r)
+		: m_data(r.data())
+		, m_size(r.size())
+	{
+	}
+
+	static ArrayView from(T* ptr, size_t count)
+	{
+		ArrayView view;
+		view.m_data = ptr;
+		view.m_size = count;
+		return view;
+	}
+
+	static ArrayView fromBytes(u8* ptr, size_t count)
+	{
+		if (!count)
+		{
+			return {};
+		}
+		return from(reinterpret_cast<T*>(ptr), count);
+	}
+
+	template <typename R>
+	requires requires(R& r) { r.data(); r.size(); }
+	    && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
+	static ArrayView sliceFrom(R& r, size_t start, size_t count)
+	{
+		const size_t totalSize = size_t(r.size());
+		RUSH_ASSERT(start <= totalSize);
+		RUSH_ASSERT(start + count <= totalSize);
+		return from(r.data() + start, count);
+	}
+
+	ArrayView slice(size_t start, size_t count)
+	{
+		return sliceFrom(*this, start, count);
+	}
+	ArrayView<const T> slice(size_t start, size_t count) const
+	{
+		return ArrayView<const T>::sliceFrom(*this, start, count);
+	}
+
+	size_t size() const { return m_size; }
+	T* data() { return m_data; }
+	const T* data() const { return m_data; }
+
+	bool empty() const { return m_size == 0; }
+	T* dataOrNull() { return m_size == 0 ? nullptr : m_data; }
+	const T* dataOrNull() const { return m_size == 0 ? nullptr : m_data; }
+	T& operator[](size_t index)
+	{
+		RUSH_ASSERT(index < m_size);
+		return m_data[index];
+	}
+	const T& operator[](size_t index) const
+	{
+		RUSH_ASSERT(index < m_size);
+		return m_data[index];
+	}
+	T* begin() { return m_data; }
+	T* end() { return m_data + m_size; }
+	const T* begin() const { return m_data; }
+	const T* end() const { return m_data + m_size; }
+	void fill(const T& value)
+	{
+		for (size_t i = 0; i < m_size; ++i)
+		{
+			m_data[i] = value;
+		}
+	}
+
+private:
+
+	T*  m_data = nullptr;
+	size_t m_size = 0;
+};
 
 template <typename T>
 class DynamicArray
@@ -92,6 +194,15 @@ public:
 	const T& back() const { return m_buffer.m_data[m_buffer.m_size - 1]; }
 
 	size_t size() const { return m_buffer.m_size; }
+
+	ArrayView<T> slice(size_t start, size_t count)
+	{
+		return ArrayView<T>::sliceFrom(*this, start, count);
+	}
+	ArrayView<const T> slice(size_t start, size_t count) const
+	{
+		return ArrayView<const T>::sliceFrom(*this, start, count);
+	}
 
 	RUSH_FORCEINLINE void resize(size_t desiredSize)
 	{
@@ -205,6 +316,19 @@ struct StaticArray
 	size_t        size() const { return currentSize; }
 	static size_t elementSize() { return sizeof(T); }
 
+	ArrayView<T> slice(size_t start, size_t count)
+	{
+		RUSH_ASSERT(start <= currentSize);
+		RUSH_ASSERT(start + count <= currentSize);
+		return ArrayView<T>::from(data + start, count);
+	}
+	ArrayView<const T> slice(size_t start, size_t count) const
+	{
+		RUSH_ASSERT(start <= currentSize);
+		RUSH_ASSERT(start + count <= currentSize);
+		return ArrayView<const T>::from(data + start, count);
+	}
+
 	T*       begin() { return data; }
 	T*       end() { return data + currentSize; }
 	const T* begin() const { return data; }
@@ -251,6 +375,20 @@ struct alignas(alignof(T)) InlineDynamicArray
 
 	T&       operator[](size_t i) { return m_data[i]; }
 	const T& operator[](size_t i) const { return m_data[i]; }
+
+	size_t size() const { return m_count; }
+
+	T*       data() { return m_data; }
+	const T* data() const { return m_data; }
+
+	ArrayView<T> slice(size_t start, size_t count)
+	{
+		return ArrayView<T>::sliceFrom(*this, start, count);
+	}
+	ArrayView<const T> slice(size_t start, size_t count) const
+	{
+		return ArrayView<const T>::sliceFrom(*this, start, count);
+	}
 };
 
 }

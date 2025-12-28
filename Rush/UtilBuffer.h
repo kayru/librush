@@ -134,28 +134,4 @@ struct Buffer
 	}
 };
 
-template<typename T>
-struct BufferView
-{
-	BufferView() = default;
-	BufferView(T* inBegin, T* inEnd)
-		: m_data(inBegin)
-		, m_size(inEnd-inBegin)
-	{
-	}
-
-	BufferView(T* inBegin, size_t inSize)
-		: m_data(inBegin)
-		, m_size(inSize)
-	{
-	}
-
-	T* m_data = nullptr;
-	size_t m_size = 0;
-
-	T* begin() { return m_data; }
-	T* end() { return m_data + m_size; }
-	size_t size() const { return m_size; }
-};
-
 }
