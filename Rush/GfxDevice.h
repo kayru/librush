@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GfxCommon.h"
+#include "Platform.h"
 #include "UtilColor.h"
 #include "RushC.h"
 

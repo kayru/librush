@@ -1,4 +1,5 @@
 #include "UtilLog.h"
+#include "Platform.h"
 
 #include <stdarg.h>
 #include <stdio.h>

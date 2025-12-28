@@ -1,5 +1,6 @@
 #include "GfxBitmapFont.h"
 
+#include "GfxDevice.h"
 #include "UtilFile.h"
 #include "UtilLog.h"
 

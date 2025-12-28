@@ -1,6 +1,7 @@
 #include "GfxPrimitiveBatch.h"
 
 #include "GfxCommon.h"
+#include "GfxDevice.h"
 #include "GfxEmbeddedShaders.h"
 #include "UtilLog.h"
 

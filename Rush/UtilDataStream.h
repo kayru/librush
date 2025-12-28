@@ -1,7 +1,6 @@
 #pragma once
 
 #include "MathCommon.h"
-#include "Rush.h"
 
 #include <string.h>
 

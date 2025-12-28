@@ -5,7 +5,6 @@
 
 #include "MathTypes.h"
 #include "UtilResourcePool.h"
-#include "UtilString.h"
 #include "UtilTuple.h"
 
 #include <initializer_list>

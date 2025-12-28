@@ -12,6 +12,7 @@
 #include "UtilArray.h"
 #include "UtilHash.h"
 #include "UtilMemory.h"
+#include "UtilString.h"
 
 #include <unordered_map>
 

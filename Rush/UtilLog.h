@@ -2,8 +2,6 @@
 
 #include "Rush.h"
 
-#include "Platform.h"
-
 namespace Rush
 {
 struct Log
