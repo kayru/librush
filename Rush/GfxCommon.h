@@ -88,7 +88,7 @@ struct Vec3;
 struct Vec4;
 struct Mat4;
 
-class GfxVertexFormatDesc;
+struct GfxVertexFormatDesc;
 struct GfxVertexShaderDesc;
 struct GfxPixelShaderDesc;
 struct GfxGeometryShaderDesc;
@@ -758,7 +758,7 @@ struct GfxRasterizerDesc
 	float       depthBiasSlopeScale = 0.0f;
 };
 
-class GfxVertexFormatDesc
+struct GfxVertexFormatDesc
 {
 
 	static const u32 MaxStreams  = 8;
