@@ -25,21 +25,29 @@ static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
 static id<MTLDevice> g_metalDevice = nil;
 
+template <typename HandleType, typename ObjectType, typename PoolHandleType, typename ObjectTypeDeduced>
+HandleType retainResourceT(
+	ResourcePool<ObjectType, PoolHandleType>& pool,
+	ObjectTypeDeduced&& object)
+{
+	RUSH_ASSERT(object.uniqueId != 0);
+	auto handle = pool.push(std::forward<ObjectType>(object));
+	Gfx_Retain(HandleType(handle));
+	Gfx_Retain(g_device);
+	return HandleType(handle);
+}
+
 template <typename ObjectType, typename HandleType, typename ObjectTypeDeduced>
 HandleType retainResource(
 	ResourcePool<ObjectType, HandleType>& pool,
 	ObjectTypeDeduced&& object)
 {
-	RUSH_ASSERT(object.uniqueId != 0);
-	auto handle = pool.push(std::forward<ObjectType>(object));
-	Gfx_Retain(handle);
-	Gfx_Retain(g_device);
-	return handle;
+	return retainResourceT<HandleType>(pool, std::forward<ObjectType>(object));
 }
 
-template <typename ObjectType, typename HandleType>
+template <typename ObjectType, typename PoolHandleType, typename HandleType>
 void releaseResource(
-	ResourcePool<ObjectType, HandleType>& pool,
+	ResourcePool<ObjectType, PoolHandleType>& pool,
 	HandleType handle)
 {
 	if (!handle.valid())
@@ -427,35 +435,35 @@ void ShaderMTL::destroy()
 
 GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 {
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.computeShaders, ShaderMTL::create(code)));
+	return GfxDevice::makeOwn(retainResourceT<GfxComputeShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
 }
 
 void Gfx_Release(GfxComputeShader h)
 {
-	releaseResource(g_device->m_resources.computeShaders, h);
+	releaseResource(g_device->m_resources.shaders, h);
 }
 
 // vertex shader
 
 GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 {
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.vertexShaders, ShaderMTL::create(code)));
+	return GfxDevice::makeOwn(retainResourceT<GfxVertexShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
 }
 
 void Gfx_Release(GfxVertexShader h)
 {
-	releaseResource(g_device->m_resources.vertexShaders, h);
+	releaseResource(g_device->m_resources.shaders, h);
 }
 
 // pixel shader
 GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 {
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.pixelShaders, ShaderMTL::create(code)));
+	return GfxDevice::makeOwn(retainResourceT<GfxPixelShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
 }
 
 void Gfx_Release(GfxPixelShader h)
 {
-	releaseResource(g_device->m_resources.pixelShaders, h);
+	releaseResource(g_device->m_resources.shaders, h);
 }
 
 // technique
@@ -479,7 +487,7 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 
 	if (desc.cs.valid())
 	{
-		id <MTLFunction> computeShader = g_device->m_resources.computeShaders[desc.cs].function;
+		id <MTLFunction> computeShader = g_device->m_resources.shaders[desc.cs].function;
 		NSError* error = nil;
 		id<MTLComputePipelineState> pipeline = [g_metalDevice newComputePipelineStateWithFunction:computeShader error:&error];
 		RUSH_ASSERT(pipeline);
@@ -1055,8 +1063,8 @@ void GfxContext::applyState()
 		MTLRenderPipelineDescriptor* pipelineDescriptor = [MTLRenderPipelineDescriptor new];
 
 		const auto& vertexFormat = g_device->m_resources.vertexFormats[technique.vf.get()];
-		const auto& vertexShader = g_device->m_resources.vertexShaders[technique.vs.get()];
-		const auto& pixelShader = g_device->m_resources.pixelShaders[technique.ps.get()];
+		const auto& vertexShader = g_device->m_resources.shaders[technique.vs.get()];
+		const auto& pixelShader = g_device->m_resources.shaders[technique.ps.get()];
 
 		pipelineDescriptor.inputPrimitiveTopology = m_primitiveTopology;
 		pipelineDescriptor.vertexDescriptor = vertexFormat.native;
@@ -1595,17 +1603,17 @@ void Gfx_Retain(GfxVertexFormat h)
 
 void Gfx_Retain(GfxVertexShader h)
 {
-	g_device->m_resources.vertexShaders[h].addReference();
+	g_device->m_resources.shaders[h].addReference();
 }
 
 void Gfx_Retain(GfxPixelShader h)
 {
-	g_device->m_resources.pixelShaders[h].addReference();
+	g_device->m_resources.shaders[h].addReference();
 }
 
 void Gfx_Retain(GfxComputeShader h)
 {
-	g_device->m_resources.computeShaders[h].addReference();
+	g_device->m_resources.shaders[h].addReference();
 }
 
 void Gfx_Retain(GfxTechnique h)

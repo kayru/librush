@@ -144,9 +144,7 @@ public:
 
 	struct Resources
 	{
-		ResourcePool<ShaderMTL, GfxVertexShader> vertexShaders;
-		ResourcePool<ShaderMTL, GfxPixelShader> pixelShaders;
-		ResourcePool<ShaderMTL, GfxComputeShader> computeShaders;
+		ResourcePool<ShaderMTL, UntypedResourceHandle> shaders;
 		ResourcePool<VertexFormatMTL, GfxVertexFormat> vertexFormats;
 		ResourcePool<BufferMTL, GfxBuffer> buffers;
 		ResourcePool<TechniqueMTL, GfxTechnique> techniques;
