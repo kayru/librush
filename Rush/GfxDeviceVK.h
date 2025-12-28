@@ -528,19 +528,24 @@ public:
 
 	// resources
 
-	ResourcePool<TechniqueVK, GfxTechnique>                         m_techniques;
-	ResourcePool<ShaderVK, UntypedResourceHandle>                   m_shaders;
-	ResourcePool<VertexFormatVK, GfxVertexFormat>                   m_vertexFormats;
-	ResourcePool<BufferVK, GfxBuffer>                               m_buffers;
-	ResourcePool<DepthStencilStateVK, GfxDepthStencilState>         m_depthStencilStates;
-	ResourcePool<RasterizerStateVK, GfxRasterizerState>             m_rasterizerStates;
-	ResourcePool<TextureVK, GfxTexture>                             m_textures;
-	ResourcePool<BlendStateVK, GfxBlendState>                       m_blendStates;
-	ResourcePool<SamplerVK, GfxSampler>                             m_samplers;
-	ResourcePool<DescriptorSetVK, GfxDescriptorSet>                 m_descriptorSets;
-	ResourcePool<RayTracingPipelineVK, GfxRayTracingPipeline>       m_rayTracingPipelines;
-	ResourcePool<AccelerationStructureVK, GfxAccelerationStructure> m_accelerationStructures;
-	ResourcePool<QueryPoolVK, GfxQueryPool>                         m_queryPools;
+	struct Resources
+	{
+		ResourcePool<TechniqueVK, GfxTechnique>                         techniques;
+		ResourcePool<ShaderVK, UntypedResourceHandle>                   shaders;
+		ResourcePool<VertexFormatVK, GfxVertexFormat>                   vertexFormats;
+		ResourcePool<BufferVK, GfxBuffer>                               buffers;
+		ResourcePool<DepthStencilStateVK, GfxDepthStencilState>         depthStencilStates;
+		ResourcePool<RasterizerStateVK, GfxRasterizerState>             rasterizerStates;
+		ResourcePool<TextureVK, GfxTexture>                             textures;
+		ResourcePool<BlendStateVK, GfxBlendState>                       blendStates;
+		ResourcePool<SamplerVK, GfxSampler>                             samplers;
+		ResourcePool<DescriptorSetVK, GfxDescriptorSet>                 descriptorSets;
+		ResourcePool<RayTracingPipelineVK, GfxRayTracingPipeline>       rayTracingPipelines;
+		ResourcePool<AccelerationStructureVK, GfxAccelerationStructure> accelerationStructures;
+		ResourcePool<QueryPoolVK, GfxQueryPool>                         queryPools;
+	};
+
+	Resources m_resources;
 
 	template <typename HandleType>
 	static GfxOwn<HandleType> makeOwn(HandleType h) { return GfxOwn<HandleType>(h); }
