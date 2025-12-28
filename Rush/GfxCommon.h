@@ -88,41 +88,33 @@ struct Vec3;
 struct Vec4;
 struct Mat4;
 
-struct GfxVertexFormatDesc;
-struct GfxVertexShaderDesc;
-struct GfxPixelShaderDesc;
-struct GfxGeometryShaderDesc;
-struct GfxComputeShaderDesc;
-struct GfxMeshShaderDesc;
-struct GfxTextureDesc;
-struct GfxBufferDesc;
-struct GfxSamplerDesc;
-struct GfxBlendStateDesc;
-struct GfxTechniqueDesc;
-struct GfxDepthStencilDesc;
-struct GfxRasterizerDesc;
-struct GfxDescriptorSetDesc;
-struct GfxRayTracingPipelineDesc;
-struct GfxAccelerationStructureDesc;
-struct GfxQueryPoolDesc;
+// descType, handleType, memberName
+#define RUSH_GFX_RESOURCE_LIST(X) \
+	X(GfxVertexFormatDesc, GfxVertexFormat, vertexFormats) \
+	X(GfxVertexShaderDesc, GfxVertexShader, shaders) \
+	X(GfxPixelShaderDesc, GfxPixelShader, shaders) \
+	X(GfxGeometryShaderDesc, GfxGeometryShader, shaders) \
+	X(GfxComputeShaderDesc, GfxComputeShader, shaders) \
+	X(GfxMeshShaderDesc, GfxMeshShader, shaders) \
+	X(GfxRayTracingPipelineDesc, GfxRayTracingPipeline, rayTracingPipelines) \
+	X(GfxAccelerationStructureDesc, GfxAccelerationStructure, accelerationStructures) \
+	X(GfxTextureDesc, GfxTexture, textures) \
+	X(GfxBufferDesc, GfxBuffer, buffers) \
+	X(GfxSamplerDesc, GfxSampler, samplers) \
+	X(GfxBlendStateDesc, GfxBlendState, blendStates) \
+	X(GfxDepthStencilDesc, GfxDepthStencilState, depthStencilStates) \
+	X(GfxRasterizerDesc, GfxRasterizerState, rasterizerStates) \
+	X(GfxTechniqueDesc, GfxTechnique, techniques) \
+	X(GfxDescriptorSetDesc, GfxDescriptorSet, descriptorSets) \
+	X(GfxQueryPoolDesc, GfxQueryPool, queryPools)
 
-typedef ResourceHandle<GfxVertexFormatDesc>          GfxVertexFormat;
-typedef ResourceHandle<GfxVertexShaderDesc>          GfxVertexShader;
-typedef ResourceHandle<GfxPixelShaderDesc>           GfxPixelShader;
-typedef ResourceHandle<GfxGeometryShaderDesc>        GfxGeometryShader;
-typedef ResourceHandle<GfxComputeShaderDesc>         GfxComputeShader;
-typedef ResourceHandle<GfxMeshShaderDesc>            GfxMeshShader;
-typedef ResourceHandle<GfxRayTracingPipelineDesc>    GfxRayTracingPipeline;
-typedef ResourceHandle<GfxAccelerationStructureDesc> GfxAccelerationStructure;
-typedef ResourceHandle<GfxTextureDesc>               GfxTexture;
-typedef ResourceHandle<GfxBufferDesc>                GfxBuffer;
-typedef ResourceHandle<GfxSamplerDesc>               GfxSampler;
-typedef ResourceHandle<GfxBlendStateDesc>            GfxBlendState;
-typedef ResourceHandle<GfxDepthStencilDesc>          GfxDepthStencilState;
-typedef ResourceHandle<GfxRasterizerDesc>            GfxRasterizerState;
-typedef ResourceHandle<GfxTechniqueDesc>             GfxTechnique;
-typedef ResourceHandle<GfxDescriptorSetDesc>         GfxDescriptorSet;
-typedef ResourceHandle<GfxQueryPoolDesc>             GfxQueryPool;
+#define RUSH_GFX_RESOURCE_DECL(descType, handleType, memberName) struct descType;
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RESOURCE_DECL)
+#undef RUSH_GFX_RESOURCE_DECL
+
+#define RUSH_GFX_RESOURCE_HANDLE(descType, handleType, memberName) typedef ResourceHandle<descType> handleType;
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RESOURCE_HANDLE)
+#undef RUSH_GFX_RESOURCE_HANDLE
 
 u32 Gfx_GenerateUniqueId();
 
@@ -280,23 +272,9 @@ private:
 	T m_handle;
 };
 
-typedef GfxArg<GfxVertexFormat>          GfxVertexFormatArg;
-typedef GfxArg<GfxVertexShader>          GfxVertexShaderArg;
-typedef GfxArg<GfxPixelShader>           GfxPixelShaderArg;
-typedef GfxArg<GfxGeometryShader>        GfxGeometryShaderArg;
-typedef GfxArg<GfxComputeShader>         GfxComputeShaderArg;
-typedef GfxArg<GfxMeshShader>            GfxMeshShaderArg;
-typedef GfxArg<GfxTexture>               GfxTextureArg;
-typedef GfxArg<GfxBuffer>                GfxBufferArg;
-typedef GfxArg<GfxSampler>               GfxSamplerArg;
-typedef GfxArg<GfxBlendState>            GfxBlendStateArg;
-typedef GfxArg<GfxDepthStencilState>     GfxDepthStencilStateArg;
-typedef GfxArg<GfxRasterizerState>       GfxRasterizerStateArg;
-typedef GfxArg<GfxTechnique>             GfxTechniqueArg;
-typedef GfxArg<GfxDescriptorSet>         GfxDescriptorSetArg;
-typedef GfxArg<GfxRayTracingPipeline>    GfxRayTracingPipelineArg;
-typedef GfxArg<GfxAccelerationStructure> GfxAccelerationStructureArg;
-typedef GfxArg<GfxQueryPool>             GfxQueryPoolArg;
+#define RUSH_GFX_RESOURCE_ARG(descType, handleType, memberName) typedef GfxArg<handleType> handleType##Arg;
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RESOURCE_ARG)
+#undef RUSH_GFX_RESOURCE_ARG
 
 enum class GfxContextType : u8
 {
