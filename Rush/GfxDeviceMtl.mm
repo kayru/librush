@@ -24,6 +24,32 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
 static id<MTLDevice> g_metalDevice = nil;
+static constexpr u32 kPushConstantMaxSize = 4096;
+
+static void setPushConstants(GfxContext* rc, const void* data, u32 size, GfxStageFlags stages, u32 bufferIndex)
+{
+	RUSH_ASSERT(data);
+	RUSH_ASSERT(size > 0);
+	RUSH_ASSERT(size <= kPushConstantMaxSize);
+
+	if (!!(stages & GfxStageFlags::Vertex))
+	{
+		RUSH_ASSERT(rc->m_commandEncoder);
+		[rc->m_commandEncoder setVertexBytes:data length:size atIndex:bufferIndex];
+	}
+
+	if (!!(stages & GfxStageFlags::Pixel))
+	{
+		RUSH_ASSERT(rc->m_commandEncoder);
+		[rc->m_commandEncoder setFragmentBytes:data length:size atIndex:bufferIndex];
+	}
+
+	if (!!(stages & GfxStageFlags::Compute))
+	{
+		RUSH_ASSERT(rc->m_computeCommandEncoder);
+		[rc->m_computeCommandEncoder setBytes:data length:size atIndex:bufferIndex];
+	}
+}
 
 template <typename HandleType, typename ObjectType, typename PoolHandleType, typename ObjectTypeDeduced>
 HandleType retainResourceT(
@@ -164,7 +190,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	m_caps.debugOutput = false;
 	m_caps.debugMarkers = true;
 	m_caps.constantBufferAlignment = 256;
-	m_caps.pushConstants = false;
+	m_caps.pushConstants = true;
 	m_caps.instancing = true;
 	m_caps.drawIndirect = true;
 
@@ -1471,6 +1497,28 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 		threadsPerThreadgroup:MTLSizeMake(workGroupSize.x, workGroupSize.y, workGroupSize.z)];
 }
 
+void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize)
+{
+	RUSH_ASSERT_MSG(rc->m_commandEncoder == nil, "Can't execute compute inside graphics render pass!");
+
+	rc->applyState();
+
+	if (pushConstants)
+	{
+		RUSH_ASSERT(rc->m_pendingTechnique.valid());
+		const auto& technique = g_device->m_resources.techniques[rc->m_pendingTechnique.get()];
+		RUSH_ASSERT(technique.desc.bindings.pushConstantSize == pushConstantsSize);
+		setPushConstants(rc, pushConstants, pushConstantsSize, technique.desc.bindings.pushConstantStageFlags,
+			technique.descriptorSetCount);
+	}
+
+	const auto& workGroupSize = g_device->m_resources.techniques[rc->m_pendingTechnique.get()].workGroupSize;
+
+	[rc->m_computeCommandEncoder
+		dispatchThreadgroups:MTLSizeMake(sizeX, sizeY, sizeZ)
+		threadsPerThreadgroup:MTLSizeMake(workGroupSize.x, workGroupSize.y, workGroupSize.z)];
+}
+
 void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
 {
 	rc->applyState();
@@ -1505,7 +1553,31 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
 					 const void* pushConstants, u32 pushConstantsSize)
 {
-	Log::fatal("Gfx_DrawIndexed with push constants is not implemented");
+	RUSH_ASSERT(rc->m_indexBuffer);
+
+	rc->applyState();
+
+	if (pushConstants)
+	{
+		RUSH_ASSERT(rc->m_pendingTechnique.valid());
+		const auto& technique = g_device->m_resources.techniques[rc->m_pendingTechnique.get()];
+		RUSH_ASSERT(technique.desc.bindings.pushConstantSize == pushConstantsSize);
+		setPushConstants(rc, pushConstants, pushConstantsSize, technique.desc.bindings.pushConstantStageFlags,
+			technique.descriptorSetCount);
+	}
+
+	[rc->m_commandEncoder
+	 drawIndexedPrimitives:rc->m_primitiveType
+	 indexCount:indexCount
+	 indexType:rc->m_indexType
+	 indexBuffer:rc->m_indexBuffer
+	 indexBufferOffset:firstIndex * rc->m_indexStride + rc->m_indexBufferOffset
+	 instanceCount:1
+	 baseVertex:baseVertex
+	 baseInstance:0];
+
+	g_device->m_stats.vertices += indexCount;
+	g_device->m_stats.drawCalls++;
 }
 
 void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
