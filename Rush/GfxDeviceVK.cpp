@@ -524,9 +524,9 @@ inline void validateBufferUse(const BufferVK& buffer, bool allowTransientBuffers
 	}
 }
 
-GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
-    : m_cfg(cfg)
-    , m_refs(1)
+GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg) 
+	: GfxRefCount(1)
+	, m_cfg(cfg)
     , m_window(window)
 {
 #if defined(RUSH_PLATFORM_MAC)

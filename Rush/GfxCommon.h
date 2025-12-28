@@ -129,6 +129,9 @@ u32 Gfx_GenerateUniqueId();
 
 struct GfxRefCount
 {
+	GfxRefCount() = default;
+	explicit GfxRefCount(u32 refs) : m_refs(refs) {}
+
 	void addReference() { m_refs++; }
 	u32  removeReference()
 	{
