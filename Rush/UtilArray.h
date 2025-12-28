@@ -27,10 +27,10 @@ public:
 		, m_size(N)
 	{
 	}
-	template <typename R>
-	requires requires(R& r) { r.data(); r.size(); }
-	    && !std::is_same_v<std::remove_cvref_t<R>, ArrayView<T>>
-	    && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
+template <typename R>
+requires (requires(R& r) { r.data(); r.size(); })
+    && (!std::is_same_v<std::remove_cvref_t<R>, ArrayView<T>>)
+    && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
 	ArrayView(R& r)
 		: m_data(r.data())
 		, m_size(r.size())
@@ -54,9 +54,9 @@ public:
 		return from(reinterpret_cast<T*>(ptr), count);
 	}
 
-	template <typename R>
-	requires requires(R& r) { r.data(); r.size(); }
-	    && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
+template <typename R>
+requires (requires(R& r) { r.data(); r.size(); })
+    && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
 	static ArrayView sliceFrom(R& r, size_t start, size_t count)
 	{
 		const size_t totalSize = size_t(r.size());
