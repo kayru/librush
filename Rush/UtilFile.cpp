@@ -10,7 +10,11 @@ namespace Rush
 {
 u64 FileIn::read(void* buf, u64 size)
 {
-	u64 br = (u64)fread(buf, 1, size, m_file);
+	u64 br = 0;
+	if (valid())
+	{
+		br = (u64)fread(buf, 1, size, m_file);
+	}
 	return br;
 }
 
@@ -25,8 +29,13 @@ FileIn::~FileIn()
 	}
 }
 
-u64 FileIn::length()
+u64 FileIn::length() const
 {
+	if (!valid())
+	{
+		return 0;
+	}
+
 	u64 currPos = tell();
 
 	fseek(m_file, 0, SEEK_END);
@@ -72,7 +81,7 @@ FileOut::FileOut(const char* filename, u64 buffer_size) : m_buffer(nullptr), m_b
 
 FileOut::~FileOut()
 {
-	if (m_file)
+	if (valid())
 	{
 		close();
 	}
@@ -80,6 +89,11 @@ FileOut::~FileOut()
 
 void FileOut::flush()
 {
+	if(!valid() || m_bufferPos == 0)
+	{
+		return;
+	}
+
 	fwrite(m_buffer, 1, m_bufferPos, m_file);
 	m_bufferPos = 0;
 }
@@ -91,12 +105,17 @@ void FileOut::close()
 	fclose(m_file);
 	m_file = nullptr;
 
-	delete m_buffer;
+	delete[] m_buffer;
 	m_buffer = nullptr;
 }
 
-u64 FileBase::tell()
+u64 FileBase::tell() const
 {
+	if (!valid())
+	{
+		return 0;
+	}
+	
 	long fileSize = ftell(m_file);
 	if (fileSize == long(-1))
 	{
@@ -108,13 +127,35 @@ u64 FileBase::tell()
 	}
 }
 
-void FileBase::seek(u64 pos) { fseek(m_file, long(pos), SEEK_SET); }
+void FileBase::seek(u64 pos)
+{ 
+	if (valid())
+	{
+		fseek(m_file, long(pos), SEEK_SET); 
+	}
+}
 
-void FileBase::skip(int distance) { fseek(m_file, distance, SEEK_CUR); }
+void FileBase::skip(int distance) 
+{ 
+	if (valid())
+	{
+		fseek(m_file, distance, SEEK_CUR); 
+	}
+}
 
-void FileBase::rewind() { fseek(m_file, 0, SEEK_SET); }
+void FileBase::rewind() 
+{ 
+	if (valid())
+	{
+		fseek(m_file, 0, SEEK_SET); 
+	}
+}
 
-bool FileBase::valid() { return m_file != nullptr; }
+bool FileBase::valid() const
+{ 
+	return m_file != nullptr; 
+}
+
 }
 
 #ifdef _MSC_VER
