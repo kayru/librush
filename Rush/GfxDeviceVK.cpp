@@ -1100,7 +1100,14 @@ static void extendDescriptorPool(GfxDevice::FrameData* frameData)
 		desc.storageImages          = GfxContext::MaxStorageImages;
 		desc.storageBuffers         = GfxContext::MaxStorageBuffers;
 		desc.storageTexelBuffers    = GfxContext::MaxStorageBuffers;
-		desc.accelerationStructures = 1;
+		if (g_device->m_caps.rayTracing)
+		{
+			desc.accelerationStructures = GfxContext::MaxAccelerationStructures;
+		}
+		else
+		{
+			desc.accelerationStructures = 0;
+		}
 
 		DescriptorPoolVK newPool(g_vulkanDevice, desc, maxSets);
 
@@ -3005,7 +3012,7 @@ void GfxContext::applyState()
 			allocInfo.pSetLayouts                   = setLayouts;
 			allocInfo.descriptorPool                = m_device->m_currentFrame->currentDescriptorPool;
 			allocResult = vkAllocateDescriptorSets(m_vulkanDevice, &allocInfo, cachedDescriptorSets);
-			if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY)
+			if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY || allocResult == VK_ERROR_FRAGMENTED_POOL)
 			{
 				extendDescriptorPool(m_device->m_currentFrame);
 				allocInfo.descriptorPool = m_device->m_currentFrame->currentDescriptorPool;
@@ -3764,6 +3771,19 @@ DescriptorSetLayoutArray GfxDevice::createDescriptorSetLayouts(
 	return setLayouts;
 }
 
+static DescriptorPoolVK::DescriptorsPerSetDesc makeDescriptorPoolDesc(const GfxDescriptorSetDesc& desc)
+{
+	DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
+	poolDesc.staticUniformBuffers   = desc.constantBuffers;
+	poolDesc.sampledImages          = desc.textures;
+	poolDesc.samplers               = desc.samplers;
+	poolDesc.storageImages          = desc.rwImages;
+	poolDesc.storageBuffers         = desc.rwBuffers;
+	poolDesc.storageTexelBuffers    = desc.rwTypedBuffers;
+	poolDesc.accelerationStructures = desc.accelerationStructures;
+	return poolDesc;
+}
+
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc)
 {
 	RUSH_ASSERT(!desc.isEmpty());
@@ -3775,14 +3795,7 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 	res.layout = g_device->createDescriptorSetLayout(desc, convertStageFlags(desc.stageFlags), false);
 
 	// TODO: cache pools and reuse them for different sets
-	DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
-	poolDesc.staticUniformBuffers = desc.constantBuffers;
-	poolDesc.sampledImages        = desc.textures;
-	poolDesc.samplers             = desc.samplers;
-	poolDesc.storageImages        = desc.rwImages;
-	poolDesc.storageBuffers       = desc.rwBuffers;
-	poolDesc.storageTexelBuffers  = desc.rwTypedBuffers;
-	res.pool                      = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
+	res.pool = new DescriptorPoolVK(g_vulkanDevice, makeDescriptorPoolDesc(desc), 1);
 
 	return retainResource(g_device->m_resources.descriptorSets, res);
 }
@@ -3810,16 +3823,9 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	if (ds.native)
 	{
 		enqueueDestroy(ds.pool);
-		const auto& desc = ds.desc;
+		const GfxDescriptorSetDesc& desc = ds.desc;
 
-		DescriptorPoolVK::DescriptorsPerSetDesc poolDesc;
-		poolDesc.staticUniformBuffers = desc.constantBuffers;
-		poolDesc.sampledImages        = desc.textures;
-		poolDesc.samplers             = desc.samplers;
-		poolDesc.storageImages        = desc.rwImages;
-		poolDesc.storageBuffers       = desc.rwBuffers;
-		poolDesc.storageTexelBuffers  = desc.rwTypedBuffers;
-		ds.pool                       = new DescriptorPoolVK(g_vulkanDevice, poolDesc, 1);
+		ds.pool = new DescriptorPoolVK(g_vulkanDevice, makeDescriptorPoolDesc(desc), 1);
 	}
 
 
@@ -3839,7 +3845,17 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 		allocInfo.pNext = &variableDescriptorCountAllocateInfo;
 	}
 
-	VkResult allocResult                  = vkAllocateDescriptorSets(ds.pool->m_vulkanDevice, &allocInfo, &ds.native);
+	VkResult allocResult = vkAllocateDescriptorSets(ds.pool->m_vulkanDevice, &allocInfo, &ds.native);
+	if (allocResult == VK_ERROR_OUT_OF_POOL_MEMORY || allocResult == VK_ERROR_FRAGMENTED_POOL)
+	{
+		enqueueDestroy(ds.pool);
+		const GfxDescriptorSetDesc& desc = ds.desc;
+
+		ds.pool = new DescriptorPoolVK(g_vulkanDevice, makeDescriptorPoolDesc(desc), 1);
+
+		allocInfo.descriptorPool = ds.pool->m_descriptorPool;
+		allocResult              = vkAllocateDescriptorSets(ds.pool->m_vulkanDevice, &allocInfo, &ds.native);
+	}
 	RUSH_ASSERT(allocResult == VK_SUCCESS);
 
 	updateDescriptorSet(g_device, g_vulkanDevice, ds.native, ds.desc,

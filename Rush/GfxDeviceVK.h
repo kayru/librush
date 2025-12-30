@@ -659,6 +659,7 @@ public:
 		MaxConstantBuffers = 4,
 		MaxStorageBuffers  = 6,
 		MaxDescriptorSets  = GfxShaderBindingDesc::MaxDescriptorSets,
+		MaxAccelerationStructures = 1, // TODO: support binding multiple RTASes
 	};
 
 	GfxContext(GfxDevice* device, GfxContextType contextType = GfxContextType::Graphics);

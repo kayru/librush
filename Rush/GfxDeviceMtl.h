@@ -190,6 +190,7 @@ public:
 		MaxStorageBuffers = 4,
 		MaxSamplers = 4,
 		MaxDescriptorSets = 4,
+		MaxAccelerationStructures = 0, // TODO: implement basic ray tracing
 	};
 
 	GfxContext();
