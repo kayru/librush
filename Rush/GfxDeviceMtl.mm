@@ -265,6 +265,7 @@ void GfxDevice::beginFrame()
 		m_resizeEvents.clear();
 	}
 
+	// FIXME: handle nextDrawable returning nil (resize/minimize) before using drawable/texture.
 	m_drawable = [m_metalLayer nextDrawable];
 	[m_drawable retain];
 
@@ -948,6 +949,7 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
 
+	// FIXME: recreating buffer invalidates existing bindings/in-flight usage; needs rebinding or update path.
 	[buffer.native release];
 	buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
 
@@ -1053,6 +1055,7 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 		 usage:MTLResourceUsageRead];
 	}
 
+	// FIXME: RW resources may be read; should include MTLResourceUsageRead when needed.
 	for (u64 j=0; j<ds.storageImages.size(); ++j)
 	{
 		[commandEncoder
@@ -1060,6 +1063,7 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 		 usage:MTLResourceUsageWrite];
 	}
 
+	// FIXME: RW resources may be read; should include MTLResourceUsageRead when needed.
 	for (u64 j=0; j<ds.storageBuffers.size(); ++j)
 	{
 		[commandEncoder
@@ -1097,6 +1101,7 @@ void GfxContext::applyState()
 		pipelineDescriptor.vertexFunction = vertexShader.function;
 		pipelineDescriptor.fragmentFunction = pixelShader.function;
 
+		// FIXME: pipeline always sets depth attachment format; color-only passes need depthless pipeline.
 		// TODO: color-only rendering
 		pipelineDescriptor.depthAttachmentPixelFormat = [g_device->m_resources.textures[g_device->m_defaultDepthBuffer.get()].native pixelFormat];
 
@@ -1339,6 +1344,7 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	}
 
 	GfxTexture depthBuffer = desc.depth.valid() ? desc.depth : g_device->m_defaultDepthBuffer.get();
+	// FIXME: always binding depth affects color-only passes; allow nil depth when not requested.
 	passDescriptor.depthAttachment.texture = g_device->m_resources.textures[depthBuffer].native;
 
 	if (!!(desc.flags & GfxPassFlags::ClearDepthStencil))
@@ -1422,6 +1428,7 @@ void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferA
 
 void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h)
 {
+	// FIXME: binding only applies to active encoder; calls before BeginPass are dropped.
 	[rc->m_commandEncoder setVertexBuffer:g_device->m_resources.buffers[h].native offset:offset atIndex:(GfxContext::MaxConstantBuffers+idx)];
 }
 
@@ -1792,6 +1799,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 		++argumentIndex;
 	}
 
+	// FIXME: rwTypedBuffers should index storageBuffers with rwBuffers offset.
 	for(u32 i=0; i<desc.rwTypedBuffers; ++i)
 	{
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];

@@ -1757,6 +1757,7 @@ void GfxDevice::createSwapChain()
 	VkSurfaceCapabilitiesKHR surfCaps = {};
 	V(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, m_swapChainSurface, &surfCaps));
 
+	// FIXME: handle VK_EXTENT2D_MAX and clamp to surface min/max when currentExtent is undefined.
 	m_swapChainExtent = surfCaps.currentExtent;
 
 	u32 presentModeCount = 0;
@@ -1791,6 +1792,7 @@ void GfxDevice::createSwapChain()
 
 	RUSH_ASSERT(presentModeSupported(pendingPresentMode));
 
+	// FIXME: clamp desiredSwapChainImageCount to surfCaps.maxImageCount when maxImageCount > 0.
 	u32 desiredSwapChainImageCount = max<u32>(m_desiredSwapChainImageCount, surfCaps.minImageCount);
 
 	auto enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
@@ -1941,7 +1943,7 @@ void GfxDevice::beginFrame()
 			break;
 		}
 
-		// TODO: handle VK_ERROR_OUT_OF_DATE_KHR
+		// FIXME: handle VK_ERROR_OUT_OF_DATE_KHR (recreate swapchain, release semaphore).
 
 		if (!success)
 		{
@@ -2338,6 +2340,7 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 
 	// TODO: track subresource states
 	// TODO: initialize default subresource range to cover entire image
+	// FIXME: default range only covers one mip/layer; callers without explicit range can miss subresources.
 	VkImageSubresourceRange defaultSubresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
 	VkImageMemoryBarrier barrierDesc = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -2541,6 +2544,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 			colorSampleCount                  = texture.desc.samples;
 			m_currentRenderRect.extent.width  = min(m_currentRenderRect.extent.width, texture.desc.width);
 			m_currentRenderRect.extent.height = min(m_currentRenderRect.extent.height, texture.desc.height);
+			// FIXME: addImageBarrier defaults to a 1x1 subresource range; mip/array RTs need full range.
 			texture.currentLayout =
 			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 			if (shouldClearColor)
@@ -3753,6 +3757,7 @@ void GfxDevice::freeSemaphore(VkSemaphore x)
 DescriptorSetLayoutArray GfxDevice::createDescriptorSetLayouts(
     const GfxShaderBindingDesc& desc, u32 resourceStageFlags)
 {
+	// FIXME: support pipelines without a default descriptor set.
 	RUSH_ASSERT_MSG(desc.useDefaultDescriptorSet, "Pipelines without default descriptor set are not implemented");
 	const GfxDescriptorSetDesc& descSet = desc.descriptorSets[0];
 
@@ -4755,6 +4760,7 @@ void Gfx_vkFlushMappedBuffer(GfxBuffer h)
 	memoryRange.memory              = buffer.memory;
 	memoryRange.offset              = buffer.info.offset;
 	memoryRange.size                = buffer.info.range;
+	// FIXME: use vkFlushMappedMemoryRanges for CPU writes; invalidate is for GPU->CPU visibility.
 	vkInvalidateMappedMemoryRanges(g_vulkanDevice, 1, &memoryRange);
 }
 
@@ -5285,6 +5291,7 @@ void Gfx_AddImageBarrier(
 
 	if (subresourceRange)
 	{
+		// FIXME: support explicit subresource ranges.
 		RUSH_LOG_ERROR("Gfx_AddImageBarrier with subresource range is not implemented");
 		return;
 	}
@@ -5717,6 +5724,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	result.bindings          = desc.bindings;
 
 	const GfxDescriptorSetDesc& descSet = desc.bindings.descriptorSets[0];
+	// FIXME: support binding multiple acceleration structures.
 	RUSH_ASSERT_MSG(
 		descSet.accelerationStructures <= 1, "Binding multiple acceleration structures is not implemented");
 
@@ -5836,6 +5844,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	}
 
 	RUSH_ASSERT_MSG(result.anyHit == VK_NULL_HANDLE, "Any hit shaders are not implemented");
+	// FIXME: support any-hit shaders in ray tracing pipeline.
 
 	VkRayTracingPipelineCreateInfoKHR createInfo = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
 
