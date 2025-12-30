@@ -19,7 +19,11 @@ public:
 
 	String(const char* data, size_t length=0)
 	{
-		copyFrom(data, data ? strlen(data) : 0);
+		if (length == 0 && data)
+		{
+			length = strlen(data);
+		}
+		copyFrom(data, length);
 	}
 
 	String(String&& other) noexcept
@@ -47,7 +51,7 @@ public:
 
 	~String()
 	{
-		delete m_data;
+		delete[] m_data;
 	}
 
 	const char* c_str() const
@@ -73,12 +77,13 @@ private:
 
 	void copyFrom(const char* inData, size_t inLength)
 	{
-		delete m_data;
+		delete[] m_data;
 		if (inData)
 		{
 			m_length = inLength;
 			m_data = new char[inLength + 1];
-			memcpy(m_data, inData, inLength + 1);
+			memcpy(m_data, inData, inLength);
+			m_data[inLength] = 0;
 		}
 		else
 		{
