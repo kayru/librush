@@ -232,7 +232,7 @@ void PrimitiveBatch::drawTriangle(const Vec2& a, const Vec2& b, const Vec2& c, c
 
 	v[2].pos.x = c.x;
 	v[2].pos.y = c.y;
-	v[2].pos.z = 0;
+	v[2].pos.z = m_depth;
 	v[2].tex.x = 0;
 	v[2].tex.y = 0;
 	v[2].col   = color;
