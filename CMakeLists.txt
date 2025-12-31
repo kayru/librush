@@ -66,6 +66,8 @@ add_library(Rush STATIC
 	Rush/UtilFile.cpp
 	Rush/UtilFile.h
 	Rush/UtilHash.h
+	Rush/UtilImage.cpp
+	Rush/UtilImage.h
 	Rush/UtilLinearAllocator.h
 	Rush/UtilLog.cpp
 	Rush/UtilLog.h
@@ -192,4 +194,3 @@ if (MSVC)
 else()
 	target_compile_options(Rush PRIVATE -Wall)
 endif()
-

@@ -3,7 +3,7 @@
 #include "Window.h"
 #include "Platform.h"
 #include "UtilFile.h"
-#include "UtilArray.h"
+#include "UtilImage.h"
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
@@ -353,22 +353,15 @@ void Gfx_Present()
 			{
 				const u32 bytesPerRow = width * 4;
 				const u32 alignedBytesPerRow = (bytesPerRow + 0xFF) & ~0xFFu;
-				const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+				const size_t pixelCount = static_cast<size_t>(width) * height;
 				DynamicArray<ColorRGBA8> pixels(pixelCount);
-				for (u32 y = 0; y < height; ++y)
-				{
-					const u8* row = src + static_cast<size_t>(alignedBytesPerRow) * y;
-					for (u32 x = 0; x < width; ++x)
-					{
-						const size_t srcIndex = static_cast<size_t>(x) * 4;
-						const size_t dstIndex = static_cast<size_t>(y) * width + x;
-						const u8 b = row[srcIndex + 0];
-						const u8 g = row[srcIndex + 1];
-						const u8 r = row[srcIndex + 2];
-						const u8 a = row[srcIndex + 3];
-						pixels[dstIndex] = ColorRGBA8(r, g, b, a);
-					}
-				}
+				ImageView imageView;
+				imageView.data = src;
+				imageView.width = width;
+				imageView.height = height;
+				imageView.bytesPerRow = alignedBytesPerRow;
+				imageView.format = GfxFormat_BGRA8_Unorm;
+				convertToRGBA8(imageView, ArrayView<ColorRGBA8>(pixels));
 
 				g_device->m_pendingScreenshot.callback(
 				    pixels.data(),

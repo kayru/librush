@@ -5,6 +5,7 @@
 #include "UtilLog.h"
 #include "UtilString.h"
 #include "Window.h"
+#include "UtilImage.h"
 
 #include <algorithm>
 #include <variant>
@@ -2952,8 +2953,7 @@ void GfxContext::applyState()
 		}
 
 		VkDeviceSize offset = buffer.info.offset + m_pending.indexBufferOffset;
-		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset,
-			buffer.desc.stride == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+		vkCmdBindIndexBuffer(m_commandBuffer, buffer.info.buffer, offset, nativeFormat);
 
 		m_dirtyState &= ~DirtyStateFlag_IndexBuffer;
 	}
@@ -3271,6 +3271,12 @@ void Gfx_BeginFrame()
 
 void GfxDevice::captureScreenshot()
 {
+	if (m_pendingScreenshot.active)
+	{
+		RUSH_LOG_ERROR("Screenshot capture already in progress");
+		return;
+	}
+
 	const size_t screenshotSizeInBytes = 4 * m_swapChainExtent.width * m_swapChainExtent.height; // assume 8888 format
 
 	VkDeviceMemory memory       = VK_NULL_HANDLE;
@@ -3321,16 +3327,12 @@ void GfxDevice::captureScreenshot()
 	context->endBuild();
 	context->submit(m_graphicsQueue);
 
-	V(vkWaitForFences(m_vulkanDevice, 1, &context->m_fence, true, UINT64_MAX));
-
-	Tuple2u imageSize = {m_swapChainExtent.width, m_swapChainExtent.height};
-	m_pendingScreenshotCallback(reinterpret_cast<ColorRGBA8*>(mappedBuffer), imageSize, m_pendingScreenshotUserData);
-
-	Gfx_Release(context);
-
-	vkUnmapMemory(m_vulkanDevice, memory);
-	vkDestroyBuffer(m_vulkanDevice, buffer, g_allocationCallbacks);
-	vkFreeMemory(m_vulkanDevice, memory, g_allocationCallbacks);
+	m_pendingScreenshot.memory = memory;
+	m_pendingScreenshot.buffer = buffer;
+	m_pendingScreenshot.mapped = mappedBuffer;
+	m_pendingScreenshot.size = {m_swapChainExtent.width, m_swapChainExtent.height};
+	m_pendingScreenshot.context = context;
+	m_pendingScreenshot.active = true;
 }
 
 void Gfx_EndFrame()
@@ -3347,14 +3349,6 @@ void Gfx_EndFrame()
 
 	g_context->endBuild();
 
-	if (g_device->m_pendingScreenshotCallback)
-	{
-		g_device->captureScreenshot();
-
-		g_device->m_pendingScreenshotCallback = nullptr;
-		g_device->m_pendingScreenshotUserData = nullptr;
-	}
-
 	g_device->flushUploadContext(g_context);
 
 	g_device->endFrame();
@@ -3368,9 +3362,25 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 
 void Gfx_Present()
 {
+	if (g_device->m_swapChainValid)
+	{
+		GfxDevice::FrameData* currentFrame = g_device->m_currentFrame;
+		if (currentFrame->presentCompleteSemaphore && !currentFrame->presentCompleteSemaphoreWaited)
+		{
+			g_context->addDependency(currentFrame->presentCompleteSemaphore,
+			    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+			currentFrame->presentCompleteSemaphoreWaited = true;
+		}
+	}
+
 	g_context->submit(g_device->m_graphicsQueue);
 
 	g_device->m_currentFrame->lastGraphicsFence = g_context->m_fence;
+
+	if (g_device->m_pendingScreenshotCallback)
+	{
+		g_device->captureScreenshot();
+	}
 
 	VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
 	presentInfo.swapchainCount   = 1;
@@ -3385,6 +3395,58 @@ void Gfx_Present()
 	else if (result != VK_SUCCESS)
 	{
 		RUSH_LOG_FATAL("vkQueuePresentKHR returned code %d (%s)", result, toString(result));
+	}
+
+	if (g_device->m_pendingScreenshot.active)
+	{
+		GfxDevice::PendingScreenshot& pending = g_device->m_pendingScreenshot;
+		V(vkWaitForFences(g_vulkanDevice, 1, &pending.context->m_fence, true, UINT64_MAX));
+
+		if (g_device->m_pendingScreenshotCallback && pending.mapped)
+		{
+			GfxTexture swapChainTexture = g_device->m_swapChainTextures[g_device->m_swapChainIndex].get();
+			GfxFormat swapChainFormat = g_device->m_resources.textures[swapChainTexture].desc.format;
+			if (swapChainFormat == GfxFormat_BGRA8_Unorm)
+			{
+				const u8* src = reinterpret_cast<const u8*>(pending.mapped);
+				const size_t pixelCount = static_cast<size_t>(pending.size.x) * pending.size.y;
+				DynamicArray<ColorRGBA8> pixels(pixelCount);
+				ImageView imageView;
+				imageView.data = src;
+				imageView.width = pending.size.x;
+				imageView.height = pending.size.y;
+				imageView.bytesPerRow = pending.size.x * 4;
+				imageView.format = GfxFormat_BGRA8_Unorm;
+				convertToRGBA8(imageView, ArrayView<ColorRGBA8>(pixels));
+				g_device->m_pendingScreenshotCallback(
+				    pixels.data(),
+				    pending.size,
+				    g_device->m_pendingScreenshotUserData);
+			}
+			else
+			{
+				g_device->m_pendingScreenshotCallback(
+				    reinterpret_cast<ColorRGBA8*>(pending.mapped),
+				    pending.size,
+				    g_device->m_pendingScreenshotUserData);
+			}
+		}
+
+		Gfx_Release(pending.context);
+		pending.context = nullptr;
+
+		vkUnmapMemory(g_vulkanDevice, pending.memory);
+		vkDestroyBuffer(g_vulkanDevice, pending.buffer, g_allocationCallbacks);
+		vkFreeMemory(g_vulkanDevice, pending.memory, g_allocationCallbacks);
+
+		pending.memory = VK_NULL_HANDLE;
+		pending.buffer = VK_NULL_HANDLE;
+		pending.mapped = nullptr;
+		pending.size = {};
+		pending.active = false;
+
+		g_device->m_pendingScreenshotCallback = nullptr;
+		g_device->m_pendingScreenshotUserData = nullptr;
 	}
 
 	g_device->m_frameCount++;

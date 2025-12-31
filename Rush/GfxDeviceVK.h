@@ -596,6 +596,17 @@ public:
 
 	GfxScreenshotCallback m_pendingScreenshotCallback = nullptr;
 	void*                 m_pendingScreenshotUserData = nullptr;
+	struct PendingScreenshot
+	{
+		VkDeviceMemory memory = VK_NULL_HANDLE;
+		VkBuffer buffer = VK_NULL_HANDLE;
+		void* mapped = nullptr;
+		Tuple2u size = {};
+		GfxContext* context = nullptr;
+		bool active = false;
+	};
+
+	PendingScreenshot m_pendingScreenshot;
 
 	struct SupportedExtensions
 	{
