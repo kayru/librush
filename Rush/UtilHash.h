@@ -80,7 +80,8 @@ namespace Rush
 	{
 		return (length == 0)
 			? state
-			: hashFnv1aCE(((const u8*)_message) + 1, length - 1, u32((u64)state * (*((const u8*)_message))) ^ 0x01000193);
+			: hashFnv1aCE(((const u8*)_message) + 1, length - 1,
+			    u32((u64)(state ^ (*((const u8*)_message))) * 0x01000193));
 	}
 
 	inline constexpr u32 hashStrFnv1CE(const char* message, u32 state = 0x811c9dc5)
@@ -94,7 +95,7 @@ namespace Rush
 	{
 		return (*message == 0)
 			? state
-			: hashStrFnv1aCE(message + 1, u32((u64)state * u32(*message)) ^ 0x01000193);
+			: hashStrFnv1aCE(message + 1, u32((u64)(state ^ u32(*message)) * 0x01000193));
 	}
 }
 
