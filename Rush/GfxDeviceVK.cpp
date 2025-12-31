@@ -2878,6 +2878,10 @@ void GfxContext::applyState()
 
 	const GfxShaderBindingDesc& bindingDesc = pipelineBase.bindings;
 	const GfxDescriptorSetDesc& descSet = pipelineBase.bindings.descriptorSets[0];
+	if ((m_dirtyState & DirtyStateFlag_Technique) && bindingDesc.useDefaultDescriptorSet)
+	{
+		m_dirtyState |= DirtyStateFlag_Descriptors;
+	}
 
 	if (m_dirtyState & DirtyStateFlag_Pipeline)
 	{
@@ -4831,7 +4835,7 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 	const auto& desc = g_device->m_resources.buffers[vb].desc;
 
 	RUSH_ASSERT_MSG(!(desc.flags & GfxBufferFlags::Transient),
-	    "Transient buffers can't be mapped, as their memory is frequently recycled.")
+	    "Transient buffers can't be mapped, as their memory is frequently recycled.");
 
 	RUSH_ASSERT(offset == 0 && size == 0);
 	RUSH_ASSERT(desc.hostVisible);
@@ -5060,8 +5064,8 @@ GfxContext* Gfx_BeginAsyncCompute(GfxContext* parentContext)
 
 	asyncContext->beginBuild();
 
-	// TODO: can a more precise pipeline stage flag be provided here?
-	asyncContext->addDependency(parentContext->m_completionSemaphore, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	// Compute queue must wait using a compute-capable stage mask.
+	asyncContext->addDependency(parentContext->m_completionSemaphore, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
 	parentContext->m_useCompletionSemaphore = true;
 	parentContext->split();
