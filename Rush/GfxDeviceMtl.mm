@@ -1522,7 +1522,40 @@ void Gfx_EndPass(GfxContext* rc)
 
 void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 {
-	Log::error("Not implemented");
+	if (!src.valid() || !dst.valid())
+	{
+		return;
+	}
+
+	const TextureMTL& srcTexture = g_device->m_resources.textures[src];
+	const TextureMTL& dstTexture = g_device->m_resources.textures[dst];
+
+	if (srcTexture.desc.samples <= 1)
+	{
+		id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
+		MTLOrigin origin = {0, 0, 0};
+		MTLSize size = {srcTexture.desc.width, srcTexture.desc.height, 1};
+		[blit copyFromTexture:srcTexture.native
+			sourceSlice:0
+			sourceLevel:0
+			sourceOrigin:origin
+			sourceSize:size
+			toTexture:dstTexture.native
+			destinationSlice:0
+			destinationLevel:0
+			destinationOrigin:origin];
+		[blit endEncoding];
+		return;
+	}
+
+	MTLRenderPassDescriptor* passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+	passDescriptor.colorAttachments[0].texture = srcTexture.native;
+	passDescriptor.colorAttachments[0].resolveTexture = dstTexture.native;
+	passDescriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
+	passDescriptor.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
+
+	id<MTLRenderCommandEncoder> encoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
+	[encoder endEncoding];
 }
 
 
