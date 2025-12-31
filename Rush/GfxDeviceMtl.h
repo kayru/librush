@@ -173,6 +173,16 @@ public:
 	id<MTLTexture> m_backBufferTexture = nil;
 	MTLPixelFormat m_backBufferPixelFormat = MTLPixelFormatInvalid;
 	id<MTLCommandBuffer> m_commandBuffer = nil;
+	struct PendingScreenshot
+	{
+		id<MTLBuffer> buffer = nil;
+		GfxScreenshotCallback callback = nullptr;
+		void* userData = nullptr;
+		u32 width = 0;
+		u32 height = 0;
+	};
+
+	PendingScreenshot m_pendingScreenshot;
 
 	GfxRef<GfxTexture> m_defaultDepthBuffer;
 };

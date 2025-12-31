@@ -3,6 +3,7 @@
 #include "Window.h"
 #include "Platform.h"
 #include "UtilFile.h"
+#include "UtilArray.h"
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
@@ -285,6 +286,44 @@ void Gfx_BeginFrame()
 
 void Gfx_EndFrame()
 {
+	if (g_device->m_pendingScreenshot.callback && g_device->m_backBufferTexture)
+	{
+		if (g_context && g_context->m_computeCommandEncoder)
+		{
+			[g_context->m_computeCommandEncoder endEncoding];
+			[g_context->m_computeCommandEncoder release];
+			g_context->m_computeCommandEncoder = nil;
+		}
+
+		if (g_device->m_pendingScreenshot.buffer)
+		{
+			[g_device->m_pendingScreenshot.buffer release];
+			g_device->m_pendingScreenshot.buffer = nil;
+		}
+
+		const u32 width = (u32)[g_device->m_backBufferTexture width];
+		const u32 height = (u32)[g_device->m_backBufferTexture height];
+		const u32 bytesPerRow = width * 4;
+		const u32 alignedBytesPerRow = (bytesPerRow + 0xFF) & ~0xFFu;
+		const u32 bufferSize = alignedBytesPerRow * height;
+
+		g_device->m_pendingScreenshot.width = width;
+		g_device->m_pendingScreenshot.height = height;
+		g_device->m_pendingScreenshot.buffer =
+		    [g_device->m_metalDevice newBufferWithLength:bufferSize options:MTLResourceStorageModeShared];
+
+		id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
+		[blit copyFromTexture:g_device->m_backBufferTexture
+		          sourceSlice:0
+		          sourceLevel:0
+		         sourceOrigin:MTLOriginMake(0, 0, 0)
+		           sourceSize:MTLSizeMake(width, height, 1)
+		             toBuffer:g_device->m_pendingScreenshot.buffer
+		    destinationOffset:0
+	   destinationBytesPerRow:alignedBytesPerRow
+	 destinationBytesPerImage:bufferSize];
+		[blit endEncoding];
+	}
 }
 
 void Gfx_Present()
@@ -302,6 +341,52 @@ void Gfx_Present()
 
 	[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
 	[g_device->m_commandBuffer commit];
+	if (g_device->m_pendingScreenshot.callback)
+	{
+		[g_device->m_commandBuffer waitUntilCompleted];
+		if (g_device->m_pendingScreenshot.buffer)
+		{
+			const u8* src = reinterpret_cast<const u8*>([g_device->m_pendingScreenshot.buffer contents]);
+			const u32 width = g_device->m_pendingScreenshot.width;
+			const u32 height = g_device->m_pendingScreenshot.height;
+			if (src && width && height)
+			{
+				const u32 bytesPerRow = width * 4;
+				const u32 alignedBytesPerRow = (bytesPerRow + 0xFF) & ~0xFFu;
+				const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+				DynamicArray<ColorRGBA8> pixels(pixelCount);
+				for (u32 y = 0; y < height; ++y)
+				{
+					const u8* row = src + static_cast<size_t>(alignedBytesPerRow) * y;
+					for (u32 x = 0; x < width; ++x)
+					{
+						const size_t srcIndex = static_cast<size_t>(x) * 4;
+						const size_t dstIndex = static_cast<size_t>(y) * width + x;
+						const u8 b = row[srcIndex + 0];
+						const u8 g = row[srcIndex + 1];
+						const u8 r = row[srcIndex + 2];
+						const u8 a = row[srcIndex + 3];
+						pixels[dstIndex] = ColorRGBA8(r, g, b, a);
+					}
+				}
+
+				g_device->m_pendingScreenshot.callback(
+				    pixels.data(),
+				    Tuple2u{width, height},
+				    g_device->m_pendingScreenshot.userData);
+			}
+		}
+
+		if (g_device->m_pendingScreenshot.buffer)
+		{
+			[g_device->m_pendingScreenshot.buffer release];
+			g_device->m_pendingScreenshot.buffer = nil;
+		}
+		g_device->m_pendingScreenshot.callback = nullptr;
+		g_device->m_pendingScreenshot.userData = nullptr;
+		g_device->m_pendingScreenshot.width = 0;
+		g_device->m_pendingScreenshot.height = 0;
+	}
 	[g_device->m_commandBuffer release];
 	g_device->m_commandBuffer = nil;
 	
@@ -320,6 +405,12 @@ void Gfx_SetPresentInterval(u32 interval)
 		Log::warning("Present interval != 1 is not implemented");
 		warningReported = true;
 	}
+}
+
+void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
+{
+	g_device->m_pendingScreenshot.callback = callback;
+	g_device->m_pendingScreenshot.userData = userData;
 }
 
 void Gfx_Finish()
@@ -929,15 +1020,66 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.buffers, res));
 }
 
-GfxMappedBuffer Gfx_MapBuffer(GfxBuffer vb, u32 offset, u32 size)
+GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 {
-	Log::error("Not implemented");
-	return GfxMappedBuffer();
+	if (!vb.valid())
+	{
+		return {};
+	}
+
+	BufferMTL& buffer = g_device->m_resources.buffers[vb];
+	if ([buffer.native storageMode] == MTLStorageModeManaged)
+	{
+		id<MTLCommandBuffer> syncCommandBuffer = [g_device->m_commandQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [syncCommandBuffer blitCommandEncoder];
+		[blit synchronizeResource:buffer.native];
+		[blit endEncoding];
+		[syncCommandBuffer commit];
+		[syncCommandBuffer waitUntilCompleted];
+	}
+	const u32 bufferSize = (u32)[buffer.native length];
+	if (offset > bufferSize)
+	{
+		Log::error("Gfx_MapBuffer: offset exceeds buffer length");
+		return {};
+	}
+
+	if (size == 0)
+	{
+		size = bufferSize - offset;
+	}
+	else if (offset + size > bufferSize)
+	{
+		Log::error("Gfx_MapBuffer: range exceeds buffer length");
+		return {};
+	}
+
+	void* base = [buffer.native contents];
+	if (!base)
+	{
+		Log::error("Gfx_MapBuffer: buffer contents unavailable");
+		return {};
+	}
+
+	GfxMappedBuffer result;
+	result.data = static_cast<u8*>(base) + offset;
+	result.size = size;
+	result.handle = vb;
+	return result;
 }
 
 void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 {
-	Log::error("Not implemented");
+	if (!lock.handle.valid())
+	{
+		return;
+	}
+
+	BufferMTL& buffer = g_device->m_resources.buffers[lock.handle];
+	if (buffer.native)
+	{
+		[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
+	}
 }
 
 void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
