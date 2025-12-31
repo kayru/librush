@@ -47,7 +47,7 @@
 
 #if defined(_MSC_VER)
 #   define RUSH_ASSUME(x) __assume(x)
-#   define RUSH_BREAK {__debugbreak();}
+#   define RUSH_BREAK do { __debugbreak(); } while (0)
 #   define RUSH_DISABLE_OPTIMIZATION __pragma(optimize("", off))
 #   define RUSH_ENABLE_OPTIMIZATION __pragma(optimize("", on))
 #   define RUSH_FORCEINLINE __forceinline
@@ -55,7 +55,7 @@
 #   define RUSH_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__)
 #   define RUSH_ASSUME(x) __builtin_assume(x)
-#   define RUSH_BREAK {__builtin_trap();}
+#   define RUSH_BREAK do { __builtin_trap(); } while (0)
 #   define RUSH_DISABLE_OPTIMIZATION _Pragma("clang optimize off")
 #   define RUSH_ENABLE_OPTIMIZATION _Pragma("clang optimize on")
 #   define RUSH_FORCEINLINE __attribute__((always_inline)) inline

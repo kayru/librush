@@ -72,7 +72,7 @@ public:
 			empty.pop_back();
 			data[idx] = std::forward<T>(val);
 		}
-		RUSH_ASSERT(idx < std::numeric_limits<UntypedResourceHandle::IndexType>::max())
+		RUSH_ASSERT(idx < std::numeric_limits<UntypedResourceHandle::IndexType>::max());
 		return HANDLE_TYPE(UntypedResourceHandle((UntypedResourceHandle::IndexType)idx));
 	}
 
