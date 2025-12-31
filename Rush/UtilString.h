@@ -91,7 +91,7 @@ public:
 		}
 	}
 
-	static const char* getEmptyString() { static char* emptyString = ""; return emptyString; }
+	static const char* getEmptyString() { static const char* emptyString = ""; return emptyString; }
 
 private:
 
