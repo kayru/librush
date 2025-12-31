@@ -125,10 +125,15 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 		[menubar addItem:appMenuItem];
 		[NSApp setMainMenu:menubar];
 
-		while (![dg applicationHasTerminated])
+		while (true)
 		{
 			@autoreleasepool
 			{
+				if ([dg applicationHasTerminated] || (g_mainWindow && g_mainWindow->isClosed()))
+				{
+					break;
+				}
+
 				while (NSEvent* event = [NSApp
 						nextEventMatchingMask:NSEventMaskAny
 						untilDate:[NSDate distantPast]
