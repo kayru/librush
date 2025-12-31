@@ -37,7 +37,7 @@ public:
 		return *this;
 	}
 
-	String& operator=(String& other)
+	String& operator=(const String& other)
 	{
 		copyFrom(other);
 		return *this;
@@ -59,6 +59,11 @@ public:
 		return m_data ? m_data : getEmptyString();
 	}
 
+	char* data()
+	{
+		return m_data;
+	}
+
 	size_t length() const { return m_length; }
 
 	char& operator [] (size_t idx)
@@ -71,7 +76,22 @@ public:
 		return m_data[idx];
 	}
 
-	static const char* getEmptyString() { static const char* emptyString = ""; return emptyString; }
+	void reset(size_t length)
+	{
+		delete[] m_data;
+		m_length = length;
+		if (length)
+		{
+			m_data = new char[length + 1];
+			m_data[length] = 0;
+		}
+		else
+		{
+			m_data = nullptr;
+		}
+	}
+
+	static const char* getEmptyString() { static char* emptyString = ""; return emptyString; }
 
 private:
 
@@ -134,22 +154,24 @@ public:
 
 	bool operator == (const char* other) const
 	{
-		return strncmp(m_data, other, m_length) == 0;
+		const char* rhs = other ? other : String::getEmptyString();
+		return strncmp(data(), rhs, m_length) == 0;
 	}
 
 	bool operator != (const char* other) const
 	{
-		return strncmp(m_data, other, m_length) != 0;
+		const char* rhs = other ? other : String::getEmptyString();
+		return strncmp(data(), rhs, m_length) != 0;
 	}
 
 	bool operator == (const StringView& other) const
 	{
-		return m_length == other.m_length && memcmp(m_data, other.m_data, m_length) == 0;
+		return m_length == other.m_length && memcmp(data(), other.data(), m_length) == 0;
 	}
 
 	bool operator != (const StringView& other) const
 	{
-		return m_length != other.m_length || memcmp(m_data, other.m_data, m_length) != 0;
+		return m_length != other.m_length || memcmp(data(), other.data(), m_length) != 0;
 	}
 
 private:
