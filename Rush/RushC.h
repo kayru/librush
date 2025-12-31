@@ -379,6 +379,7 @@ typedef enum rush_gfx_shader_source_type
 	RUSH_GFX_SHADER_SOURCE_DXBC    = 4, // binary
 	RUSH_GFX_SHADER_SOURCE_DXIL    = 5, // binary
 	RUSH_GFX_SHADER_SOURCE_MSL     = 6, // text
+	RUSH_GFX_SHADER_SOURCE_MSL_BIN = 7, // binary
 } rush_gfx_shader_source_type;
 
 typedef enum rush_gfx_format

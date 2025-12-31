@@ -11,6 +11,7 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
+#import <dispatch/dispatch.h>
 
 namespace Rush
 {

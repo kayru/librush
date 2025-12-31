@@ -314,6 +314,7 @@ enum GfxShaderSourceType : u8
 	GfxShaderSourceType_DXBC    = RUSH_GFX_SHADER_SOURCE_DXBC, // binary
 	GfxShaderSourceType_DXIL    = RUSH_GFX_SHADER_SOURCE_DXIL, // binary
 	GfxShaderSourceType_MSL     = RUSH_GFX_SHADER_SOURCE_MSL,  // text
+	GfxShaderSourceType_MSL_BIN = RUSH_GFX_SHADER_SOURCE_MSL_BIN, // binary
 };
 
 enum GfxFormatType : u8

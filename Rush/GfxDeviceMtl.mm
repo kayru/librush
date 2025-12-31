@@ -185,6 +185,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	// init caps
 
 	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_MSL;
+	m_caps.shaderTypeMask |= 1 << GfxShaderSourceType_MSL_BIN;
 	m_caps.deviceNearDepth = 0.0f;
 	m_caps.deviceFarDepth = 1.0f;
 	m_caps.compute = true;
@@ -499,21 +500,32 @@ void Gfx_Release(GfxVertexFormat h)
 
 ShaderMTL ShaderMTL::create(const GfxShaderSource& code)
 {
-	RUSH_ASSERT(code.type == GfxShaderSourceType_MSL);
+	RUSH_ASSERT(code.type == GfxShaderSourceType_MSL || code.type == GfxShaderSourceType_MSL_BIN);
 	const char* entryName = code.entry;
 	if (!strcmp(entryName, "main"))
 	{
 		entryName = "main0";
 	}
 
-	const char* sourceText = code.data();
-	RUSH_ASSERT(sourceText);
-
 	ShaderMTL result;
 	result.uniqueId = g_device->generateId();
 
 	NSError* error = nullptr;
-	result.library = [g_metalDevice newLibraryWithSource:@(sourceText) options:nil error:&error];
+	if (code.type == GfxShaderSourceType_MSL)
+	{
+		const char* sourceText = code.data();
+		RUSH_ASSERT(sourceText);
+		result.library = [g_metalDevice newLibraryWithSource:@(sourceText) options:nil error:&error];
+	}
+	else
+	{
+		RUSH_ASSERT(code.size() > 0);
+		dispatch_data_t libraryData = dispatch_data_create(code.data(), code.size(), nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+		result.library = [g_metalDevice newLibraryWithData:libraryData error:&error];
+#if !OS_OBJECT_USE_OBJC
+		dispatch_release(libraryData);
+#endif
+	}
 	if(error)
 	{
 		if (error.code == MTLLibraryErrorCompileWarning)
