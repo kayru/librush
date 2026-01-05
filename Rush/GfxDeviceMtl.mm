@@ -502,9 +502,9 @@ ShaderMTL ShaderMTL::create(const GfxShaderSource& code)
 {
 	RUSH_ASSERT(code.type == GfxShaderSourceType_MSL || code.type == GfxShaderSourceType_MSL_BIN);
 	const char* entryName = code.entry;
-	if (!strcmp(entryName, "main"))
+	if (entryName == nullptr)
 	{
-		entryName = "main0";
+		entryName = "main";
 	}
 
 	ShaderMTL result;
