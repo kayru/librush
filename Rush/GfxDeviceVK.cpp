@@ -3228,11 +3228,6 @@ void Gfx_BeginFrame()
 		double nanoSecondsPerTick = g_device->m_physicalDeviceProps.limits.timestampPeriod;
 		double secondsPerTick     = 1e-9 * nanoSecondsPerTick;
 
-		#if defined(RUSH_PLATFORM_MAC)
-		// hack/workaround for borked timestamp units with MoltenVK
-		secondsPerTick *= 100;
-		#endif
-
 		for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
 		{
 			u16 slotBegin = g_device->m_currentFrame->timestampSlotMap[2 * i];

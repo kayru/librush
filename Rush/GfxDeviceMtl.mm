@@ -341,6 +341,12 @@ void Gfx_Present()
 	}
 
 	[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
+	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		if (buffer.GPUEndTime > buffer.GPUStartTime)
+		{
+			g_device->m_stats.lastFrameGpuTime = buffer.GPUEndTime - buffer.GPUStartTime;
+		}
+	}];
 	[g_device->m_commandBuffer commit];
 	if (g_device->m_pendingScreenshot.callback)
 	{
