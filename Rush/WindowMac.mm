@@ -28,6 +28,7 @@ using namespace Rush;
 - (BOOL)windowShouldClose:(NSWindow*)window;
 - (void)windowDidResize:(NSNotification*)notification;
 - (void)windowDidEndLiveResize:(NSNotification*)notification;
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification;
 - (void)windowDidBecomeKey:(NSNotification *)notification;
 - (void)windowDidResignKey:(NSNotification *)notification;
 
@@ -97,7 +98,14 @@ using namespace Rush;
 	NSView* contentView = [notification.object contentView];
 	CALayer* layer = [contentView layer];
 	CGSize frame = [layer frame].size;
+	window->parent->updateResolutionScale();
 	window->parent->processResize(frame.width, frame.height);
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification
+{
+	RushWindow* window = notification.object;
+	window->parent->updateResolutionScale();
 }
 
 - (void)windowDidBecomeKey:(NSNotification*)notification
@@ -163,12 +171,16 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	[[WindowMacInternal sharedDelegate] windowCreated:window];
 
 	RushView* view = [[RushView alloc] init];
+	[view setWantsLayer:YES];
 	[window setContentView:view];
 	[window makeFirstResponder:view];
 	[view release];
 
 	m_metalLayer = [CAMetalLayer layer];
+	m_metalLayer.needsDisplayOnBoundsChange = YES;
+	m_metalLayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
 	[window.contentView setLayer:m_metalLayer];
+	updateResolutionScale();
 }
 
 WindowMac::~WindowMac()
@@ -303,6 +315,7 @@ static Key translateKeyMac(const NSEvent* event)
 
 void WindowMac::processResize(float newWidth, float newHeight)
 {
+	updateResolutionScale();
 	Tuple2i pendingSize;
 	pendingSize.x = int(newWidth);
 	pendingSize.y = int(newHeight);
@@ -310,6 +323,42 @@ void WindowMac::processResize(float newWidth, float newHeight)
 	if (m_size != pendingSize)
 	{
 		m_size = pendingSize;
+		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
+	}
+}
+
+void WindowMac::updateResolutionScale()
+{
+	if (!m_nativeWindow)
+	{
+		return;
+	}
+
+	CGFloat scale = [m_nativeWindow backingScaleFactor];
+	if (scale <= 0.0f)
+	{
+		scale = 1.0f;
+	}
+
+	const float scaleFloat = (float)scale;
+	const bool scaleChanged = (m_resolutionScale.x != scaleFloat) || (m_resolutionScale.y != scaleFloat);
+	m_resolutionScale = Vec2(scaleFloat, scaleFloat);
+
+	if (m_metalLayer)
+	{
+		NSView* contentView = [m_nativeWindow contentView];
+		if (contentView)
+		{
+			m_metalLayer.frame = [contentView bounds];
+		}
+		m_metalLayer.contentsScale = scale;
+		m_metalLayer.drawableSize = CGSizeMake(
+			(CGFloat)m_size.x * scale,
+			(CGFloat)m_size.y * scale);
+	}
+
+	if (scaleChanged)
+	{
 		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
 	}
 }

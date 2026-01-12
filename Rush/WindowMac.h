@@ -31,6 +31,7 @@ public:
 
 	bool processEvent(NSEvent* event);
 	void processResize(float newWidth, float newHeight);
+	void updateResolutionScale();
 
 	CAMetalLayer* getMetalLayer() const { return m_metalLayer; }
 

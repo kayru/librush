@@ -744,10 +744,11 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 	textureDescriptor.height = desc.height;
 	textureDescriptor.depth = desc.isArray() ? 1 : desc.depth;
 	textureDescriptor.pixelFormat = convertPixelFormat(desc.format);
-	textureDescriptor.mipmapLevelCount = desc.mips;
-	textureDescriptor.sampleCount = 1; // TODO
+	textureDescriptor.mipmapLevelCount = desc.samples > 1 ? 1 : desc.mips;
+	textureDescriptor.sampleCount = desc.samples > 0 ? desc.samples : 1;
 	textureDescriptor.arrayLength = desc.isArray() ? desc.depth : 1;
-	textureDescriptor.textureType = isCube ? MTLTextureTypeCube : MTLTextureType2D;
+	textureDescriptor.textureType = isCube ? MTLTextureTypeCube
+		: (desc.samples > 1 ? MTLTextureType2DMultisample : MTLTextureType2D);
 
 	if (isRenderTarget || isDepthStencil)
 	{
@@ -1248,13 +1249,37 @@ void GfxContext::applyState()
 		pipelineDescriptor.vertexFunction = vertexShader.function;
 		pipelineDescriptor.fragmentFunction = pixelShader.function;
 
-		// FIXME: pipeline always sets depth attachment format; color-only passes need depthless pipeline.
-		// TODO: color-only rendering
-		pipelineDescriptor.depthAttachmentPixelFormat = [g_device->m_resources.textures[g_device->m_defaultDepthBuffer.get()].native pixelFormat];
+		if (m_passDesc.depth.valid())
+		{
+			pipelineDescriptor.depthAttachmentPixelFormat =
+				[g_device->m_resources.textures[m_passDesc.depth].native pixelFormat];
+		}
+		else
+		{
+			pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
+		}
 
 		const auto& blendState = g_device->m_resources.blendStates[m_pendingBlendState.get()].desc;
 
 		const bool useBackBuffer = !m_passDesc.color[0].valid() && !m_passDesc.depth.valid();
+		u32 sampleCount = 1;
+		if (!useBackBuffer)
+		{
+			if (m_passDesc.color[0].valid())
+			{
+				sampleCount = g_device->m_resources.textures[m_passDesc.color[0]].desc.samples;
+			}
+			else if (m_passDesc.depth.valid())
+			{
+				sampleCount = g_device->m_resources.textures[m_passDesc.depth].desc.samples;
+			}
+		}
+		const u32 rasterSamples = sampleCount > 0 ? sampleCount : 1;
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000
+		pipelineDescriptor.rasterSampleCount = rasterSamples;
+#else
+		pipelineDescriptor.sampleCount = rasterSamples;
+#endif
 
 		for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 		{
@@ -1490,21 +1515,29 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 			desc.clearColors[i].a);
 	}
 
-	GfxTexture depthBuffer = desc.depth.valid() ? desc.depth : g_device->m_defaultDepthBuffer.get();
-	// FIXME: always binding depth affects color-only passes; allow nil depth when not requested.
-	passDescriptor.depthAttachment.texture = g_device->m_resources.textures[depthBuffer].native;
-
-	if (!!(desc.flags & GfxPassFlags::ClearDepthStencil))
+	if (desc.depth.valid())
 	{
-		passDescriptor.depthAttachment.loadAction = MTLLoadActionClear;
-		passDescriptor.depthAttachment.clearDepth = desc.clearDepth;
+		GfxTexture depthBuffer = desc.depth;
+		passDescriptor.depthAttachment.texture = g_device->m_resources.textures[depthBuffer].native;
+
+		if (!!(desc.flags & GfxPassFlags::ClearDepthStencil))
+		{
+			passDescriptor.depthAttachment.loadAction = MTLLoadActionClear;
+			passDescriptor.depthAttachment.clearDepth = desc.clearDepth;
+		}
+		else
+		{
+			passDescriptor.depthAttachment.loadAction = MTLLoadActionLoad;
+		}
+
+		passDescriptor.depthAttachment.storeAction = MTLStoreActionStore;
 	}
 	else
 	{
-		passDescriptor.depthAttachment.loadAction = MTLLoadActionLoad;
+		passDescriptor.depthAttachment.texture = nil;
+		passDescriptor.depthAttachment.loadAction = MTLLoadActionDontCare;
+		passDescriptor.depthAttachment.storeAction = MTLStoreActionDontCare;
 	}
-
-	passDescriptor.depthAttachment.storeAction = MTLStoreActionStore;
 
 	RUSH_ASSERT(g_device->m_commandBuffer);
 	rc->m_commandEncoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
