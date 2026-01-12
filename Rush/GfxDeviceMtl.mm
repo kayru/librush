@@ -1549,6 +1549,22 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	rc->m_commandEncoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
 	[rc->m_commandEncoder retain];
 
+	id<MTLTexture> viewportTexture = passDescriptor.colorAttachments[0].texture;
+	if (!viewportTexture)
+	{
+		viewportTexture = passDescriptor.depthAttachment.texture;
+	}
+	if (viewportTexture)
+	{
+		const double width = static_cast<double>(viewportTexture.width);
+		const double height = static_cast<double>(viewportTexture.height);
+		MTLViewport metalViewport = { 0.0, 0.0, width, height, 0.0, 1.0 };
+		[rc->m_commandEncoder setViewport:metalViewport];
+
+		MTLScissorRect metalRect = { 0, 0, (NSUInteger)viewportTexture.width, (NSUInteger)viewportTexture.height };
+		[rc->m_commandEncoder setScissorRect:metalRect];
+	}
+
 	[passDescriptor release];
 }
 
