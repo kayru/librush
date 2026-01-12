@@ -196,6 +196,30 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	m_caps.instancing = true;
 	m_caps.drawIndirect = true;
 
+	m_caps.colorSampleCounts = 1;
+	m_caps.depthSampleCounts = 1;
+	{
+		const u32 sampleCounts[] = {1, 2, 4, 8, 16};
+		u32 colorMask = 0;
+		u32 depthMask = 0;
+		for (u32 samples : sampleCounts)
+		{
+			if ([m_metalDevice supportsTextureSampleCount:samples])
+			{
+				colorMask |= samples;
+				depthMask |= samples;
+			}
+		}
+		if (colorMask != 0)
+		{
+			m_caps.colorSampleCounts = colorMask;
+		}
+		if (depthMask != 0)
+		{
+			m_caps.depthSampleCounts = depthMask;
+		}
+	}
+
 	m_caps.apiName = "Metal";
 }
 
