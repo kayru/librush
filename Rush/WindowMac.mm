@@ -349,7 +349,14 @@ void WindowMac::updateResolutionScale()
 		NSView* contentView = [m_nativeWindow contentView];
 		if (contentView)
 		{
-			m_metalLayer.frame = [contentView bounds];
+			NSRect bounds = [contentView bounds];
+			m_metalLayer.frame = bounds;
+			const Tuple2i pendingSize((int)bounds.size.width, (int)bounds.size.height);
+			if (pendingSize.x > 0 && pendingSize.y > 0 && m_size != pendingSize)
+			{
+				m_size = pendingSize;
+				broadcast(WindowEvent::Resize(m_size.x, m_size.y));
+			}
 		}
 		m_metalLayer.contentsScale = scale;
 		m_metalLayer.drawableSize = CGSizeMake(
@@ -374,8 +381,16 @@ bool WindowMac::processEvent(NSEvent* event)
 		case NSEventTypeMouseMoved:
 		{
 			NSPoint mouseLocation = [event locationInWindow];
+			if (m_nativeWindow)
+			{
+				NSView* contentView = [m_nativeWindow contentView];
+				if (contentView)
+				{
+					mouseLocation = [contentView convertPoint:mouseLocation fromView:nil];
+				}
+			}
 			float xPos = mouseLocation.x;
-			float yPos = getSize().y - mouseLocation.y;
+			float yPos = (float)getSize().y - mouseLocation.y;
 			m_mouse.pos = Vec2(xPos, yPos);
 			broadcast(WindowEvent::MouseMove(m_mouse.pos));
 			return true;
