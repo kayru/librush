@@ -45,6 +45,24 @@ struct BufferMTL : GfxRefCount
 	void destroy();
 };
 
+struct AccelerationStructureMTL : GfxResourceBase
+{
+	u32 uniqueId = 0;
+	GfxAccelerationStructureType type = GfxAccelerationStructureType::BottomLevel;
+	u32 instanceCount = 0;
+
+	DynamicArray<GfxRayTracingGeometryDesc> geometries;
+
+	id<MTLAccelerationStructure> native = nil;
+	id<MTLBuffer> scratchBuffer = nil;
+	id<MTLBuffer> instanceBuffer = nil;
+	NSArray<id<MTLAccelerationStructure>>* instancedAccelerationStructures = nil;
+	u64 accelerationStructureSize = 0;
+	u64 scratchBufferSize = 0;
+
+	void destroy();
+};
+
 struct DescriptorSetMTL : GfxRefCount
 {
 	u32                      uniqueId = 0;
@@ -55,6 +73,7 @@ struct DescriptorSetMTL : GfxRefCount
 	DynamicArray<GfxSampler> samplers;
 	DynamicArray<GfxTexture> storageImages;
 	DynamicArray<GfxBuffer>  storageBuffers;
+	DynamicArray<GfxAccelerationStructure> accelerationStructures;
 
 	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc
 	id<MTLBuffer> argBuffer = nil;
@@ -87,6 +106,25 @@ struct TechniqueMTL : GfxRefCount
 
 	DescriptorSetMTL defaultDescriptorSet;
 	
+	void destroy();
+};
+
+struct RayTracingPipelineMTL : GfxRefCount
+{
+	u32 uniqueId = 0;
+
+	GfxShaderBindingDesc bindings;
+	u32 maxRecursionDepth = 1;
+
+	ShaderMTL rayGen;
+	ShaderMTL miss;
+	ShaderMTL closestHit;
+	ShaderMTL anyHit;
+
+	id<MTLComputePipelineState> rayGenPipeline = nil;
+	u32 descriptorSetCount = 0;
+	DescriptorSetMTL defaultDescriptorSet;
+
 	void destroy();
 };
 
@@ -148,6 +186,8 @@ public:
 		ResourcePool<ShaderMTL, UntypedResourceHandle> shaders;
 		ResourcePool<VertexFormatMTL, GfxVertexFormat> vertexFormats;
 		ResourcePool<BufferMTL, GfxBuffer> buffers;
+		ResourcePool<AccelerationStructureMTL, GfxAccelerationStructure> accelerationStructures;
+		ResourcePool<RayTracingPipelineMTL, GfxRayTracingPipeline> rayTracingPipelines;
 		ResourcePool<TechniqueMTL, GfxTechnique> techniques;
 		ResourcePool<DepthStencilStateMTL, GfxDepthStencilState> depthStencilStates;
 		ResourcePool<RasterizerStateMTL, GfxRasterizerState> rasterizerStates;
@@ -198,10 +238,10 @@ public:
 		MaxStorageImages = 8,
 		MaxVertexStreams = 8,
 		MaxConstantBuffers = 4,
-		MaxStorageBuffers = 4,
+		MaxStorageBuffers = 8,
 		MaxSamplers = 4,
 		MaxDescriptorSets = 4,
-		MaxAccelerationStructures = 0, // TODO: implement basic ray tracing
+		MaxAccelerationStructures = 1,
 	};
 
 	GfxContext();
@@ -224,8 +264,9 @@ public:
 		DirtyStateFlag_StorageImage = 1 << 10,
 		DirtyStateFlag_StorageBuffer = 1 << 11,
 		DirtyStateFlag_DescriptorSet = 1 << 12,
+		DirtyStateFlag_AccelerationStructure = 1 << 13,
 
-		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler | DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer,
+		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler | DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer | DirtyStateFlag_AccelerationStructure,
 
 		DirtyStateFlag_Pipeline = DirtyStateFlag_Technique | DirtyStateFlag_PrimitiveType | DirtyStateFlag_BlendState | DirtyStateFlag_DepthStencilState | DirtyStateFlag_RasterizerState,
 	};
@@ -237,6 +278,7 @@ public:
 	id<MTLDepthStencilState> m_depthStencilState = nil;
 
 	GfxRef<GfxTechnique> m_pendingTechnique;
+	GfxRef<GfxRayTracingPipeline> m_pendingRayTracingPipeline;
 	GfxRef<GfxBlendState> m_pendingBlendState;
 	GfxRef<GfxRasterizerState> m_pendingRasterizerState;
 	GfxRef<GfxDepthStencilState> m_pendingDepthStencilState;
@@ -246,6 +288,7 @@ public:
 	GfxRef<GfxTexture> m_sampledImages[MaxSampledImages];
 	GfxRef<GfxTexture> m_storageImages[MaxStorageImages];
 	GfxRef<GfxBuffer> m_storageBuffers[MaxStorageBuffers];
+	GfxRef<GfxAccelerationStructure> m_accelerationStructures[MaxAccelerationStructures];
 	GfxRef<GfxDescriptorSet> m_descriptorSets[MaxDescriptorSets];
 	GfxPassDesc m_passDesc;
 

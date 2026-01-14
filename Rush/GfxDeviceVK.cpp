@@ -1050,14 +1050,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_caps.explicitVertexParameterAMD = m_supportedExtensions.AMD_shader_explicit_vertex_parameter;
 
-	m_caps.rayTracing       = m_supportedExtensions.KHR_ray_tracing;
-	m_caps.rayTracingInline = m_supportedExtensions.KHR_ray_query;
+	m_caps.rayTracingPipeline = m_supportedExtensions.KHR_ray_tracing;
+	m_caps.rayTracingInline   = m_supportedExtensions.KHR_ray_query;
+	m_caps.rayTracing         = m_caps.rayTracingPipeline || m_caps.rayTracingInline;
 
 	m_caps.geometryShaderPassthroughNV = m_supportedExtensions.NV_geometry_shader_passthrough;
 	m_caps.mixedSamplesNV              = m_supportedExtensions.NV_framebuffer_mixed_samples;
 	m_caps.meshShaderNV                = m_supportedExtensions.NV_mesh_shader && m_nvMeshShaderFeatures.meshShader;
 
-	if (m_caps.rayTracing)
+	if (m_caps.rayTracingPipeline)
 	{
 		m_caps.rtShaderHandleSize = m_rayTracingPipelineProps.shaderGroupHandleSize;
 		m_caps.rtSbtMaxStride     = m_rayTracingPipelineProps.maxShaderGroupStride;

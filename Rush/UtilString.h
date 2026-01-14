@@ -65,6 +65,7 @@ public:
 	}
 
 	size_t length() const { return m_length; }
+	bool empty() const { return m_length == 0; }
 
 	char& operator [] (size_t idx)
 	{

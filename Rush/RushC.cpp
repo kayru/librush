@@ -652,6 +652,9 @@ rush_gfx_capability rush_gfx_get_capability()
 	rush_gfx_capability result = {};
 
 	result.api_name = caps.apiName;
+	result.ray_tracing = caps.rayTracing;
+	result.ray_tracing_pipeline = caps.rayTracingPipeline;
+	result.ray_tracing_inline = caps.rayTracingInline;
 
 	return result;
 }

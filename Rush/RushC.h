@@ -449,6 +449,9 @@ typedef struct rush_gfx_depth_target
 typedef struct rush_gfx_capability
 {
 	const char* api_name;
+	bool ray_tracing;
+	bool ray_tracing_pipeline;
+	bool ray_tracing_inline;
 } rush_gfx_capability;
 
 typedef struct rush_gfx_stats
@@ -570,6 +573,7 @@ typedef enum rush_gfx_buffer_flags
 	RUSH_GFX_BUFFER_FLAG_TEXEL         = 1U << 4,
 	RUSH_GFX_BUFFER_FLAG_INDIRECT_ARGS = 1U << 5,
 	RUSH_GFX_BUFFER_FLAG_RAYTRACING    = 1U << 6,
+	RUSH_GFX_BUFFER_FLAG_CPU_READ      = 1U << 7,
 	RUSH_GFX_BUFFER_FLAG_TRANSIENT     = 1U << 30,
 } rush_gfx_buffer_flags;
 

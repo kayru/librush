@@ -5,6 +5,8 @@
 #include "UtilFile.h"
 #include "UtilImage.h"
 
+#include <cstring>
+
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
 #include "WindowMac.h"
@@ -154,6 +156,34 @@ static MTLPrimitiveType convertPrimitiveType(GfxPrimitive primitiveType)
 	}
 }
 
+static MTLAttributeFormat convertRayTracingVertexFormat(GfxFormat format)
+{
+	switch (format)
+	{
+	default:
+		Log::error("Unsupported ray tracing vertex format");
+		return MTLAttributeFormatInvalid;
+	case GfxFormat_RGB32_Float:
+		return MTLAttributeFormatFloat3;
+	case GfxFormat_RGBA32_Float:
+		return MTLAttributeFormatFloat4;
+	}
+}
+
+static MTLIndexType convertRayTracingIndexType(GfxFormat format)
+{
+	switch (format)
+	{
+	default:
+		Log::error("Unsupported ray tracing index format");
+		return MTLIndexTypeUInt32;
+	case GfxFormat_R32_Uint:
+		return MTLIndexTypeUInt32;
+	case GfxFormat_R16_Uint:
+		return MTLIndexTypeUInt16;
+	}
+}
+
 GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 {
 	auto window = static_cast<WindowMac*>(_window);
@@ -195,6 +225,18 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	m_caps.pushConstants = true;
 	m_caps.instancing = true;
 	m_caps.drawIndirect = true;
+	if ([m_metalDevice respondsToSelector:@selector(supportsRaytracing)])
+	{
+		const bool supportsRaytracing = [m_metalDevice supportsRaytracing];
+		m_caps.rayTracingPipeline = supportsRaytracing;
+		m_caps.rayTracingInline = supportsRaytracing;
+	}
+	else
+	{
+		m_caps.rayTracingPipeline = false;
+		m_caps.rayTracingInline = false;
+	}
+	m_caps.rayTracing = m_caps.rayTracingPipeline || m_caps.rayTracingInline;
 
 	m_caps.colorSampleCounts = 1;
 	m_caps.depthSampleCounts = 1;
@@ -439,7 +481,33 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 
 void Gfx_Finish()
 {
-	Log::error("Not implemented");
+	if (!g_device || !g_device->m_commandBuffer)
+	{
+		return;
+	}
+
+	// Ensure any active encoders are closed before committing.
+	if (g_context)
+	{
+		if (g_context->m_commandEncoder)
+		{
+			[g_context->m_commandEncoder endEncoding];
+			[g_context->m_commandEncoder release];
+			g_context->m_commandEncoder = nil;
+		}
+		if (g_context->m_computeCommandEncoder)
+		{
+			[g_context->m_computeCommandEncoder endEncoding];
+			[g_context->m_computeCommandEncoder release];
+			g_context->m_computeCommandEncoder = nil;
+		}
+	}
+
+	[g_device->m_commandBuffer commit];
+	[g_device->m_commandBuffer waitUntilCompleted];
+	[g_device->m_commandBuffer release];
+	g_device->m_commandBuffer = [g_device->m_commandQueue commandBuffer];
+	[g_device->m_commandBuffer retain];
 }
 
 const GfxCapability& Gfx_GetCapability()
@@ -629,6 +697,17 @@ void TechniqueMTL::destroy()
 	[computePipeline release];
 }
 
+void RayTracingPipelineMTL::destroy()
+{
+	defaultDescriptorSet.destroy();
+	[rayGenPipeline release];
+	rayGenPipeline = nil;
+	rayGen.destroy();
+	miss.destroy();
+	closestHit.destroy();
+	anyHit.destroy();
+}
+
 GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 {
 	RUSH_ASSERT(desc.vs.valid() || desc.cs.valid());
@@ -688,9 +767,138 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.techniques, result));
 }
 
+GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc)
+{
+	if (desc.rayGen.empty())
+	{
+		Log::error("Ray generation shader must be provided");
+		return InvalidResourceHandle();
+	}
+
+	RayTracingPipelineMTL result;
+	result.uniqueId = g_device->generateId();
+	result.bindings = desc.bindings;
+	result.maxRecursionDepth = desc.maxRecursionDepth;
+
+	result.rayGen = ShaderMTL::create(desc.rayGen);
+	if (!result.rayGen.function)
+	{
+		result.rayGen.destroy();
+		return InvalidResourceHandle();
+	}
+
+	if (!desc.miss.empty())
+	{
+		result.miss = ShaderMTL::create(desc.miss);
+	}
+
+	if (!desc.closestHit.empty())
+	{
+		result.closestHit = ShaderMTL::create(desc.closestHit);
+	}
+
+	if (!desc.anyHit.empty())
+	{
+		result.anyHit = ShaderMTL::create(desc.anyHit);
+	}
+
+	MTLComputePipelineDescriptor* pipelineDesc = [MTLComputePipelineDescriptor new];
+	pipelineDesc.computeFunction = result.rayGen.function;
+	if ([pipelineDesc respondsToSelector:@selector(setMaxCallStackDepth:)])
+	{
+		pipelineDesc.maxCallStackDepth = desc.maxRecursionDepth;
+	}
+
+	NSMutableArray<id<MTLFunction>>* linkedFunctions = [NSMutableArray new];
+	if (result.miss.function)
+	{
+		[linkedFunctions addObject:result.miss.function];
+	}
+	if (result.closestHit.function)
+	{
+		[linkedFunctions addObject:result.closestHit.function];
+	}
+	if (result.anyHit.function)
+	{
+		[linkedFunctions addObject:result.anyHit.function];
+	}
+
+	if ([linkedFunctions count] > 0)
+	{
+		MTLLinkedFunctions* linked = [MTLLinkedFunctions linkedFunctions];
+		linked.functions = linkedFunctions;
+		pipelineDesc.linkedFunctions = linked;
+	}
+	[linkedFunctions release];
+
+	NSError* error = nullptr;
+	result.rayGenPipeline = [g_metalDevice newComputePipelineStateWithDescriptor:pipelineDesc
+		options:MTLPipelineOptionNone
+		reflection:nil
+		error:&error];
+	[pipelineDesc release];
+
+	if (error)
+	{
+		Log::error("Failed to create ray tracing pipeline state: %s",
+			[error.localizedDescription cStringUsingEncoding:NSASCIIStringEncoding]);
+		result.destroy();
+		return InvalidResourceHandle();
+	}
+
+	const auto& dsetDesc = desc.bindings.descriptorSets[0];
+	for (u32 i = 0; i < GfxShaderBindingDesc::MaxDescriptorSets; ++i)
+	{
+		if (!desc.bindings.descriptorSets[i].isEmpty())
+		{
+			result.descriptorSetCount = i + 1;
+		}
+	}
+	result.defaultDescriptorSet = createDescriptorSet(dsetDesc);
+
+	return GfxDevice::makeOwn(retainResource(g_device->m_resources.rayTracingPipelines, result));
+}
+
+const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg, GfxRayTracingShaderType, u32)
+{
+	Log::error("Ray tracing shader handles are not supported on Metal");
+	return nullptr;
+}
+
 void Gfx_Release(GfxTechnique h)
 {
 	releaseResource(g_device->m_resources.techniques, h);
+}
+
+void Gfx_Retain(GfxRayTracingPipeline h)
+{
+	g_device->m_resources.rayTracingPipelines[h].addReference();
+}
+
+void Gfx_Release(GfxRayTracingPipeline h)
+{
+	releaseResource(g_device->m_resources.rayTracingPipelines, h);
+}
+
+void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxBufferArg hitGroups, u32 width, u32 height, u32 depth)
+{
+	RUSH_ASSERT_MSG(rc->m_commandEncoder == nil, "Can't execute ray tracing inside graphics render pass!");
+	(void)hitGroups;
+
+	if (rc->m_pendingRayTracingPipeline != pipelineHandle)
+	{
+		rc->m_pendingTechnique.reset();
+		rc->m_pendingRayTracingPipeline.retain(pipelineHandle);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline
+			| GfxContext::DirtyStateFlag_Descriptors
+			| GfxContext::DirtyStateFlag_DescriptorSet;
+	}
+
+	rc->applyState();
+
+	[rc->m_computeCommandEncoder
+		dispatchThreadgroups:MTLSizeMake(width, height, depth)
+		threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
 }
 
 // texture
@@ -733,8 +941,12 @@ static MTLPixelFormat convertPixelFormat(GfxFormat format)
 			return MTLPixelFormatRGBA32Float;
 		case GfxFormat_RGBA8_Unorm:
 			return MTLPixelFormatRGBA8Unorm;
+		case GfxFormat_RGBA8_sRGB:
+			return MTLPixelFormatRGBA8Unorm_sRGB;
 		case GfxFormat_BGRA8_Unorm:
 			return MTLPixelFormatBGRA8Unorm;
+		case GfxFormat_BGRA8_sRGB:
+			return MTLPixelFormatBGRA8Unorm_sRGB;
 		case GfxFormat_BC1_Unorm:
 			return MTLPixelFormatBC1_RGBA;
 		case GfxFormat_BC1_Unorm_sRGB:
@@ -774,6 +986,13 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 	textureDescriptor.height = desc.height;
 	textureDescriptor.depth = desc.isArray() ? 1 : desc.depth;
 	textureDescriptor.pixelFormat = convertPixelFormat(desc.format);
+	if (textureDescriptor.pixelFormat == MTLPixelFormatInvalid)
+	{
+		Log::error("Invalid pixel format %u for texture '%s'", u32(desc.format),
+		    desc.debugName ? desc.debugName : "<unnamed>");
+		[textureDescriptor release];
+		return result;
+	}
 	textureDescriptor.mipmapLevelCount = desc.samples > 1 ? 1 : desc.mips;
 	textureDescriptor.sampleCount = desc.samples > 0 ? desc.samples : 1;
 	textureDescriptor.arrayLength = desc.isArray() ? desc.depth : 1;
@@ -1020,19 +1239,36 @@ void BufferMTL::destroy()
 	[native release];
 }
 
+void AccelerationStructureMTL::destroy()
+{
+	[instancedAccelerationStructures release];
+	[instanceBuffer release];
+	[scratchBuffer release];
+	[native release];
+}
+
 GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 {
 	const u32 bufferSize = desc.count * desc.stride;
 
 	BufferMTL res;
 	res.uniqueId = g_device->generateId();
+
+	MTLResourceOptions options = 0;
+#if TARGET_OS_OSX
+	if (!!(desc.flags & GfxBufferFlags::CpuRead))
+	{
+		options = MTLResourceStorageModeShared;
+	}
+#endif
+
 	if (data)
 	{
-		res.native = [g_metalDevice newBufferWithBytes:data length:bufferSize options:0];
+		res.native = [g_metalDevice newBufferWithBytes:data length:bufferSize options:options];
 	}
 	else
 	{
-		res.native = [g_metalDevice newBufferWithLength:bufferSize options:0];
+		res.native = [g_metalDevice newBufferWithLength:bufferSize options:options];
 	}
 
 	if (!!(desc.flags & GfxBufferFlags::Index))
@@ -1136,18 +1372,348 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 {
-	Log::error("Not implemented");
-	return nullptr;
+	if (!h.valid())
+	{
+		return nullptr;
+	}
+
+	BufferMTL& buffer = g_device->m_resources.buffers[h];
+	if (size == 0 && buffer.native)
+	{
+		size = (u32)[buffer.native length];
+	}
+
+	if (!buffer.native || (size > 0 && [buffer.native length] < size))
+	{
+		[buffer.native release];
+		buffer.native = [g_metalDevice newBufferWithLength:size options:0];
+	}
+
+	void* base = buffer.native ? [buffer.native contents] : nullptr;
+	if (!base)
+	{
+		Log::error("Gfx_BeginUpdateBuffer: buffer contents unavailable");
+		return nullptr;
+	}
+
+	return base;
 }
 
 void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
 {
-	Log::error("Not implemented");
+	if (!h.valid())
+	{
+		return;
+	}
+
+	BufferMTL& buffer = g_device->m_resources.buffers[h];
+	[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
 }
 
 void Gfx_Release(GfxBuffer h)
 {
 	releaseResource(g_device->m_resources.buffers, h);
+}
+
+static MTLPrimitiveAccelerationStructureDescriptor* createPrimitiveAccelerationStructureDescriptor(
+    const DynamicArray<GfxRayTracingGeometryDesc>& geometries)
+{
+	MTLPrimitiveAccelerationStructureDescriptor* accelDesc = [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+	NSMutableArray<MTLAccelerationStructureGeometryDescriptor*>* geometryDescriptors =
+	    [NSMutableArray arrayWithCapacity:geometries.size()];
+
+	for (const auto& geometryDesc : geometries)
+	{
+		RUSH_ASSERT(geometryDesc.type == GfxRayTracingGeometryType::Triangles);
+		RUSH_ASSERT(
+		    geometryDesc.indexFormat == GfxFormat_R32_Uint || geometryDesc.indexFormat == GfxFormat_R16_Uint);
+
+		BufferMTL& vertexBuffer = g_device->m_resources.buffers[geometryDesc.vertexBuffer];
+		BufferMTL& indexBuffer = g_device->m_resources.buffers[geometryDesc.indexBuffer];
+
+		MTLAccelerationStructureTriangleGeometryDescriptor* triangle =
+		    [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+		triangle.vertexBuffer = vertexBuffer.native;
+		triangle.vertexBufferOffset = geometryDesc.vertexBufferOffset;
+		triangle.vertexFormat = convertRayTracingVertexFormat(geometryDesc.vertexFormat);
+		triangle.vertexStride = geometryDesc.vertexStride;
+		triangle.indexBuffer = indexBuffer.native;
+		triangle.indexBufferOffset = geometryDesc.indexBufferOffset;
+		triangle.indexType = convertRayTracingIndexType(geometryDesc.indexFormat);
+		triangle.triangleCount = geometryDesc.indexCount / 3;
+		triangle.opaque = geometryDesc.isOpaque ? YES : NO;
+
+		if (geometryDesc.transformBuffer.valid())
+		{
+			BufferMTL& transformBuffer = g_device->m_resources.buffers[geometryDesc.transformBuffer];
+			triangle.transformationMatrixBuffer = transformBuffer.native;
+			triangle.transformationMatrixBufferOffset = geometryDesc.transformBufferOffset;
+		}
+
+		[geometryDescriptors addObject:triangle];
+	}
+
+	accelDesc.geometryDescriptors = geometryDescriptors;
+	return accelDesc;
+}
+
+static void ensureAccelerationStructureResources(
+	AccelerationStructureMTL& accel,
+	MTLAccelerationStructureDescriptor* descriptor)
+{
+	MTLAccelerationStructureSizes sizes = [g_metalDevice accelerationStructureSizesWithDescriptor:descriptor];
+	if (!accel.native || sizes.accelerationStructureSize > accel.accelerationStructureSize)
+	{
+		[accel.native release];
+		accel.native = [g_metalDevice newAccelerationStructureWithSize:sizes.accelerationStructureSize];
+		accel.accelerationStructureSize = sizes.accelerationStructureSize;
+	}
+
+	if (sizes.buildScratchBufferSize == 0)
+	{
+		[accel.scratchBuffer release];
+		accel.scratchBuffer = nil;
+		accel.scratchBufferSize = 0;
+		return;
+	}
+
+	if (!accel.scratchBuffer || sizes.buildScratchBufferSize > accel.scratchBufferSize)
+	{
+		[accel.scratchBuffer release];
+		accel.scratchBuffer = [g_metalDevice newBufferWithLength:sizes.buildScratchBufferSize
+			options:MTLResourceStorageModePrivate];
+		accel.scratchBufferSize = sizes.buildScratchBufferSize;
+	}
+}
+
+static void convertInstanceTransform(const float* rowMajor3x4, MTLPackedFloat4x3& outMatrix)
+{
+	// Convert row-major 3x4 (Vulkan-style) to column-major 4x3 (Metal).
+	const float m00 = rowMajor3x4[0];
+	const float m01 = rowMajor3x4[1];
+	const float m02 = rowMajor3x4[2];
+	const float m03 = rowMajor3x4[3];
+	const float m10 = rowMajor3x4[4];
+	const float m11 = rowMajor3x4[5];
+	const float m12 = rowMajor3x4[6];
+	const float m13 = rowMajor3x4[7];
+	const float m20 = rowMajor3x4[8];
+	const float m21 = rowMajor3x4[9];
+	const float m22 = rowMajor3x4[10];
+	const float m23 = rowMajor3x4[11];
+
+	outMatrix.columns[0].x = m00;
+	outMatrix.columns[0].y = m10;
+	outMatrix.columns[0].z = m20;
+	outMatrix.columns[1].x = m01;
+	outMatrix.columns[1].y = m11;
+	outMatrix.columns[1].z = m21;
+	outMatrix.columns[2].x = m02;
+	outMatrix.columns[2].y = m12;
+	outMatrix.columns[2].z = m22;
+	outMatrix.columns[3].x = m03;
+	outMatrix.columns[3].y = m13;
+	outMatrix.columns[3].z = m23;
+}
+
+static bool findOrAppendInstanceAccelerationStructure(
+	NSMutableArray<id<MTLAccelerationStructure>>* instances,
+	DynamicArray<u64>& handles,
+	u64 handle,
+	u32& outIndex)
+{
+	if (handle == 0)
+	{
+		return false;
+	}
+
+	for (u32 i = 0; i < handles.size(); ++i)
+	{
+		if (handles[i] == handle)
+		{
+			outIndex = i;
+			return true;
+		}
+	}
+
+	handles.push_back(handle);
+	outIndex = u32(handles.size() - 1);
+	GfxAccelerationStructure accelHandle(UntypedResourceHandle(
+	    static_cast<UntypedResourceHandle::IndexType>(handle)));
+	AccelerationStructureMTL& blas = g_device->m_resources.accelerationStructures[accelHandle];
+	[instances addObject:blas.native];
+	return true;
+}
+
+GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccelerationStructureDesc& desc)
+{
+	AccelerationStructureMTL result;
+	result.uniqueId = g_device->generateId();
+	result.type = desc.type;
+	result.instanceCount = desc.instanceCount;
+
+	if (desc.type == GfxAccelerationStructureType::BottomLevel)
+	{
+		result.geometries.resize(desc.geometyCount);
+		for (u32 i = 0; i < desc.geometyCount; ++i)
+		{
+			result.geometries[i] = desc.geometries[i];
+		}
+
+		MTLPrimitiveAccelerationStructureDescriptor* accelDesc =
+		    createPrimitiveAccelerationStructureDescriptor(result.geometries);
+		ensureAccelerationStructureResources(result, accelDesc);
+	}
+	else if (desc.type == GfxAccelerationStructureType::TopLevel)
+	{
+		MTLInstanceAccelerationStructureDescriptor* accelDesc = [MTLInstanceAccelerationStructureDescriptor descriptor];
+		accelDesc.instanceCount = desc.instanceCount;
+		accelDesc.instanceDescriptorStride = sizeof(MTLAccelerationStructureInstanceDescriptor);
+		accelDesc.instancedAccelerationStructures = [NSArray array];
+		if ([accelDesc respondsToSelector:@selector(setInstanceDescriptorType:)])
+		{
+			accelDesc.instanceDescriptorType = MTLAccelerationStructureInstanceDescriptorTypeDefault;
+		}
+		ensureAccelerationStructureResources(result, accelDesc);
+	}
+	else
+	{
+		Log::error("Unexpected acceleration structure type");
+	}
+
+	return GfxDevice::makeOwn(retainResource(g_device->m_resources.accelerationStructures, result));
+}
+
+u64 Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h)
+{
+	GfxAccelerationStructure handle = h;
+	return handle.valid() ? handle.index() : 0;
+}
+
+void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer)
+{
+	AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[h];
+
+	if (accel.type == GfxAccelerationStructureType::BottomLevel)
+	{
+		MTLPrimitiveAccelerationStructureDescriptor* accelDesc =
+		    createPrimitiveAccelerationStructureDescriptor(accel.geometries);
+		ensureAccelerationStructureResources(accel, accelDesc);
+
+		id<MTLAccelerationStructureCommandEncoder> encoder =
+		    [g_device->m_commandBuffer accelerationStructureCommandEncoder];
+		for (const auto& geometryDesc : accel.geometries)
+		{
+			if (geometryDesc.vertexBuffer.valid())
+			{
+				BufferMTL& vertexBuffer = g_device->m_resources.buffers[geometryDesc.vertexBuffer];
+				[encoder useResource:vertexBuffer.native usage:MTLResourceUsageRead];
+			}
+			if (geometryDesc.indexBuffer.valid())
+			{
+				BufferMTL& indexBuffer = g_device->m_resources.buffers[geometryDesc.indexBuffer];
+				[encoder useResource:indexBuffer.native usage:MTLResourceUsageRead];
+			}
+			if (geometryDesc.transformBuffer.valid())
+			{
+				BufferMTL& transformBuffer = g_device->m_resources.buffers[geometryDesc.transformBuffer];
+				[encoder useResource:transformBuffer.native usage:MTLResourceUsageRead];
+			}
+		}
+		[encoder buildAccelerationStructure:accel.native
+		         descriptor:accelDesc
+		       scratchBuffer:accel.scratchBuffer
+		 scratchBufferOffset:0];
+		[encoder endEncoding];
+	}
+	else if (accel.type == GfxAccelerationStructureType::TopLevel)
+	{
+		if (!instanceBuffer.valid())
+		{
+			Log::error("TLAS build requires an instance buffer");
+			return;
+		}
+
+		BufferMTL& instanceBufferMTL = g_device->m_resources.buffers[instanceBuffer];
+		const GfxRayTracingInstanceDesc* srcInstances =
+		    static_cast<const GfxRayTracingInstanceDesc*>([instanceBufferMTL.native contents]);
+		if (!srcInstances)
+		{
+			Log::error("Instance buffer contents unavailable");
+			return;
+		}
+
+		DynamicArray<MTLAccelerationStructureInstanceDescriptor> instances;
+		instances.resize(accel.instanceCount);
+
+		DynamicArray<u64> uniqueHandles;
+		uniqueHandles.reserve(accel.instanceCount);
+		NSMutableArray<id<MTLAccelerationStructure>>* instancedAccelerationStructures = [NSMutableArray new];
+
+	for (u32 i = 0; i < accel.instanceCount; ++i)
+	{
+		u64 handle = srcInstances[i].accelerationStructureHandle;
+		u32 accelIndex = 0;
+		if (!findOrAppendInstanceAccelerationStructure(
+			instancedAccelerationStructures, uniqueHandles, handle, accelIndex))
+		{
+			Log::error("TLAS instance has invalid BLAS handle");
+			continue;
+		}
+
+		MTLAccelerationStructureInstanceDescriptor& dst = instances[i];
+			memset(&dst, 0, sizeof(dst));
+			convertInstanceTransform(srcInstances[i].transform, dst.transformationMatrix);
+			dst.options = MTLAccelerationStructureInstanceOptionNone;
+			dst.mask = srcInstances[i].instanceMask;
+			dst.intersectionFunctionTableOffset = srcInstances[i].instanceContributionToHitGroupIndex;
+			dst.accelerationStructureIndex = accelIndex;
+		}
+
+		[accel.instanceBuffer release];
+		accel.instanceBuffer = [g_metalDevice newBufferWithBytes:instances.data()
+			length:instances.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
+			options:0];
+
+		[accel.instancedAccelerationStructures release];
+		accel.instancedAccelerationStructures = [instancedAccelerationStructures copy];
+		[instancedAccelerationStructures release];
+
+		MTLInstanceAccelerationStructureDescriptor* accelDesc = [MTLInstanceAccelerationStructureDescriptor descriptor];
+		accelDesc.instanceDescriptorBuffer = accel.instanceBuffer;
+		accelDesc.instanceCount = accel.instanceCount;
+		accelDesc.instanceDescriptorStride = sizeof(MTLAccelerationStructureInstanceDescriptor);
+		accelDesc.instancedAccelerationStructures = accel.instancedAccelerationStructures;
+		if ([accelDesc respondsToSelector:@selector(setInstanceDescriptorType:)])
+		{
+			accelDesc.instanceDescriptorType = MTLAccelerationStructureInstanceDescriptorTypeDefault;
+		}
+
+		ensureAccelerationStructureResources(accel, accelDesc);
+
+		id<MTLAccelerationStructureCommandEncoder> encoder =
+		    [g_device->m_commandBuffer accelerationStructureCommandEncoder];
+		[encoder useResource:accel.instanceBuffer usage:MTLResourceUsageRead];
+		for (id<MTLAccelerationStructure> blas in accel.instancedAccelerationStructures)
+		{
+			[encoder useResource:blas usage:MTLResourceUsageRead];
+		}
+		[encoder buildAccelerationStructure:accel.native
+		         descriptor:accelDesc
+		       scratchBuffer:accel.scratchBuffer
+		 scratchBufferOffset:0];
+		[encoder endEncoding];
+	}
+}
+
+void Gfx_Retain(GfxAccelerationStructure h)
+{
+	g_device->m_resources.accelerationStructures[h].addReference();
+}
+
+void Gfx_Release(GfxAccelerationStructure h)
+{
+	releaseResource(g_device->m_resources.accelerationStructures, h);
 }
 
 // context
@@ -1233,144 +1799,206 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 		 usage:MTLResourceUsageRead];
 	}
 
-	// FIXME: RW resources may be read; should include MTLResourceUsageRead when needed.
 	for (u64 j=0; j<ds.storageImages.size(); ++j)
 	{
 		[commandEncoder
 		 useResource:g_device->m_resources.textures[ds.storageImages[j]].native
-		 usage:MTLResourceUsageWrite];
+		 usage:MTLResourceUsageRead | MTLResourceUsageWrite];
 	}
 
-	// FIXME: RW resources may be read; should include MTLResourceUsageRead when needed.
 	for (u64 j=0; j<ds.storageBuffers.size(); ++j)
 	{
 		[commandEncoder
 		 useResource:g_device->m_resources.buffers[ds.storageBuffers[j]].native
-		 usage:MTLResourceUsageWrite];
+		 usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+	}
+
+	for (u64 j=0; j<ds.accelerationStructures.size(); ++j)
+	{
+		AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[ds.accelerationStructures[j]];
+		if (accel.native)
+		{
+			[commandEncoder useResource:accel.native usage:MTLResourceUsageRead];
+		}
+		if (accel.instanceBuffer)
+		{
+			[commandEncoder useResource:accel.instanceBuffer usage:MTLResourceUsageRead];
+		}
+		if (accel.instancedAccelerationStructures)
+		{
+			for (id<MTLAccelerationStructure> blas in accel.instancedAccelerationStructures)
+			{
+				[commandEncoder useResource:blas usage:MTLResourceUsageRead];
+			}
+		}
 	}
 }
 
 void GfxContext::applyState()
 {
 	// TODO: cache pipelines
-
-	TechniqueMTL& technique = g_device->m_resources.techniques[m_pendingTechnique.get()];
-
-	if ((m_dirtyState & DirtyStateFlag_Pipeline) && technique.computePipeline)
+	if (m_dirtyState == 0)
 	{
-		if (!m_computeCommandEncoder)
-		{
-			m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
-			[m_computeCommandEncoder retain];
-		}
-
-		[m_computeCommandEncoder setComputePipelineState:technique.computePipeline];
+		return;
 	}
-	else if (m_dirtyState & DirtyStateFlag_Pipeline)
+
+	const bool useRayTracing = m_pendingRayTracingPipeline.valid();
+	const bool useTechnique = m_pendingTechnique.valid();
+	RUSH_ASSERT(useRayTracing || useTechnique);
+
+	TechniqueMTL* technique = nullptr;
+	RayTracingPipelineMTL* rayTracingPipeline = nullptr;
+	const GfxShaderBindingDesc* bindingDesc = nullptr;
+	DescriptorSetMTL* defaultDescriptorSet = nullptr;
+	u32 descriptorSetCount = 0;
+
+	if (useRayTracing)
 	{
-		MTLRenderPipelineDescriptor* pipelineDescriptor = [MTLRenderPipelineDescriptor new];
+		rayTracingPipeline = &g_device->m_resources.rayTracingPipelines[m_pendingRayTracingPipeline.get()];
+		bindingDesc = &rayTracingPipeline->bindings;
+		defaultDescriptorSet = &rayTracingPipeline->defaultDescriptorSet;
+		descriptorSetCount = rayTracingPipeline->descriptorSetCount;
+	}
+	else
+	{
+		technique = &g_device->m_resources.techniques[m_pendingTechnique.get()];
+		bindingDesc = &technique->desc.bindings;
+		defaultDescriptorSet = &technique->defaultDescriptorSet;
+		descriptorSetCount = technique->descriptorSetCount;
+	}
 
-		const auto& vertexFormat = g_device->m_resources.vertexFormats[technique.vf.get()];
-		const auto& vertexShader = g_device->m_resources.shaders[technique.vs.get()];
-		const auto& pixelShader = g_device->m_resources.shaders[technique.ps.get()];
+	if ((m_dirtyState & DirtyStateFlag_Pipeline) && bindingDesc->useDefaultDescriptorSet)
+	{
+		m_dirtyState |= DirtyStateFlag_Descriptors;
+	}
 
-		pipelineDescriptor.inputPrimitiveTopology = m_primitiveTopology;
-		pipelineDescriptor.vertexDescriptor = vertexFormat.native;
-		pipelineDescriptor.vertexFunction = vertexShader.function;
-		pipelineDescriptor.fragmentFunction = pixelShader.function;
-
-		if (m_passDesc.depth.valid())
+	if (m_dirtyState & DirtyStateFlag_Pipeline)
+	{
+		if (useRayTracing)
 		{
-			pipelineDescriptor.depthAttachmentPixelFormat =
-				[g_device->m_resources.textures[m_passDesc.depth].native pixelFormat];
+			if (!m_computeCommandEncoder)
+			{
+				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
+				[m_computeCommandEncoder retain];
+			}
+			[m_computeCommandEncoder setComputePipelineState:rayTracingPipeline->rayGenPipeline];
+		}
+		else if (technique->computePipeline)
+		{
+			if (!m_computeCommandEncoder)
+			{
+				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
+				[m_computeCommandEncoder retain];
+			}
+
+			[m_computeCommandEncoder setComputePipelineState:technique->computePipeline];
 		}
 		else
 		{
-			pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
-		}
+			MTLRenderPipelineDescriptor* pipelineDescriptor = [MTLRenderPipelineDescriptor new];
 
-		const auto& blendState = g_device->m_resources.blendStates[m_pendingBlendState.get()].desc;
+			const auto& vertexFormat = g_device->m_resources.vertexFormats[technique->vf.get()];
+			const auto& vertexShader = g_device->m_resources.shaders[technique->vs.get()];
+			const auto& pixelShader = g_device->m_resources.shaders[technique->ps.get()];
 
-		const bool useBackBuffer = !m_passDesc.color[0].valid() && !m_passDesc.depth.valid();
-		u32 sampleCount = 1;
-		if (!useBackBuffer)
-		{
-			if (m_passDesc.color[0].valid())
+			pipelineDescriptor.inputPrimitiveTopology = m_primitiveTopology;
+			pipelineDescriptor.vertexDescriptor = vertexFormat.native;
+			pipelineDescriptor.vertexFunction = vertexShader.function;
+			pipelineDescriptor.fragmentFunction = pixelShader.function;
+
+			if (m_passDesc.depth.valid())
 			{
-				sampleCount = g_device->m_resources.textures[m_passDesc.color[0]].desc.samples;
-			}
-			else if (m_passDesc.depth.valid())
-			{
-				sampleCount = g_device->m_resources.textures[m_passDesc.depth].desc.samples;
-			}
-		}
-		const u32 rasterSamples = sampleCount > 0 ? sampleCount : 1;
-#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000
-		pipelineDescriptor.rasterSampleCount = rasterSamples;
-#else
-		pipelineDescriptor.sampleCount = rasterSamples;
-#endif
-
-		for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
-		{
-			if ((!useBackBuffer || i!=0) && !m_passDesc.color[i].valid())
-			{
-				break;
-			}
-
-			auto colorTarget = m_passDesc.color[i].valid() ? g_device->m_resources.textures[m_passDesc.color[i]].native : g_device->m_backBufferTexture;
-
-			pipelineDescriptor.colorAttachments[i].pixelFormat = [colorTarget pixelFormat];
-			// TODO: per-RT blend states
-			pipelineDescriptor.colorAttachments[i].blendingEnabled = blendState.enable;
-			pipelineDescriptor.colorAttachments[i].rgbBlendOperation = convertBlendOp(blendState.op);
-			pipelineDescriptor.colorAttachments[i].sourceRGBBlendFactor = convertBlendParam(blendState.src);
-			pipelineDescriptor.colorAttachments[i].destinationRGBBlendFactor = convertBlendParam(blendState.dst);
-			if (blendState.alphaSeparate)
-			{
-				pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.alphaOp);
-				pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.alphaSrc);
-				pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.alphaDst);
+				pipelineDescriptor.depthAttachmentPixelFormat =
+					[g_device->m_resources.textures[m_passDesc.depth].native pixelFormat];
 			}
 			else
 			{
-				pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.op);
-				pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.src);
-				pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.dst);
+				pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
 			}
-		}
 
-		NSError* error = nullptr;
-		id<MTLRenderPipelineState> pipelineState = [g_metalDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&error];
-		if (error)
-		{
-			Log::error("Failed to create render pipeline state: %s",
-				[error.localizedDescription cStringUsingEncoding:NSASCIIStringEncoding]);
-		}
+			const auto& blendState = g_device->m_resources.blendStates[m_pendingBlendState.get()].desc;
 
-		[m_commandEncoder setRenderPipelineState:pipelineState];
-		if (m_pendingDepthStencilState.valid())
-		{
-			const auto& state = g_device->m_resources.depthStencilStates[m_pendingDepthStencilState.get()];
-			[m_commandEncoder setDepthStencilState:state.native];
-		}
-		else
-		{
-			[m_commandEncoder setDepthStencilState:m_depthStencilState];
-		}
+			const bool useBackBuffer = !m_passDesc.color[0].valid() && !m_passDesc.depth.valid();
+			u32 sampleCount = 1;
+			if (!useBackBuffer)
+			{
+				if (m_passDesc.color[0].valid())
+				{
+					sampleCount = g_device->m_resources.textures[m_passDesc.color[0]].desc.samples;
+				}
+				else if (m_passDesc.depth.valid())
+				{
+					sampleCount = g_device->m_resources.textures[m_passDesc.depth].desc.samples;
+				}
+			}
+			const u32 rasterSamples = sampleCount > 0 ? sampleCount : 1;
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000
+			pipelineDescriptor.rasterSampleCount = rasterSamples;
+#else
+			pipelineDescriptor.sampleCount = rasterSamples;
+#endif
 
-		if (m_pendingRasterizerState.valid())
-		{
-			const auto& desc = g_device->m_resources.rasterizerStates[m_pendingRasterizerState.get()].desc;
-			MTLCullMode cullMode = desc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
-			[m_commandEncoder setCullMode:cullMode];
-			[m_commandEncoder setFrontFacingWinding:desc.cullMode == GfxCullMode::CCW ? MTLWindingCounterClockwise : MTLWindingClockwise];
-			[m_commandEncoder setTriangleFillMode:desc.fillMode == GfxFillMode::Solid ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
-			[m_commandEncoder setDepthBias:desc.depthBias slopeScale:desc.depthBiasSlopeScale clamp:1.0f];
-		}
+			for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
+			{
+				if ((!useBackBuffer || i!=0) && !m_passDesc.color[i].valid())
+				{
+					break;
+				}
 
-		[pipelineState release];
-		[pipelineDescriptor release];
+				auto colorTarget = m_passDesc.color[i].valid() ? g_device->m_resources.textures[m_passDesc.color[i]].native : g_device->m_backBufferTexture;
+
+				pipelineDescriptor.colorAttachments[i].pixelFormat = [colorTarget pixelFormat];
+				// TODO: per-RT blend states
+				pipelineDescriptor.colorAttachments[i].blendingEnabled = blendState.enable;
+				pipelineDescriptor.colorAttachments[i].rgbBlendOperation = convertBlendOp(blendState.op);
+				pipelineDescriptor.colorAttachments[i].sourceRGBBlendFactor = convertBlendParam(blendState.src);
+				pipelineDescriptor.colorAttachments[i].destinationRGBBlendFactor = convertBlendParam(blendState.dst);
+				if (blendState.alphaSeparate)
+				{
+					pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.alphaOp);
+					pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.alphaSrc);
+					pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.alphaDst);
+				}
+				else
+				{
+					pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.op);
+					pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.src);
+					pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.dst);
+				}
+			}
+
+			NSError* error = nullptr;
+			id<MTLRenderPipelineState> pipelineState = [g_metalDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&error];
+			if (error)
+			{
+				Log::error("Failed to create render pipeline state: %s",
+					[error.localizedDescription cStringUsingEncoding:NSASCIIStringEncoding]);
+			}
+
+			[m_commandEncoder setRenderPipelineState:pipelineState];
+			if (m_pendingDepthStencilState.valid())
+			{
+				const auto& state = g_device->m_resources.depthStencilStates[m_pendingDepthStencilState.get()];
+				[m_commandEncoder setDepthStencilState:state.native];
+			}
+			else
+			{
+				[m_commandEncoder setDepthStencilState:m_depthStencilState];
+			}
+
+			if (m_pendingRasterizerState.valid())
+			{
+				const auto& desc = g_device->m_resources.rasterizerStates[m_pendingRasterizerState.get()].desc;
+				MTLCullMode cullMode = desc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
+				[m_commandEncoder setCullMode:cullMode];
+				[m_commandEncoder setFrontFacingWinding:desc.cullMode == GfxCullMode::CCW ? MTLWindingCounterClockwise : MTLWindingClockwise];
+				[m_commandEncoder setTriangleFillMode:desc.fillMode == GfxFillMode::Solid ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
+				[m_commandEncoder setDepthBias:desc.depthBias slopeScale:desc.depthBiasSlopeScale clamp:1.0f];
+			}
+
+			[pipelineState release];
+			[pipelineDescriptor release];
+		}
 	}
 
 	if (m_dirtyState & DirtyStateFlag_Descriptors)
@@ -1380,8 +2008,9 @@ void GfxContext::applyState()
 		GfxTexture sampledImages[RUSH_COUNTOF(m_sampledImages)];
 		GfxTexture storageImages[RUSH_COUNTOF(m_storageImages)];
 		GfxBuffer storageBuffers[RUSH_COUNTOF(m_storageBuffers)];
+		GfxAccelerationStructure accelStructures[RUSH_COUNTOF(m_accelerationStructures)];
 
-		const auto& dsetDesc = technique.desc.bindings.descriptorSets[0];
+		const auto& dsetDesc = bindingDesc->descriptorSets[0];
 		for(u32 i=0; i<dsetDesc.constantBuffers; ++i)
 		{
 			constantBuffers[i] = m_constantBuffers[i].get();
@@ -1402,21 +2031,25 @@ void GfxContext::applyState()
 		{
 			storageBuffers[i] = m_storageBuffers[i].get();
 		}
+		for(u32 i=0; i<dsetDesc.accelerationStructures; ++i)
+		{
+			accelStructures[i] = m_accelerationStructures[i].get();
+		}
 		for(u32 i=0; i<dsetDesc.rwTypedBuffers; ++i)
 		{
 			//TODO: bind typed storage buffers
 		}
 
-		updateDescriptorSet(technique.defaultDescriptorSet,
+		updateDescriptorSet(*defaultDescriptorSet,
 							constantBuffers,
 							m_constantBufferOffsets,
 							samplers,
 							sampledImages,
 							storageImages,
 							storageBuffers,
-							nullptr);
+							accelStructures);
 
-		auto& ds = technique.defaultDescriptorSet;
+		auto& ds = *defaultDescriptorSet;
 
 		if (m_commandEncoder)
 		{
@@ -1436,8 +2069,8 @@ void GfxContext::applyState()
 	{
 		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 		{
-			u32 firstDescriptorSet = technique.desc.bindings.useDefaultDescriptorSet ? 1 : 0;
-			for (u32 i=firstDescriptorSet; i<technique.descriptorSetCount; ++i)
+			u32 firstDescriptorSet = bindingDesc->useDefaultDescriptorSet ? 1 : 0;
+			for (u32 i=firstDescriptorSet; i<descriptorSetCount; ++i)
 			{
 				DescriptorSetMTL& ds = g_device->m_resources.descriptorSets[m_descriptorSets[i].get()];
 				useResources(m_commandEncoder, ds);
@@ -1458,8 +2091,8 @@ void GfxContext::applyState()
 	{
 		if (m_dirtyState & DirtyStateFlag_DescriptorSet)
 		{
-			u32 firstDescriptorSet = technique.desc.bindings.useDefaultDescriptorSet ? 1 : 0;
-			for (u32 i=firstDescriptorSet; i<technique.descriptorSetCount; ++i)
+			u32 firstDescriptorSet = bindingDesc->useDefaultDescriptorSet ? 1 : 0;
+			for (u32 i=firstDescriptorSet; i<descriptorSetCount; ++i)
 			{
 				DescriptorSetMTL& ds = g_device->m_resources.descriptorSets[m_descriptorSets[i].get()];
 				useResources(m_computeCommandEncoder, ds);
@@ -1657,6 +2290,7 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 
 void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h)
 {
+	rc->m_pendingRayTracingPipeline.reset();
 	rc->m_pendingTechnique.retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline
 					 | GfxContext::DirtyStateFlag_VertexBuffer
@@ -1705,6 +2339,14 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 
 	rc->m_storageBuffers[idx].retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
+}
+
+void Gfx_SetAccelerationStructure(GfxContext* rc, u32 idx, GfxAccelerationStructureArg h)
+{
+	RUSH_ASSERT(idx < GfxContext::MaxAccelerationStructures);
+
+	rc->m_accelerationStructures[idx].retain(h);
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_AccelerationStructure;
 }
 
 void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h)
@@ -1999,6 +2641,7 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	res.desc = desc;
 
 	u32 argumentIndex = 0;
+	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
 
 	NSMutableArray<MTLArgumentDescriptor *>* descriptors = [NSMutableArray<MTLArgumentDescriptor *> new];
 	for(u32 i=0; i<desc.constantBuffers; ++i)
@@ -2024,15 +2667,29 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	}
 	res.samplers.resize(desc.samplers);
 
-	for(u32 i=0; i<desc.textures; ++i)
+	if (isTextureArray && desc.textures)
 	{
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
 		[descriptor setDataType: MTLDataTypeTexture];
 		[descriptor setIndex: argumentIndex];
 		[descriptor setAccess: MTLBindingAccessReadOnly];
 		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
+		[descriptor setArrayLength: desc.textures];
 		[descriptors addObject: descriptor];
-		++argumentIndex;
+		argumentIndex += desc.textures;
+	}
+	else
+	{
+		for(u32 i=0; i<desc.textures; ++i)
+		{
+			MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+			[descriptor setDataType: MTLDataTypeTexture];
+			[descriptor setIndex: argumentIndex];
+			[descriptor setAccess: MTLBindingAccessReadOnly];
+			[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
+			[descriptors addObject: descriptor];
+			++argumentIndex;
+		}
 	}
 	res.textures.resize(desc.textures);
 
@@ -2070,6 +2727,17 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	}
 
 	res.storageBuffers.resize(desc.rwBuffers + desc.rwTypedBuffers);
+
+	for(u32 i=0; i<desc.accelerationStructures; ++i)
+	{
+		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+		[descriptor setDataType: MTLDataTypeInstanceAccelerationStructure];
+		[descriptor setAccess: MTLBindingAccessReadOnly];
+		[descriptor setIndex: argumentIndex];
+		[descriptors addObject: descriptor];
+		++argumentIndex;
+	}
+	res.accelerationStructures.resize(desc.accelerationStructures);
 
 	res.encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
 	res.argBufferSize = [res.encoder encodedLength];
@@ -2117,13 +2785,16 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 {
 	const GfxDescriptorSetDesc& desc = ds.desc;
 
-	[ds.argBuffer release];
-
-	ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
+	if (!ds.argBuffer || [ds.argBuffer length] < ds.argBufferSize)
+	{
+		[ds.argBuffer release];
+		ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
+	}
 
 	[ds.encoder setArgumentBuffer:ds.argBuffer offset:0];
 
 	u32 idxOffset = 0;
+	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
 
 	for(u32 i=0; i<desc.constantBuffers; ++i)
 	{
@@ -2143,14 +2814,28 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	}
 	idxOffset += desc.samplers;
 
-	for(u32 i=0; i<desc.textures; ++i)
+	if (isTextureArray && desc.textures)
 	{
-		TextureMTL& tex = g_device->m_resources.textures[textures[i]];
-		//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
-		ds.textures[i] = textures[i];
-		[ds.encoder setTexture:tex.native atIndex:idxOffset+i];
+		for(u32 i=0; i<desc.textures; ++i)
+		{
+			TextureMTL& tex = g_device->m_resources.textures[textures[i]];
+			//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
+			ds.textures[i] = textures[i];
+			[ds.encoder setTexture:tex.native atIndex:idxOffset + i];
+		}
+		idxOffset += desc.textures;
 	}
-	idxOffset += desc.textures;
+	else
+	{
+		for(u32 i=0; i<desc.textures; ++i)
+		{
+			TextureMTL& tex = g_device->m_resources.textures[textures[i]];
+			//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
+			ds.textures[i] = textures[i];
+			[ds.encoder setTexture:tex.native atIndex:idxOffset+i];
+		}
+		idxOffset += desc.textures;
+	}
 
 	for(u32 i=0; i<desc.rwImages; ++i)
 	{
@@ -2176,6 +2861,15 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		[ds.encoder setBuffer:buf.native offset:0 atIndex:idxOffset+i];
 	}
 	idxOffset += desc.rwTypedBuffers;
+
+	for(u32 i=0; i<desc.accelerationStructures; ++i)
+	{
+		RUSH_ASSERT(accelStructures);
+		AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[accelStructures[i]];
+		ds.accelerationStructures[i] = accelStructures[i];
+		[ds.encoder setAccelerationStructure:accel.native atIndex:idxOffset+i];
+	}
+	idxOffset += desc.accelerationStructures;
 }
 
 void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,

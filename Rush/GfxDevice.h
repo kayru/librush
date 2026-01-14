@@ -83,6 +83,7 @@ struct GfxCapability
 	bool explicitVertexParameterAMD  = false;
 
 	bool rayTracing                  = false;
+	bool rayTracingPipeline          = false;
 	bool rayTracingInline            = false;
 	bool geometryShaderPassthroughNV = false;
 	bool mixedSamplesNV              = false;
@@ -212,6 +213,7 @@ void Gfx_Retain(GfxGeometryShader h);
 void Gfx_Retain(GfxComputeShader h);
 void Gfx_Retain(GfxMeshShader h);
 void Gfx_Retain(GfxTechnique h);
+void Gfx_Retain(GfxRayTracingPipeline h);
 void Gfx_Retain(GfxTexture h);
 void Gfx_Retain(GfxBlendState h);
 void Gfx_Retain(GfxSampler h);
@@ -436,6 +438,7 @@ inline u64  Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h) { 
 inline void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer) {}
 inline void Gfx_SetAccelerationStructure(GfxContext* ctx, u32 idx, GfxAccelerationStructureArg h) {}
 inline void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxBufferArg hitGroups, u32 width, u32 height, u32 depth) {}
+inline void Gfx_Retain(GfxRayTracingPipeline h){};
 inline void Gfx_Release(GfxRayTracingPipeline h){};
 inline void Gfx_Release(GfxAccelerationStructure h){};
 #endif // RUSH_RENDER_SUPPORT_RAY_TRACING
