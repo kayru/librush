@@ -2785,11 +2785,9 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 {
 	const GfxDescriptorSetDesc& desc = ds.desc;
 
-	if (!ds.argBuffer || [ds.argBuffer length] < ds.argBufferSize)
-	{
-		[ds.argBuffer release];
-		ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
-	}
+	// Allocate a fresh argument buffer each update to avoid overwriting in-flight GPU data.
+	[ds.argBuffer release];
+	ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
 
 	[ds.encoder setArgumentBuffer:ds.argBuffer offset:0];
 
