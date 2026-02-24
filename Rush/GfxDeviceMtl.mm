@@ -1017,6 +1017,11 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 
 	result.native = [g_metalDevice newTextureWithDescriptor:textureDescriptor];
 
+	if (desc.debugName)
+	{
+		result.native.label = [NSString stringWithUTF8String:desc.debugName];
+	}
+
 	const u32 bitsPerPixel = getBitsPerPixel(desc.format);
 
 	for (u32 i=0; i<count; ++i)
@@ -1269,6 +1274,11 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 	else
 	{
 		res.native = [g_metalDevice newBufferWithLength:bufferSize options:options];
+	}
+
+	if (desc.debugName)
+	{
+		res.native.label = [NSString stringWithUTF8String:desc.debugName];
 	}
 
 	if (!!(desc.flags & GfxBufferFlags::Index))
