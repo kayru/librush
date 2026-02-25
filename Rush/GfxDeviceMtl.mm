@@ -2749,8 +2749,11 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	}
 	res.accelerationStructures.resize(desc.accelerationStructures);
 
-	res.encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
-	res.argBufferSize = [res.encoder encodedLength];
+	if (descriptors.count > 0)
+	{
+		res.encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
+		res.argBufferSize = [res.encoder encodedLength];
+	}
 
 	for(id obj in descriptors)
 	{

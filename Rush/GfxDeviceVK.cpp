@@ -4004,7 +4004,6 @@ GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
 	}
 	else
 	{
-		RUSH_ASSERT(desc.vf.valid());
 		RUSH_ASSERT(desc.vs.valid());
 
 		res.vf.retain(desc.vf);
