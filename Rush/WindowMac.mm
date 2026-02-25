@@ -163,7 +163,9 @@ WindowMac::WindowMac(const WindowDesc& desc)
 
 	[window.contentView setWantsLayer:YES];
 
-	NSString* appName = [[NSProcessInfo processInfo] processName];
+	NSString* appName = (desc.caption && desc.caption[0])
+		? [NSString stringWithUTF8String:desc.caption]
+		: [[NSProcessInfo processInfo] processName];
 	[window setTitle:appName];
 	[window makeKeyAndOrderFront:window];
 	[window setAcceptsMouseMovedEvents:YES];
