@@ -855,6 +855,13 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		m_physicalDeviceFeatures2.pNext = &m_physicalDeviceAccelerationStructureFeatures;
 	}
 
+	if (m_supportedExtensions.KHR_ray_query)
+	{
+		m_physicalDeviceRayQueryFeatures.rayQuery = VK_TRUE;
+		m_physicalDeviceRayQueryFeatures.pNext = m_physicalDeviceFeatures2.pNext;
+		m_physicalDeviceFeatures2.pNext = &m_physicalDeviceRayQueryFeatures;
+	}
+
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
 	deviceCreateInfo.pQueueCreateInfos       = queueCreateInfos.data();
