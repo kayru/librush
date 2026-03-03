@@ -27,6 +27,7 @@ rush_app_config convert(const AppConfig* cfg)
 	result.debug            = cfg->debug;
 	result.warp             = cfg->warp;
 	result.minimize_latency = cfg->minimizeLatency;
+	result.headless         = cfg->headless;
 	result.argc             = cfg->argc;
 	result.argv             = cfg->argv;
 	return result;
@@ -46,6 +47,7 @@ AppConfig convert(const rush_app_config* cfg)
 	result.debug           = cfg->debug;
 	result.warp            = cfg->warp;
 	result.minimizeLatency = cfg->minimize_latency;
+	result.headless        = cfg->headless;
 	result.argc            = cfg->argc;
 	result.argv            = cfg->argv;
 	return result;

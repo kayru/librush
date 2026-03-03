@@ -16,18 +16,6 @@ void Platform_Startup(const AppConfig& cfg)
 	RUSH_ASSERT(g_mainGfxDevice == nullptr);
 	RUSH_ASSERT(g_mainGfxContext == nullptr);
 
-	WindowDesc windowDesc;
-	windowDesc.width      = cfg.width;
-	windowDesc.height     = cfg.height;
-	windowDesc.resizable  = cfg.resizable;
-	windowDesc.caption    = cfg.name;
-	windowDesc.fullScreen = cfg.fullScreen;
-	windowDesc.maximized  = cfg.maximized;
-
-	Window* window = Platform_CreateWindow(windowDesc);
-
-	g_mainWindow = window;
-
 	GfxConfig gfxConfig;
 	if (cfg.gfxConfig)
 	{
@@ -37,20 +25,44 @@ void Platform_Startup(const AppConfig& cfg)
 	{
 		gfxConfig = GfxConfig(cfg);
 	}
+	gfxConfig.headless = gfxConfig.headless || cfg.headless;
+
+	Window* window = nullptr;
+	if (!gfxConfig.headless)
+	{
+		WindowDesc windowDesc;
+		windowDesc.width      = cfg.width;
+		windowDesc.height     = cfg.height;
+		windowDesc.resizable  = cfg.resizable;
+		windowDesc.caption    = cfg.name;
+		windowDesc.fullScreen = cfg.fullScreen;
+		windowDesc.maximized  = cfg.maximized;
+
+		window = Platform_CreateWindow(windowDesc);
+	}
+
+	g_mainWindow = window;
+
 	g_mainGfxDevice  = Gfx_CreateDevice(window, gfxConfig);
 	g_mainGfxContext = Gfx_AcquireContext();
 }
 
 void Platform_Shutdown()
 {
-	RUSH_ASSERT(g_mainWindow != nullptr);
 	RUSH_ASSERT(g_mainGfxDevice != nullptr);
 	RUSH_ASSERT(g_mainGfxContext != nullptr);
 	
 	Gfx_Release(g_mainGfxContext);
 	Gfx_Release(g_mainGfxDevice);
 
-	g_mainWindow->release();
+	if (g_mainWindow)
+	{
+		g_mainWindow->release();
+		g_mainWindow = nullptr;
+	}
+
+	g_mainGfxDevice = nullptr;
+	g_mainGfxContext = nullptr;
 }
 
 int Platform_Main(const AppConfig& cfg)

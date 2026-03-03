@@ -226,6 +226,7 @@ public:
 	PendingScreenshot m_pendingScreenshot;
 
 	GfxRef<GfxTexture> m_defaultDepthBuffer;
+	bool m_headless = false;
 };
 
 class GfxContext : public GfxRefCount

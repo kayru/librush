@@ -35,6 +35,7 @@ struct AppConfig
 	bool debug           = false;
 	bool warp            = false;
 	bool minimizeLatency = false;
+	bool headless        = false;
 
 	int    argc = 0;
 	char** argv = nullptr;

@@ -187,12 +187,15 @@ static MTLIndexType convertRayTracingIndexType(GfxFormat format)
 GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 {
 	auto window = static_cast<WindowMac*>(_window);
+	m_headless = cfg.headless || (window == nullptr);
 
 	m_window = window;
-	m_window->retain();
-
-	m_resizeEvents.mask = WindowEventMask_Resize;
-	m_resizeEvents.setOwner(window);
+	if (m_window)
+	{
+		m_window->retain();
+		m_resizeEvents.mask = WindowEventMask_Resize;
+		m_resizeEvents.setOwner(window);
+	}
 
 	g_device = this;
 	m_refs = 1;
@@ -202,9 +205,12 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 
 	g_metalDevice = m_metalDevice;
 
-	m_metalLayer = window->getMetalLayer();
-	m_metalLayer.device = m_metalDevice;
-	m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	if (!m_headless)
+	{
+		m_metalLayer = window->getMetalLayer();
+		m_metalLayer.device = m_metalDevice;
+		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	}
 
 	// default resources
 
@@ -275,7 +281,10 @@ GfxDevice::~GfxDevice()
 
 	m_resizeEvents.setOwner(nullptr);
 
-	m_window->release();
+	if (m_window)
+	{
+		m_window->release();
+	}
 	m_window = nullptr;
 }
 
@@ -319,7 +328,7 @@ void GfxDevice::createDefaultDepthBuffer(u32 width, u32 height)
 
 void GfxDevice::beginFrame()
 {
-	if (!m_resizeEvents.empty())
+	if (!m_headless && !m_resizeEvents.empty())
 	{
 		createDefaultDepthBuffer(
 			m_window->getFramebufferWidth(),
@@ -333,14 +342,23 @@ void GfxDevice::beginFrame()
 		m_resizeEvents.clear();
 	}
 
-	// FIXME: handle nextDrawable returning nil (resize/minimize) before using drawable/texture.
-	m_drawable = [m_metalLayer nextDrawable];
-	[m_drawable retain];
+	if (!m_headless)
+	{
+		// FIXME: handle nextDrawable returning nil (resize/minimize) before using drawable/texture.
+		m_drawable = [m_metalLayer nextDrawable];
+		[m_drawable retain];
 
-	m_backBufferTexture = [m_drawable texture];
-	[m_backBufferTexture retain];
+		m_backBufferTexture = [m_drawable texture];
+		[m_backBufferTexture retain];
 
-	m_backBufferPixelFormat = [m_metalLayer pixelFormat];
+		m_backBufferPixelFormat = [m_metalLayer pixelFormat];
+	}
+	else
+	{
+		m_drawable = nil;
+		m_backBufferTexture = nil;
+		m_backBufferPixelFormat = MTLPixelFormatInvalid;
+	}
 
 	m_commandBuffer = [m_commandQueue commandBuffer];
 	[m_commandBuffer retain];
@@ -396,7 +414,6 @@ void Gfx_EndFrame()
 void Gfx_Present()
 {
 	RUSH_ASSERT(g_device->m_commandBuffer);
-	RUSH_ASSERT(g_device->m_drawable);
 
 	// TODO: deal with multiple contexts
 	if (g_context->m_computeCommandEncoder)
@@ -406,7 +423,10 @@ void Gfx_Present()
 		g_context->m_computeCommandEncoder = nil;
 	}
 
-	[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
+	if (!g_device->m_headless && g_device->m_drawable)
+	{
+		[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
+	}
 	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
 		if (buffer.GPUEndTime > buffer.GPUStartTime)
 		{
@@ -416,6 +436,13 @@ void Gfx_Present()
 	[g_device->m_commandBuffer commit];
 	if (g_device->m_pendingScreenshot.callback)
 	{
+		if (g_device->m_headless || !g_device->m_backBufferTexture)
+		{
+			Log::warning("Gfx_RequestScreenshot is not supported in headless mode");
+			g_device->m_pendingScreenshot.callback = nullptr;
+			g_device->m_pendingScreenshot.userData = nullptr;
+		}
+
 		[g_device->m_commandBuffer waitUntilCompleted];
 		if (g_device->m_pendingScreenshot.buffer)
 		{
@@ -2176,9 +2203,9 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	// TODO: off-screen render targets
 	// TODO: stencil
 
-	RUSH_ASSERT(g_device->m_backBufferTexture);
-
 	const bool useBackBuffer = !desc.color[0].valid() && !desc.depth.valid();
+	RUSH_ASSERT_MSG(!useBackBuffer || g_device->m_backBufferTexture,
+	    "Headless mode has no back buffer. Bind explicit render targets.");
 
 	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{

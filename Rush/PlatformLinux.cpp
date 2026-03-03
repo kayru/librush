@@ -68,9 +68,12 @@ const char* Platform_GetExecutableDirectory()
 
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
 {
-	while (g_mainWindow->isClosed() == false)
+	while (!g_mainWindow || g_mainWindow->isClosed() == false)
 	{
-		g_mainWindow->pollEvents();
+		if (g_mainWindow)
+		{
+			g_mainWindow->pollEvents();
+		}
 
 		Gfx_BeginFrame();
 

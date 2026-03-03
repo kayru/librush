@@ -33,6 +33,7 @@ typedef struct rush_app_config {
 	bool debug;
 	bool warp;
 	bool minimize_latency;
+	bool headless;
 	int    argc;
 	char** argv;
 } rush_app_config;

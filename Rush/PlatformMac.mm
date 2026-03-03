@@ -140,8 +140,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 						inMode:NSDefaultRunLoopMode
 						dequeue:YES])
 				{
-					WindowMac* window = reinterpret_cast<WindowMac*>(g_mainWindow);
-					window->processEvent(event);
+					if (g_mainWindow)
+					{
+						WindowMac* window = reinterpret_cast<WindowMac*>(g_mainWindow);
+						window->processEvent(event);
+					}
 					[NSApp sendEvent:event];
 					[NSApp updateWindows];
 				}

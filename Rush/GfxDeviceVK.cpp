@@ -530,6 +530,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	, m_cfg(cfg)
     , m_window(window)
 {
+	const bool useSwapChain = !cfg.headless;
+
 #if defined(RUSH_PLATFORM_MAC)
 	// TODO: use MVK extensions to tweak its configuration
 	// Negative viewport does not work correctly on Intel GPU Macs.
@@ -549,7 +551,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	g_device = this;
 
-	m_window->retain();
+	if (m_window)
+	{
+		m_window->retain();
+	}
 
 	auto enumeratedInstanceLayers     = enumarateInstanceLayers();
 	auto enumeratedInstanceExtensions = enumerateInstanceExtensions();
@@ -557,18 +562,21 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	DynamicArray<const char*> enabledInstanceLayers;
 	DynamicArray<const char*> enabledInstanceExtensions;
 
-	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_SURFACE_EXTENSION_NAME, true);
+	if (useSwapChain)
+	{
+		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_SURFACE_EXTENSION_NAME, true);
 
 #if defined(RUSH_PLATFORM_WINDOWS)
-	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, true);
+		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, true);
 #elif defined(RUSH_PLATFORM_LINUX)
-	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_XCB_SURFACE_EXTENSION_NAME, true);
+		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_XCB_SURFACE_EXTENSION_NAME, true);
 #elif defined(RUSH_PLATFORM_MAC)
-	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_METAL_SURFACE_EXTENSION_NAME, true);
-	//enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_MVK_MOLTENVK_EXTENSION_NAME, true);
+		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_METAL_SURFACE_EXTENSION_NAME, true);
+		//enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_MVK_MOLTENVK_EXTENSION_NAME, true);
 #else
-	RUSH_LOG_FATAL("Vulkan surface extension is not implemented for this platform");
+		RUSH_LOG_FATAL("Vulkan surface extension is not implemented for this platform");
 #endif
+	}
 
 	bool enablePortability = false;
 #if defined(RUSH_PLATFORM_MAC)
@@ -749,7 +757,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		return enableExtension(enabledDeviceExtensions, enumeratedDeviceExtensions, name, required);
 	};
 
-	enableDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
+	if (useSwapChain)
+	{
+		enableDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, true);
+	}
 
 	m_supportedExtensions.KHR_portability_subset = enableDeviceExtension(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME, false);
 
@@ -947,8 +958,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	// Swap chain
 
 	m_desiredSwapChainImageCount = cfg.minimizeLatency ? 1 : 2;
-
-	createSwapChain();
+	if (useSwapChain)
+	{
+		createSwapChain();
+	}
+	else
+	{
+		m_frameData.resize(1);
+		m_swapChainValid = false;
+	}
 
 	// Command pool
 
@@ -1160,7 +1178,10 @@ GfxDevice::~GfxDevice()
 {
 	m_resizeEvents.setOwner(nullptr);
 
-	m_window->release();
+	if (m_window)
+	{
+		m_window->release();
+	}
 	m_window = nullptr;
 
 	// Synchronize to GPU
@@ -1243,7 +1264,10 @@ GfxDevice::~GfxDevice()
 
 	vkDestroyPipelineCache(m_vulkanDevice, m_pipelineCache, g_allocationCallbacks);
 
-	vkDestroySwapchainKHR(m_vulkanDevice, m_swapChain, g_allocationCallbacks);
+	if (m_swapChain)
+	{
+		vkDestroySwapchainKHR(m_vulkanDevice, m_swapChain, g_allocationCallbacks);
+	}
 	vkDestroyCommandPool(m_vulkanDevice, m_graphicsCommandPool, g_allocationCallbacks);
 	if (m_computeCommandPool)
 	{
@@ -1260,7 +1284,10 @@ GfxDevice::~GfxDevice()
 	}
 	m_semaphorePool.clear();
 
-	vkDestroySurfaceKHR(m_vulkanInstance, m_swapChainSurface, g_allocationCallbacks);
+	if (m_swapChainSurface)
+	{
+		vkDestroySurfaceKHR(m_vulkanInstance, m_swapChainSurface, g_allocationCallbacks);
+	}
 	vkDestroyDevice(m_vulkanDevice, g_allocationCallbacks);
 
 	if (m_debugReportCallbackExt)
@@ -1733,6 +1760,8 @@ VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDesc& desc, VkRenderPass
 
 void GfxDevice::createSwapChain()
 {
+	RUSH_ASSERT_MSG(!m_cfg.headless, "GfxDevice::createSwapChain called in headless mode.");
+
 	V(vkQueueWaitIdle(m_graphicsQueue));
 
 	if (!m_swapChainSurface)
@@ -1922,12 +1951,12 @@ inline void recycleContext(GfxContext* context)
 
 void GfxDevice::beginFrame()
 {
-	if (!m_swapChainValid && m_window->isFocused())
+	if (!m_cfg.headless && !m_swapChainValid && m_window && m_window->isFocused())
 	{
 		createSwapChain();
 	}
 
-	if (m_swapChainValid)
+	if (!m_cfg.headless && m_swapChainValid)
 	{
 		VkSemaphore presentCompleteSemaphore = allocSemaphore();
 
@@ -1973,7 +2002,8 @@ void GfxDevice::beginFrame()
 		m_swapChainIndex = nextSwapChainIndex;
 	}
 
-	m_currentFrame             = &m_frameData[m_swapChainIndex];
+	u32 currentFrameIndex      = m_cfg.headless ? 0u : m_swapChainIndex;
+	m_currentFrame             = &m_frameData[currentFrameIndex];
 	m_currentFrame->frameIndex = g_device->m_frameCount;
 
 	if (m_currentFrame->lastGraphicsFence)
@@ -3389,11 +3419,14 @@ void Gfx_EndFrame()
 
 	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 
-	TextureVK& backBufferTexture =
-	    g_device->m_resources.textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
+	if (!g_device->m_cfg.headless && g_device->m_swapChainValid && !g_device->m_swapChainTextures.empty())
+	{
+		TextureVK& backBufferTexture =
+		    g_device->m_resources.textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
 
-	backBufferTexture.currentLayout = g_context->addImageBarrier(
-	    backBufferTexture.image, backBufferTexture.currentLayout, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+		backBufferTexture.currentLayout = g_context->addImageBarrier(
+		    backBufferTexture.image, backBufferTexture.currentLayout, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	}
 
 	g_context->endBuild();
 
@@ -3410,7 +3443,7 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 
 void Gfx_Present()
 {
-	if (g_device->m_swapChainValid)
+	if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
 	{
 		GfxDevice::FrameData* currentFrame = g_device->m_currentFrame;
 		if (currentFrame->presentCompleteSemaphore && !currentFrame->presentCompleteSemaphoreWaited)
@@ -3427,22 +3460,34 @@ void Gfx_Present()
 
 	if (g_device->m_pendingScreenshotCallback)
 	{
-		g_device->captureScreenshot();
+		if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
+		{
+			g_device->captureScreenshot();
+		}
+		else
+		{
+			RUSH_LOG_WARNING("Gfx_RequestScreenshot is not supported in headless mode.");
+			g_device->m_pendingScreenshotCallback = nullptr;
+			g_device->m_pendingScreenshotUserData = nullptr;
+		}
 	}
 
-	VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-	presentInfo.swapchainCount   = 1;
-	presentInfo.pSwapchains      = &g_device->m_swapChain;
-	presentInfo.pImageIndices    = &g_device->m_swapChainIndex;
+	if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
+	{
+		VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+		presentInfo.swapchainCount   = 1;
+		presentInfo.pSwapchains      = &g_device->m_swapChain;
+		presentInfo.pImageIndices    = &g_device->m_swapChainIndex;
 
-	VkResult result = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-	{
-		g_device->m_swapChainValid = false;
-	}
-	else if (result != VK_SUCCESS)
-	{
-		RUSH_LOG_FATAL("vkQueuePresentKHR returned code %d (%s)", result, toString(result));
+		VkResult result = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		{
+			g_device->m_swapChainValid = false;
+		}
+		else if (result != VK_SUCCESS)
+		{
+			RUSH_LOG_FATAL("vkQueuePresentKHR returned code %d (%s)", result, toString(result));
+		}
 	}
 
 	if (g_device->m_pendingScreenshot.active)
@@ -5420,6 +5465,8 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 
 	if (!desc.depth.valid() && !desc.color[0].valid())
 	{
+		RUSH_ASSERT_MSG(!g_device->m_cfg.headless, "Headless mode has no back buffer. Bind explicit render targets.");
+
 		GfxTexture swapChainTexture = g_device->m_swapChainTextures[g_device->m_swapChainIndex].get();
 
 		if (g_device->m_swapChainValid)

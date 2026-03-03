@@ -52,6 +52,7 @@ struct GfxConfig
 		debug            = cfg.debug;
 		warp             = cfg.warp;
 		minimizeLatency  = cfg.minimizeLatency;
+		headless         = cfg.headless;
 	}
 
 	u32  backBufferWidth  = 640;
@@ -61,6 +62,7 @@ struct GfxConfig
 	bool debug            = false;
 	bool warp             = false;
 	bool minimizeLatency  = false;
+	bool headless         = false;
 };
 
 struct GfxCapability
