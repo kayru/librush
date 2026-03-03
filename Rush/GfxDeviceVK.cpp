@@ -3135,18 +3135,91 @@ void Gfx_Release(GfxDevice* dev)
 	g_device = nullptr;
 }
 
-static void getQueryPoolResults(VkDevice device, VkQueryPool pool, u32 count, DynamicArray<u64>& output)
+static bool getQueryPoolResults(VkDevice device, VkQueryPool pool, u32 count, DynamicArray<u64>& output, bool waitForResults)
 {
 	output.resize(count);
 	u32 stride = sizeof(*output.data());
-	vkGetQueryPoolResults(device,
+	VkQueryResultFlags queryFlags = VK_QUERY_RESULT_64_BIT;
+	if (waitForResults)
+	{
+		queryFlags |= VK_QUERY_RESULT_WAIT_BIT;
+	}
+
+	VkResult res = vkGetQueryPoolResults(device,
 	    pool,
 	    0,
 	    (u32)output.size(),
 	    (u32)output.size() * stride,
 	    output.data(),
 	    stride,
-	    VK_QUERY_RESULT_64_BIT);
+	    queryFlags);
+
+	if (res == VK_SUCCESS)
+	{
+		return true;
+	}
+
+	if (res == VK_NOT_READY)
+	{
+		return false;
+	}
+
+	RUSH_LOG_ERROR("vkGetQueryPoolResults returned code %d (%s)", res, toString(res));
+	return false;
+}
+
+static void resolveTimestampStats(GfxDevice::FrameData* frameData)
+{
+	static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
+
+	if (frameData == nullptr || frameData->timestampIssuedCount == 0)
+	{
+		return;
+	}
+
+	if (!getQueryPoolResults(
+	        g_vulkanDevice,
+	        frameData->timestampPool,
+	        frameData->timestampIssuedCount,
+	        frameData->timestampPoolData,
+	        true))
+	{
+		return;
+	}
+
+	const double nanoSecondsPerTick = g_device->m_physicalDeviceProps.limits.timestampPeriod;
+	const double secondsPerTick     = 1e-9 * nanoSecondsPerTick;
+
+	for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
+	{
+		u16 slotBegin = frameData->timestampSlotMap[2 * i];
+		u16 slotEnd   = frameData->timestampSlotMap[2 * i + 1];
+
+		if (slotBegin != InvalidTimestampSlotIndex &&
+		    slotEnd != InvalidTimestampSlotIndex &&
+		    slotBegin < frameData->timestampIssuedCount &&
+		    slotEnd < frameData->timestampIssuedCount)
+		{
+			u64 timestampDelta = frameData->timestampPoolData[slotEnd] - frameData->timestampPoolData[slotBegin];
+			g_device->m_stats.customTimer[i] = timestampDelta * secondsPerTick;
+		}
+		else
+		{
+			g_device->m_stats.customTimer[i] = 0.0;
+		}
+	}
+
+	u16 frameBeginSlot = frameData->timestampSlotMap[2 * GfxStats::MaxCustomTimers];
+	u16 frameEndSlot   = frameData->timestampSlotMap[2 * GfxStats::MaxCustomTimers + 1];
+
+	if (frameBeginSlot != InvalidTimestampSlotIndex &&
+	    frameEndSlot != InvalidTimestampSlotIndex &&
+	    frameBeginSlot < frameData->timestampIssuedCount &&
+	    frameEndSlot < frameData->timestampIssuedCount)
+	{
+		u64 frameTimestampDelta = frameData->timestampPoolData[frameEndSlot] - frameData->timestampPoolData[frameBeginSlot];
+		g_device->m_stats.lastFrameGpuTime = frameTimestampDelta * secondsPerTick;
+	}
 }
 
 static GfxContext* getUploadContext()
@@ -3228,39 +3301,7 @@ void Gfx_BeginFrame()
 
 	if (g_device->m_currentFrame->timestampIssuedCount)
 	{
-		getQueryPoolResults(g_vulkanDevice,
-		    g_device->m_currentFrame->timestampPool,
-		    g_device->m_currentFrame->timestampIssuedCount,
-		    g_device->m_currentFrame->timestampPoolData);
-
-		double nanoSecondsPerTick = g_device->m_physicalDeviceProps.limits.timestampPeriod;
-		double secondsPerTick     = 1e-9 * nanoSecondsPerTick;
-
-		for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
-		{
-			u16 slotBegin = g_device->m_currentFrame->timestampSlotMap[2 * i];
-			u16 slotEnd   = g_device->m_currentFrame->timestampSlotMap[2 * i + 1];
-
-			u64 timestampDelta = 0;
-
-			if (slotBegin != InvalidTimestampSlotIndex && slotEnd != InvalidTimestampSlotIndex)
-			{
-				timestampDelta = g_device->m_currentFrame->timestampPoolData[slotEnd] -
-				                 g_device->m_currentFrame->timestampPoolData[slotBegin];
-				g_device->m_stats.customTimer[i] = timestampDelta * secondsPerTick;
-			}
-			else
-			{
-				g_device->m_stats.customTimer[i] = 0;
-			}
-		}
-
-		u32 frameBeginSlot = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers];
-		u32 frameEndSlot   = g_device->m_currentFrame->timestampSlotMap[2 * GfxStats::MaxCustomTimers + 1];
-		u64 timestampDelta = g_device->m_currentFrame->timestampPoolData[frameEndSlot] -
-		                     g_device->m_currentFrame->timestampPoolData[frameBeginSlot];
-		g_device->m_stats.lastFrameGpuTime = timestampDelta * secondsPerTick;
-
+		resolveTimestampStats(g_device->m_currentFrame);
 		g_device->m_currentFrame->timestampIssuedCount = 0;
 	}
 
@@ -3461,7 +3502,7 @@ void Gfx_Present()
 
 void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval = interval; }
 
-void Gfx_Finish()
+void Gfx_Finish(GfxFinishFlags flags)
 {
 	g_device->flushUploadContext(g_context);
 
@@ -3470,7 +3511,12 @@ void Gfx_Finish()
 		g_context->split();
 	}
 
-	vkDeviceWaitIdle(g_vulkanDevice);
+	V(vkDeviceWaitIdle(g_vulkanDevice));
+
+	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
+	{
+		resolveTimestampStats(g_device->m_currentFrame);
+	}
 }
 
 const GfxStats& Gfx_Stats() { return g_device->m_stats; }
@@ -5578,13 +5624,13 @@ void Gfx_PopMarker(GfxContext* rc)
 void Gfx_BeginTimer(GfxContext* rc, u32 timestampId)
 {
 	RUSH_ASSERT(timestampId < GfxStats::MaxCustomTimers);
-	writeTimestamp(g_context, timestampId * 2, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+	writeTimestamp(rc, timestampId * 2, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
 }
 
 void Gfx_EndTimer(GfxContext* rc, u32 timestampId)
 {
 	RUSH_ASSERT(timestampId < GfxStats::MaxCustomTimers);
-	writeTimestamp(g_context, timestampId * 2 + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+	writeTimestamp(rc, timestampId * 2 + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 }
 
 void Gfx_Retain(GfxDevice* dev) { dev->addReference(); }

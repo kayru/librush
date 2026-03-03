@@ -479,7 +479,7 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 	g_device->m_pendingScreenshot.userData = userData;
 }
 
-void Gfx_Finish()
+void Gfx_Finish(GfxFinishFlags flags)
 {
 	if (!g_device || !g_device->m_commandBuffer)
 	{
@@ -503,8 +503,24 @@ void Gfx_Finish()
 		}
 	}
 
-	[g_device->m_commandBuffer commit];
-	[g_device->m_commandBuffer waitUntilCompleted];
+	id<MTLCommandBuffer> finishedCommandBuffer = g_device->m_commandBuffer;
+	[finishedCommandBuffer commit];
+	[finishedCommandBuffer waitUntilCompleted];
+
+	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
+	{
+		for (double& timer : g_device->m_stats.customTimer)
+		{
+			timer = 0.0;
+		}
+
+		if (finishedCommandBuffer.GPUEndTime > finishedCommandBuffer.GPUStartTime)
+		{
+			// Metal timer-scope queries are not implemented yet; report end-to-end command buffer GPU time in slot 0.
+			g_device->m_stats.customTimer[0] = finishedCommandBuffer.GPUEndTime - finishedCommandBuffer.GPUStartTime;
+		}
+	}
+
 	[g_device->m_commandBuffer release];
 	g_device->m_commandBuffer = [g_device->m_commandQueue commandBuffer];
 	[g_device->m_commandBuffer retain];

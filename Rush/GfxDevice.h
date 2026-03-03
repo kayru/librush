@@ -155,6 +155,13 @@ struct GfxPassDesc
 	}
 };
 
+enum class GfxFinishFlags : u32
+{
+	None              = 0,
+	ResolveTimestamps = 1 << 0,
+};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxFinishFlags, u32)
+
 // device
 
 GfxDevice* Gfx_CreateDevice(Window* window, const GfxConfig& cfg);
@@ -165,7 +172,7 @@ void                 Gfx_EndFrame();
 void                 Gfx_Present();
 void                 Gfx_SetPresentInterval(u32 interval);
 const GfxCapability& Gfx_GetCapability();
-void                 Gfx_Finish();
+void                 Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None);
 
 const GfxStats& Gfx_Stats();
 void            Gfx_ResetStats();
@@ -452,7 +459,7 @@ inline void Gfx_BeginFrame() {}
 inline void Gfx_EndFrame() {}
 inline void Gfx_Present() {}
 inline void Gfx_SetPresentInterval(u32 interval) {}
-inline void Gfx_Finish() {}
+inline void Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None) {}
 inline const GfxCapability& Gfx_GetCapability() { static const GfxCapability cap; return cap; }
 inline const GfxStats& Gfx_Stats() { static const GfxStats stats; return stats; }
 inline void Gfx_ResetStats() {}
