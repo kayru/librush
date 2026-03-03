@@ -3561,6 +3561,30 @@ void Gfx_Finish(GfxFinishFlags flags)
 	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
 	{
 		resolveTimestampStats(g_device->m_currentFrame);
+
+		// Reset query pool usage here so custom timers stay valid across many finishes.
+		GfxDevice::FrameData* frameData = g_device->m_currentFrame;
+		if (frameData)
+		{
+			static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
+
+			if (g_context && g_context->m_isActive &&
+			    frameData->timestampPool != VK_NULL_HANDLE &&
+			    !frameData->timestampPoolData.empty())
+			{
+				vkCmdResetQueryPool(
+					g_context->m_commandBuffer,
+					frameData->timestampPool,
+					0,
+					u32(frameData->timestampPoolData.size()));
+			}
+
+			for (u16& it : frameData->timestampSlotMap)
+			{
+				it = InvalidTimestampSlotIndex;
+			}
+			frameData->timestampIssuedCount = 0;
+		}
 	}
 }
 
