@@ -90,6 +90,8 @@ GfxFormat convert(rush_gfx_format fmt)
 	case RUSH_GFX_FORMAT_BC6H_SFLOAT      : return GfxFormat_BC6H_SFloat;
 	case RUSH_GFX_FORMAT_BC7_UNORM        : return GfxFormat_BC7_Unorm;
 	case RUSH_GFX_FORMAT_BC7_UNORM_SRGB   : return GfxFormat_BC7_Unorm_sRGB;
+	case RUSH_GFX_FORMAT_BC2_UNORM        : return GfxFormat_BC2_Unorm;
+	case RUSH_GFX_FORMAT_BC2_UNORM_SRGB   : return GfxFormat_BC2_Unorm_sRGB;
 	}
 }
 
@@ -130,6 +132,8 @@ rush_gfx_format convert(GfxFormat fmt)
 	case GfxFormat_BC6H_SFloat      : return RUSH_GFX_FORMAT_BC6H_SFLOAT;
 	case GfxFormat_BC7_Unorm        : return RUSH_GFX_FORMAT_BC7_UNORM;
 	case GfxFormat_BC7_Unorm_sRGB   : return RUSH_GFX_FORMAT_BC7_UNORM_SRGB;
+	case GfxFormat_BC2_Unorm        : return RUSH_GFX_FORMAT_BC2_UNORM;
+	case GfxFormat_BC2_Unorm_sRGB   : return RUSH_GFX_FORMAT_BC2_UNORM_SRGB;
 	}
 }
 

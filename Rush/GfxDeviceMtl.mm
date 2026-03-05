@@ -994,6 +994,10 @@ static MTLPixelFormat convertPixelFormat(GfxFormat format)
 			return MTLPixelFormatBC1_RGBA;
 		case GfxFormat_BC1_Unorm_sRGB:
 			return MTLPixelFormatBC1_RGBA_sRGB;
+		case GfxFormat_BC2_Unorm:
+			return MTLPixelFormatBC2_RGBA;
+		case GfxFormat_BC2_Unorm_sRGB:
+			return MTLPixelFormatBC2_RGBA_sRGB;
 		case GfxFormat_BC3_Unorm:
 			return MTLPixelFormatBC3_RGBA;
 		case GfxFormat_BC3_Unorm_sRGB:

@@ -64,6 +64,8 @@ const char* toString(GfxFormat fmt)
 	case GfxFormat_BGRA8_sRGB: return "GfxFormat_BGRA8_sRGB";
 	case GfxFormat_BC1_Unorm: return "GfxFormat_BC1_Unorm";
 	case GfxFormat_BC1_Unorm_sRGB: return "GfxFormat_BC1_Unorm_sRGB";
+	case GfxFormat_BC2_Unorm: return "GfxFormat_BC2_Unorm";
+	case GfxFormat_BC2_Unorm_sRGB: return "GfxFormat_BC2_Unorm_sRGB";
 	case GfxFormat_BC3_Unorm: return "GfxFormat_BC3_Unorm";
 	case GfxFormat_BC3_Unorm_sRGB: return "GfxFormat_BC3_Unorm_sRGB";
 	case GfxFormat_BC4_Unorm: return "GfxFormat_BC4_Unorm";

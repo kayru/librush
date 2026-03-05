@@ -405,6 +405,8 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_R32_Uint: return VK_FORMAT_R32_UINT;
 	case GfxFormat_BC1_Unorm: return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
 	case GfxFormat_BC1_Unorm_sRGB: return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+	case GfxFormat_BC2_Unorm: return VK_FORMAT_BC2_UNORM_BLOCK;
+	case GfxFormat_BC2_Unorm_sRGB: return VK_FORMAT_BC2_SRGB_BLOCK;
 	case GfxFormat_BC3_Unorm: return VK_FORMAT_BC3_UNORM_BLOCK;
 	case GfxFormat_BC3_Unorm_sRGB: return VK_FORMAT_BC3_SRGB_BLOCK;
 	case GfxFormat_BC4_Unorm: return VK_FORMAT_BC4_UNORM_BLOCK;
