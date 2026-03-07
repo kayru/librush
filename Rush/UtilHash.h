@@ -97,5 +97,12 @@ namespace Rush
 			? state
 			: hashStrFnv1aCE(message + 1, u32((u64)(state ^ u32(*message)) * 0x01000193));
 	}
+
+	inline constexpr u64 hashStrFnv1a64CE(const char* message, u64 state = 0xcbf29ce484222325)
+	{
+		return (*message == 0)
+			? state
+			: hashStrFnv1a64CE(message + 1, (state ^ u64(*message)) * 0x100000001b3);
+	}
 }
 
