@@ -372,6 +372,26 @@ void WindowMac::updateResolutionScale()
 	}
 }
 
+void WindowMac::setMouseLock(bool state)
+{
+	if (m_mouseLocked == state)
+	{
+		return;
+	}
+	m_mouseLocked = state;
+	CGAssociateMouseAndMouseCursorPosition(!state);
+	if (state)
+	{
+		m_preLockMousePos = m_mouse.pos;
+		[NSCursor hide];
+	}
+	else
+	{
+		m_mouse.pos = m_preLockMousePos;
+		[NSCursor unhide];
+	}
+}
+
 bool WindowMac::processEvent(NSEvent* event)
 {
 	NSEventType eventType = [event type];
@@ -382,18 +402,27 @@ bool WindowMac::processEvent(NSEvent* event)
 		case NSEventTypeOtherMouseDragged:
 		case NSEventTypeMouseMoved:
 		{
-			NSPoint mouseLocation = [event locationInWindow];
-			if (m_nativeWindow)
+			if (m_mouseLocked)
 			{
-				NSView* contentView = [m_nativeWindow contentView];
-				if (contentView)
-				{
-					mouseLocation = [contentView convertPoint:mouseLocation fromView:nil];
-				}
+				float dx = (float)[event deltaX];
+				float dy = (float)[event deltaY];
+				m_mouse.pos += Vec2(dx, dy);
 			}
-			float xPos = mouseLocation.x;
-			float yPos = (float)getSize().y - mouseLocation.y;
-			m_mouse.pos = Vec2(xPos, yPos);
+			else
+			{
+				NSPoint mouseLocation = [event locationInWindow];
+				if (m_nativeWindow)
+				{
+					NSView* contentView = [m_nativeWindow contentView];
+					if (contentView)
+					{
+						mouseLocation = [contentView convertPoint:mouseLocation fromView:nil];
+					}
+				}
+				float xPos = mouseLocation.x;
+				float yPos = (float)getSize().y - mouseLocation.y;
+				m_mouse.pos = Vec2(xPos, yPos);
+			}
 			broadcast(WindowEvent::MouseMove(m_mouse.pos));
 			return true;
 		}

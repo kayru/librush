@@ -196,7 +196,8 @@ public:
 	virtual void  setCaption(const char* str)  = 0;
 	virtual void  setSize(const Tuple2i& size) = 0;
 	virtual void  setPosition(const Tuple2i& position){};
-	virtual void  setMouseLock(bool state){};
+	virtual void  setMouseLock(bool state){ m_mouseLocked = state; };
+	bool isMouseLocked() const { return m_mouseLocked; }
 	virtual bool  setFullscreen(bool state) { return false; }
 	virtual void  pollEvents() { }
 
@@ -256,6 +257,7 @@ protected:
 	bool m_closed;
 	bool m_focused;
 	bool m_fullScreen;
+	bool m_mouseLocked = false;
 
 	MouseState    m_mouse;
 	KeyboardState m_keyboard;

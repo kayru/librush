@@ -28,6 +28,7 @@ public:
 	virtual void	setCaption(const char* str) override;
 	virtual void	setSize(const Tuple2i& size) override;
 	virtual void	setPosition(const Tuple2i& position) override;
+	virtual void	setMouseLock(bool state) override;
 
 	bool processEvent(NSEvent* event);
 	void processResize(float newWidth, float newHeight);
@@ -39,6 +40,7 @@ private:
 
 	NSWindow* m_nativeWindow = nullptr;
 	CAMetalLayer* m_metalLayer = nullptr;
+	Rush::Vec2 m_preLockMousePos;
 };
 
 }
