@@ -20,6 +20,7 @@ public:
 	virtual void* nativeHandle();
 	virtual void  setCaption(const char* str);
 	virtual void  setSize(const Tuple2i& size);
+	virtual void  setMouseLock(bool state);
 	virtual bool  setFullscreen(bool state);
 
 private:
@@ -46,6 +47,8 @@ private:
 	Tuple2i m_windowedPos;
 
 	u32 m_windowStyle = 0;
+
+	Rush::Vec2 m_preLockMousePos;
 };
 }
 

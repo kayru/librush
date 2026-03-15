@@ -285,6 +285,43 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	return false;
 }
 
+void WindowWin32::setMouseLock(bool state)
+{
+	if (m_mouseLocked == state)
+	{
+		return;
+	}
+	m_mouseLocked = state;
+	if (state)
+	{
+		m_preLockMousePos = m_mouse.pos;
+
+		RECT clientRect;
+		GetClientRect(m_hwnd, &clientRect);
+		POINT topLeft = { clientRect.left, clientRect.top };
+		POINT bottomRight = { clientRect.right, clientRect.bottom };
+		ClientToScreen(m_hwnd, &topLeft);
+		ClientToScreen(m_hwnd, &bottomRight);
+		RECT clipRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+		ClipCursor(&clipRect);
+
+		ShowCursor(FALSE);
+	}
+	else
+	{
+		ClipCursor(nullptr);
+
+		POINT restorePos;
+		restorePos.x = (LONG)m_preLockMousePos.x;
+		restorePos.y = (LONG)m_preLockMousePos.y;
+		ClientToScreen(m_hwnd, &restorePos);
+		SetCursorPos(restorePos.x, restorePos.y);
+		m_mouse.pos = m_preLockMousePos;
+
+		ShowCursor(TRUE);
+	}
+}
+
 void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
 	if (message == WM_NCMOUSELEAVE)
