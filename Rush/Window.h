@@ -133,6 +133,16 @@ enum Key
 	Key_RightShift   = RUSH_KEY_RIGHT_SHIFT,
 	Key_RightControl = RUSH_KEY_RIGHT_CONTROL,
 	Key_RightAlt     = RUSH_KEY_RIGHT_ALT,
+	Key_LeftSuper    = RUSH_KEY_LEFT_SUPER,
+	Key_RightSuper   = RUSH_KEY_RIGHT_SUPER,
+
+#ifdef RUSH_PLATFORM_MAC
+	Key_LeftShortcut  = Key_LeftSuper,
+	Key_RightShortcut = Key_RightSuper,
+#else
+	Key_LeftShortcut  = Key_LeftControl,
+	Key_RightShortcut = Key_RightControl,
+#endif
 
 	Key_COUNT = RUSH_KEY_COUNT,
 };

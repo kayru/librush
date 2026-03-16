@@ -502,6 +502,12 @@ bool WindowMac::processEvent(NSEvent* event)
 			case 59:
 				key = Key_LeftControl;
 				break;
+			case 55:
+				key = Key_LeftSuper;
+				break;
+			case 54:
+				key = Key_RightSuper;
+				break;
 			default:
 				key = Key_Unknown;
 				break;
