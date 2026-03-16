@@ -461,7 +461,7 @@ inline void Gfx_BeginFrame() {}
 inline void Gfx_EndFrame() {}
 inline void Gfx_Present() {}
 inline void Gfx_SetPresentInterval(u32 interval) {}
-inline void Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None) {}
+inline void Gfx_Finish(GfxFinishFlags flags) {}
 inline const GfxCapability& Gfx_GetCapability() { static const GfxCapability cap; return cap; }
 inline const GfxStats& Gfx_Stats() { static const GfxStats stats; return stats; }
 inline void Gfx_ResetStats() {}
@@ -542,6 +542,17 @@ inline void Gfx_PopMarker(GfxContext* rc) {}
 inline void Gfx_BeginTimer(GfxContext* rc, u32 timestampId) {}
 inline void Gfx_EndTimer(GfxContext* rc, u32 timestampId) {}
 inline void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData) {};
+inline GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc) { return {}; }
+inline void Gfx_Retain(GfxDescriptorSet h) {}
+inline void Gfx_Release(GfxDescriptorSet h) {}
+inline void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h) {}
+inline void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
+	const GfxBuffer* constantBuffers = nullptr,
+	const GfxSampler* samplers = nullptr,
+	const GfxTexture* textures = nullptr,
+	const GfxTexture* storageImages = nullptr,
+	const GfxBuffer* storageBuffers = nullptr,
+	const GfxAccelerationStructure* accelStructures = nullptr) {}
 #endif // RUSH_RENDER_API == RUSH_RENDER_API_NULL
 
 }
