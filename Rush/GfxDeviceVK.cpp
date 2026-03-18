@@ -3640,7 +3640,6 @@ GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 	return retainResource(g_device->m_resources.vertexFormats, format);
 }
 
-void Gfx_Release(GfxVertexFormat h) { releaseResource(g_device->m_resources.vertexFormats, h); }
 
 static VkShaderModule createShaderModule(VkDevice device, const GfxShaderSource& code)
 {
@@ -3687,7 +3686,6 @@ GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxVertexShader h) { releaseResource(g_device->m_resources.shaders, h); }
 
 // pixel shader
 
@@ -3707,7 +3705,6 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxPixelShader h) { releaseResource(g_device->m_resources.shaders, h); }
 
 // geometry shader
 
@@ -3727,7 +3724,6 @@ GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxGeometryShader h) { releaseResource(g_device->m_resources.shaders, h); }
 
 // compute shader
 
@@ -3747,7 +3743,6 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Release(GfxComputeShader h) { releaseResource(g_device->m_resources.shaders, h); }
 
 // mesh shader
 
@@ -3767,9 +3762,6 @@ GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code)
 	}
 }
 
-void Gfx_Retain(GfxMeshShader h) { g_device->m_resources.shaders[h.index()].addReference(); }
-
-void Gfx_Release(GfxMeshShader h) { releaseResource(g_device->m_resources.shaders, h); }
 
 // descriptor set
 
@@ -3991,9 +3983,6 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 	return retainResource(g_device->m_resources.descriptorSets, res);
 }
 
-void Gfx_Retain(GfxDescriptorSet h) { g_device->m_resources.descriptorSets[h].addReference(); }
-
-void Gfx_Release(GfxDescriptorSet h) { releaseResource(g_device->m_resources.descriptorSets, h); }
 
 void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 {
@@ -4271,7 +4260,6 @@ void TechniqueVK::destroy()
 	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
 }
 
-void Gfx_Release(GfxTechnique h) { releaseResource(g_device->m_resources.techniques, h); }
 
 // texture
 
@@ -4626,7 +4614,6 @@ void TextureVK::destroy()
 	}
 }
 
-void Gfx_Release(GfxTexture h) { releaseResource(g_device->m_resources.textures, h); }
 
 // blend state
 GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
@@ -4637,7 +4624,6 @@ GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 	return retainResource(g_device->m_resources.blendStates, res);
 }
 
-void Gfx_Release(GfxBlendState h) { releaseResource(g_device->m_resources.blendStates, h); }
 
 // sampler state
 GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
@@ -4674,7 +4660,6 @@ void SamplerVK::destroy()
 	enqueueDestroy(native);
 }
 
-void Gfx_Release(GfxSampler h) { releaseResource(g_device->m_resources.samplers, h); }
 
 // depth stencil state
 GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
@@ -4685,7 +4670,6 @@ GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDe
 	return retainResource(g_device->m_resources.depthStencilStates, res);
 }
 
-void Gfx_Release(GfxDepthStencilState h) { releaseResource(g_device->m_resources.depthStencilStates, h); }
 
 // rasterizer state
 GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
@@ -4696,7 +4680,6 @@ GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& de
 	return retainResource(g_device->m_resources.rasterizerStates, res);
 }
 
-void Gfx_Release(GfxRasterizerState h) { releaseResource(g_device->m_resources.rasterizerStates, h); }
 
 static VkBufferCreateInfo makeBufferCreateInfo(const GfxBufferDesc& desc)
 {
@@ -5161,7 +5144,6 @@ u64 Gfx_GetBufferAddress(GfxBufferArg h)
 	return buffer.deviceAddress;
 }
 
-void Gfx_Release(GfxBuffer h) { releaseResource(g_device->m_resources.buffers, h); }
 
 // context
 
@@ -5710,29 +5692,15 @@ void Gfx_Retain(GfxDevice* dev) { dev->addReference(); }
 
 void Gfx_Retain(GfxContext* rc) { rc->addReference(); }
 
-void Gfx_Retain(GfxVertexFormat h) { g_device->m_resources.vertexFormats[h].addReference(); }
+#define RUSH_GFX_RETAIN_IMPL(descType, handleType, memberName) \
+	void Gfx_Retain(handleType h) { g_device->m_resources.memberName[h].addReference(); }
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RETAIN_IMPL)
+#undef RUSH_GFX_RETAIN_IMPL
 
-void Gfx_Retain(GfxVertexShader h) { g_device->m_resources.shaders[h].addReference(); }
-
-void Gfx_Retain(GfxPixelShader h) { g_device->m_resources.shaders[h].addReference(); }
-
-void Gfx_Retain(GfxGeometryShader h) { g_device->m_resources.shaders[h].addReference(); }
-
-void Gfx_Retain(GfxComputeShader h) { g_device->m_resources.shaders[h].addReference(); }
-
-void Gfx_Retain(GfxTechnique h) { g_device->m_resources.techniques[h].addReference(); }
-
-void Gfx_Retain(GfxTexture h) { g_device->m_resources.textures[h].addReference(); }
-
-void Gfx_Retain(GfxBlendState h) { g_device->m_resources.blendStates[h].addReference(); }
-
-void Gfx_Retain(GfxSampler h) { g_device->m_resources.samplers[h].addReference(); }
-
-void Gfx_Retain(GfxDepthStencilState h) { g_device->m_resources.depthStencilStates[h].addReference(); }
-
-void Gfx_Retain(GfxRasterizerState h) { g_device->m_resources.rasterizerStates[h].addReference(); }
-
-void Gfx_Retain(GfxBuffer h) { g_device->m_resources.buffers[h].addReference(); }
+#define RUSH_GFX_RELEASE_IMPL(descType, handleType, memberName) \
+	void Gfx_Release(handleType h) { releaseResource(g_device->m_resources.memberName, h); }
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RELEASE_IMPL)
+#undef RUSH_GFX_RELEASE_IMPL
 
 void ShaderVK::destroy()
 {
@@ -6269,11 +6237,6 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	vkCmdBuildAccelerationStructuresKHR(ctx->m_commandBuffer, 1, &buildInfo, rangeInfos);
 }
 
-void Gfx_Retain(GfxAccelerationStructure h) { g_device->m_resources.accelerationStructures[h].addReference(); }
-void Gfx_Release(GfxAccelerationStructure h) { releaseResource(g_device->m_resources.accelerationStructures, h); }
-
-void Gfx_Retain(GfxRayTracingPipeline h) { g_device->m_resources.rayTracingPipelines[h].addReference(); }
-void Gfx_Release(GfxRayTracingPipeline h) { releaseResource(g_device->m_resources.rayTracingPipelines, h); }
 
 void RayTracingPipelineVK::destroy() 
 {
@@ -6424,8 +6387,6 @@ GfxOwn<GfxQueryPool> Gfx_CreateQueryPool(const GfxQueryPoolDesc& desc)
 	return retainResource(g_device->m_resources.queryPools, createQueryPool(desc));
 }
 
-void Gfx_Retain(GfxQueryPool h) { g_device->m_resources.queryPools[h].addReference(); }
-void Gfx_Release(GfxQueryPool h) { releaseResource(g_device->m_resources.queryPools, h); }
 
 void Gfx_ResetQuery(GfxContext* ctx, GfxQueryPool pool, u32 index, u32 count)
 {

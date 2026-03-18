@@ -63,6 +63,11 @@ struct AccelerationStructureMTL : GfxResourceBase
 	void destroy();
 };
 
+struct QueryPoolMTL : GfxResourceBase
+{
+	void destroy() {}
+};
+
 struct DescriptorSetMTL : GfxRefCount
 {
 	u32                      uniqueId = 0;
@@ -195,6 +200,7 @@ public:
 		ResourcePool<BlendStateMTL, GfxBlendState> blendStates;
 		ResourcePool<SamplerMTL, GfxSampler> samplers;
 		ResourcePool<DescriptorSetMTL, GfxDescriptorSet> descriptorSets;
+		ResourcePool<QueryPoolMTL, GfxQueryPool> queryPools;
 	};
 
 	Resources m_resources;

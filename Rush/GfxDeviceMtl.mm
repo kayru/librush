@@ -632,10 +632,6 @@ GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.vertexFormats, format));
 }
 
-void Gfx_Release(GfxVertexFormat h)
-{
-	releaseResource(g_device->m_resources.vertexFormats, h);
-}
 
 // shader
 
@@ -702,10 +698,6 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 	return GfxDevice::makeOwn(retainResourceT<GfxComputeShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
 }
 
-void Gfx_Release(GfxComputeShader h)
-{
-	releaseResource(g_device->m_resources.shaders, h);
-}
 
 // vertex shader
 
@@ -714,10 +706,6 @@ GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 	return GfxDevice::makeOwn(retainResourceT<GfxVertexShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
 }
 
-void Gfx_Release(GfxVertexShader h)
-{
-	releaseResource(g_device->m_resources.shaders, h);
-}
 
 // pixel shader
 GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
@@ -725,10 +713,6 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 	return GfxDevice::makeOwn(retainResourceT<GfxPixelShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
 }
 
-void Gfx_Release(GfxPixelShader h)
-{
-	releaseResource(g_device->m_resources.shaders, h);
-}
 
 // technique
 
@@ -908,20 +892,7 @@ const u8* Gfx_GetRayTracingShaderHandle(GfxRayTracingPipelineArg, GfxRayTracingS
 	return nullptr;
 }
 
-void Gfx_Release(GfxTechnique h)
-{
-	releaseResource(g_device->m_resources.techniques, h);
-}
 
-void Gfx_Retain(GfxRayTracingPipeline h)
-{
-	g_device->m_resources.rayTracingPipelines[h].addReference();
-}
-
-void Gfx_Release(GfxRayTracingPipeline h)
-{
-	releaseResource(g_device->m_resources.rayTracingPipelines, h);
-}
 
 void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxBufferArg hitGroups, u32 width, u32 height, u32 depth)
 {
@@ -1128,10 +1099,6 @@ const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h)
 
 }
 
-void Gfx_Release(GfxTexture h)
-{
-	releaseResource(g_device->m_resources.textures, h);
-}
 
 // blend state
 
@@ -1147,10 +1114,6 @@ GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.blendStates, result));
 }
 
-void Gfx_Release(GfxBlendState h)
-{
-	releaseResource(g_device->m_resources.blendStates, h);
-}
 
 // sampler state
 
@@ -1231,10 +1194,6 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.samplers, result));
 }
 
-void Gfx_Release(GfxSampler h)
-{
-	releaseResource(g_device->m_resources.samplers, h);
-}
 
 // depth stencil state
 
@@ -1260,10 +1219,6 @@ GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDe
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.depthStencilStates, result));
 }
 
-void Gfx_Release(GfxDepthStencilState h)
-{
-	releaseResource(g_device->m_resources.depthStencilStates, h);
-}
 
 // rasterizer state
 
@@ -1279,10 +1234,6 @@ GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& de
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.rasterizerStates, result));
 }
 
-void Gfx_Release(GfxRasterizerState h)
-{
-	releaseResource(g_device->m_resources.rasterizerStates, h);
-}
 
 // buffers
 
@@ -1467,10 +1418,6 @@ void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
 	[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
 }
 
-void Gfx_Release(GfxBuffer h)
-{
-	releaseResource(g_device->m_resources.buffers, h);
-}
 
 static MTLPrimitiveAccelerationStructureDescriptor* createPrimitiveAccelerationStructureDescriptor(
     const DynamicArray<GfxRayTracingGeometryDesc>& geometries)
@@ -1763,15 +1710,6 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	}
 }
 
-void Gfx_Retain(GfxAccelerationStructure h)
-{
-	g_device->m_resources.accelerationStructures[h].addReference();
-}
-
-void Gfx_Release(GfxAccelerationStructure h)
-{
-	releaseResource(g_device->m_resources.accelerationStructures, h);
-}
 
 // context
 
@@ -2633,60 +2571,15 @@ void Gfx_Retain(GfxContext* rc)
 	rc->addReference();
 }
 
-void Gfx_Retain(GfxVertexFormat h)
-{
-	g_device->m_resources.vertexFormats[h].addReference();
-}
+#define RUSH_GFX_RETAIN_IMPL(descType, handleType, memberName) \
+	void Gfx_Retain(handleType h) { g_device->m_resources.memberName[h].addReference(); }
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RETAIN_IMPL)
+#undef RUSH_GFX_RETAIN_IMPL
 
-void Gfx_Retain(GfxVertexShader h)
-{
-	g_device->m_resources.shaders[h].addReference();
-}
-
-void Gfx_Retain(GfxPixelShader h)
-{
-	g_device->m_resources.shaders[h].addReference();
-}
-
-void Gfx_Retain(GfxComputeShader h)
-{
-	g_device->m_resources.shaders[h].addReference();
-}
-
-void Gfx_Retain(GfxTechnique h)
-{
-	g_device->m_resources.techniques[h].addReference();
-}
-
-void Gfx_Retain(GfxTexture h)
-{
-	g_device->m_resources.textures[h].addReference();
-}
-
-void Gfx_Retain(GfxBlendState h)
-{
-	g_device->m_resources.blendStates[h].addReference();
-}
-
-void Gfx_Retain(GfxSampler h)
-{
-	g_device->m_resources.samplers[h].addReference();
-}
-
-void Gfx_Retain(GfxDepthStencilState h)
-{
-	g_device->m_resources.depthStencilStates[h].addReference();
-}
-
-void Gfx_Retain(GfxRasterizerState h)
-{
-	g_device->m_resources.rasterizerStates[h].addReference();
-}
-
-void Gfx_Retain(GfxBuffer h)
-{
-	g_device->m_resources.buffers[h].addReference();
-}
+#define RUSH_GFX_RELEASE_IMPL(descType, handleType, memberName) \
+	void Gfx_Release(handleType h) { releaseResource(g_device->m_resources.memberName, h); }
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RELEASE_IMPL)
+#undef RUSH_GFX_RELEASE_IMPL
 
 // Descriptor sets
 
@@ -2818,15 +2711,6 @@ GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& des
 					 createDescriptorSet(desc)));
 }
 
-void Gfx_Retain(GfxDescriptorSet h)
-{
-	g_device->m_resources.descriptorSets[h].addReference();
-}
-
-void Gfx_Release(GfxDescriptorSet h)
-{
-	releaseResource(g_device->m_resources.descriptorSets, h);
-}
 
 void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 {

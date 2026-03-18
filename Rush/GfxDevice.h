@@ -195,8 +195,6 @@ GfxOwn<GfxBuffer>            Gfx_CreateBuffer(const GfxBufferDesc& desc, const v
 
 #ifdef RUSH_RENDER_SUPPORT_QUERY
 GfxOwn<GfxQueryPool> Gfx_CreateQueryPool(const GfxQueryPoolDesc& desc);
-void                 Gfx_Retain(GfxQueryPool h);
-void                 Gfx_Release(GfxQueryPool h);
 void                 Gfx_ResetQuery(GfxContext* ctx, GfxQueryPool pool, u32 index, u32 count);
 void                 Gfx_BeginQuery(
                     GfxContext* ctx, GfxQueryPool pool, u32 index, GfxQueryControlFlags flags = GfxQueryControlFlags::None);
@@ -215,41 +213,17 @@ void                             Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPip
 
 void Gfx_Retain(GfxDevice* dev);
 void Gfx_Retain(GfxContext* rc);
-void Gfx_Retain(GfxVertexFormat h);
-void Gfx_Retain(GfxVertexShader h);
-void Gfx_Retain(GfxPixelShader h);
-void Gfx_Retain(GfxGeometryShader h);
-void Gfx_Retain(GfxComputeShader h);
-void Gfx_Retain(GfxMeshShader h);
-void Gfx_Retain(GfxTechnique h);
-void Gfx_Retain(GfxRayTracingPipeline h);
-void Gfx_Retain(GfxTexture h);
-void Gfx_Retain(GfxBlendState h);
-void Gfx_Retain(GfxSampler h);
-void Gfx_Retain(GfxDepthStencilState h);
-void Gfx_Retain(GfxRasterizerState h);
-void Gfx_Retain(GfxBuffer h);
 
-void Gfx_Release(GfxVertexFormat h);
-void Gfx_Release(GfxVertexShader h);
-void Gfx_Release(GfxPixelShader h);
-void Gfx_Release(GfxGeometryShader h);
-void Gfx_Release(GfxComputeShader h);
-void Gfx_Release(GfxMeshShader h);
-void Gfx_Release(GfxTechnique h);
-void Gfx_Release(GfxTexture h);
-void Gfx_Release(GfxBlendState h);
-void Gfx_Release(GfxSampler h);
-void Gfx_Release(GfxDepthStencilState h);
-void Gfx_Release(GfxRasterizerState h);
-void Gfx_Release(GfxBuffer h);
-void Gfx_Release(GfxRayTracingPipeline h);
-void Gfx_Release(GfxAccelerationStructure h);
+#define RUSH_GFX_RETAIN_DECL(descType, handleType, memberName) void Gfx_Retain(handleType h);
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RETAIN_DECL)
+#undef RUSH_GFX_RETAIN_DECL
+
+#define RUSH_GFX_RELEASE_DECL(descType, handleType, memberName) void Gfx_Release(handleType h);
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RELEASE_DECL)
+#undef RUSH_GFX_RELEASE_DECL
 
 #ifdef RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc);
-void Gfx_Retain(GfxDescriptorSet h);
-void Gfx_Release(GfxDescriptorSet h);
 void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h);
 void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxBuffer* constantBuffers = nullptr,
@@ -434,8 +408,6 @@ inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*){};
 
 #ifndef RUSH_RENDER_SUPPORT_MESH_SHADER
 inline GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code) { return InvalidResourceHandle(); };
-inline void Gfx_Retain(GfxMeshShader h) {};
-inline void Gfx_Release(GfxMeshShader h) {};
 inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
 #endif // RUSH_RENDER_SUPPORT_MESH_SHADER
 
@@ -447,9 +419,6 @@ inline u64  Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h) { 
 inline void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer) {}
 inline void Gfx_SetAccelerationStructure(GfxContext* ctx, u32 idx, GfxAccelerationStructureArg h) {}
 inline void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxBufferArg hitGroups, u32 width, u32 height, u32 depth) {}
-inline void Gfx_Retain(GfxRayTracingPipeline h){};
-inline void Gfx_Release(GfxRayTracingPipeline h){};
-inline void Gfx_Release(GfxAccelerationStructure h){};
 #endif // RUSH_RENDER_SUPPORT_RAY_TRACING
 
 // Null render API implementation
@@ -479,30 +448,12 @@ inline GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerD
 inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data) { return {}; }
 inline void Gfx_Retain(GfxDevice* dev) {}
 inline void Gfx_Retain(GfxContext* rc) {}
-inline void Gfx_Retain(GfxVertexFormat h) {}
-inline void Gfx_Retain(GfxVertexShader h) {}
-inline void Gfx_Retain(GfxPixelShader h) {}
-inline void Gfx_Retain(GfxGeometryShader h) {}
-inline void Gfx_Retain(GfxComputeShader h) {}
-inline void Gfx_Retain(GfxTechnique h) {}
-inline void Gfx_Retain(GfxTexture h) {}
-inline void Gfx_Retain(GfxBlendState h) {}
-inline void Gfx_Retain(GfxSampler h) {}
-inline void Gfx_Retain(GfxDepthStencilState h) {}
-inline void Gfx_Retain(GfxRasterizerState h) {}
-inline void Gfx_Retain(GfxBuffer h) {}
-inline void Gfx_Release(GfxVertexFormat h) {}
-inline void Gfx_Release(GfxVertexShader h) {}
-inline void Gfx_Release(GfxPixelShader h) {}
-inline void Gfx_Release(GfxGeometryShader h) {}
-inline void Gfx_Release(GfxComputeShader h) {}
-inline void Gfx_Release(GfxTechnique h) {}
-inline void Gfx_Release(GfxTexture h) {}
-inline void Gfx_Release(GfxBlendState h) {}
-inline void Gfx_Release(GfxSampler h) {}
-inline void Gfx_Release(GfxDepthStencilState h) {}
-inline void Gfx_Release(GfxRasterizerState h) {}
-inline void Gfx_Release(GfxBuffer h) {}
+#define RUSH_GFX_NULL_RETAIN(descType, handleType, memberName) inline void Gfx_Retain(handleType h) {}
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_NULL_RETAIN)
+#undef RUSH_GFX_NULL_RETAIN
+#define RUSH_GFX_NULL_RELEASE(descType, handleType, memberName) inline void Gfx_Release(handleType h) {}
+RUSH_GFX_RESOURCE_LIST(RUSH_GFX_NULL_RELEASE)
+#undef RUSH_GFX_NULL_RELEASE
 inline const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h) { static const GfxTextureDesc desc; return desc; }
 inline GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg h, u32 offset, u32 size) { return {}; }
 inline void Gfx_UnmapBuffer(GfxMappedBuffer& lock) {}
