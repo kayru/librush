@@ -494,8 +494,6 @@ inline void Gfx_BeginTimer(GfxContext* rc, u32 timestampId) {}
 inline void Gfx_EndTimer(GfxContext* rc, u32 timestampId) {}
 inline void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData) {};
 inline GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc) { return {}; }
-inline void Gfx_Retain(GfxDescriptorSet h) {}
-inline void Gfx_Release(GfxDescriptorSet h) {}
 inline void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h) {}
 inline void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxBuffer* constantBuffers = nullptr,
