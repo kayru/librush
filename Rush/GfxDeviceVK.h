@@ -26,6 +26,12 @@ struct DescriptorPoolVK;
 
 struct DestructionQueueVK;
 
+struct DestructionEpoch
+{
+	GfxProgressId progressId;
+	UniquePtr<DestructionQueueVK> queue;
+};
+
 union MemoryTraitsVK {
 	struct
 	{
@@ -568,8 +574,6 @@ public:
 		DynamicArray<u16> timestampSlotMap;
 		u32               timestampIssuedCount = 0;
 
-		UniquePtr<DestructionQueueVK> destructionQueue;
-
 		u32           frameIndex             = ~0u;
 		VkFence       lastGraphicsFence      = VK_NULL_HANDLE;
 		GfxProgressId lastPresentProgressId;
@@ -580,6 +584,9 @@ public:
 
 	DynamicArray<FrameData> m_frameData;
 	FrameData*              m_currentFrame = nullptr;
+
+	DynamicArray<DestructionEpoch> m_destructionEpochs;
+	UniquePtr<DestructionQueueVK>  m_pendingDestructionQueue;
 
 	MemoryAllocatorVK m_transientLocalAllocator;
 	MemoryAllocatorVK m_transientHostAllocator;

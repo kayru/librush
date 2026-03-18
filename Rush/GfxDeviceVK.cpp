@@ -527,7 +527,29 @@ inline void validateBufferUse(const BufferVK& buffer, bool allowTransientBuffers
 	}
 }
 
-GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg) 
+struct TransientHostMemoryBlockVK : MemoryBlockVK {};
+
+struct DestructionQueueVK
+{
+	RUSH_DISALLOW_COPY_AND_ASSIGN(DestructionQueueVK);
+
+	DestructionQueueVK() = default;
+	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
+
+	using Item = std::variant<VkPipeline, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
+	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
+
+	DynamicArray<Item> items;
+
+	template <typename T> void push(T val)
+	{
+		items.push(val);
+	}
+
+	void flush(GfxDevice* device);
+};
+
+GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	: GfxRefCount(1)
 	, m_cfg(cfg)
     , m_window(window)
@@ -1020,6 +1042,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		V(vkCreateSemaphore(m_vulkanDevice, &semaphoreInfo, g_allocationCallbacks, &m_progressSemaphore));
 	}
 
+	m_pendingDestructionQueue = UniquePtr<DestructionQueueVK>(new DestructionQueueVK);
+
+	m_pendingDestructionQueue = UniquePtr<DestructionQueueVK>(new DestructionQueueVK);
+
 	// Pipeline cache
 
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
@@ -1173,30 +1199,7 @@ static void extendDescriptorPool(GfxDevice::FrameData* frameData)
 	frameData->currentDescriptorPool = frameData->descriptorPools.back().m_descriptorPool;
 }
 
-struct TransientHostMemoryBlockVK : MemoryBlockVK {};
-
-struct DestructionQueueVK
-{
-	RUSH_DISALLOW_COPY_AND_ASSIGN(DestructionQueueVK);
-
-	DestructionQueueVK() = default;
-	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
-
-	using Item = std::variant<VkPipeline, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
-	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
-
-	DynamicArray<Item> items;
-
-	template <typename T> void push(T val)
-	{
-		items.push(val);
-	}
-
-	void flush(GfxDevice* device);
-};
-
-template <typename T> void enqueueDestroy(GfxDevice::FrameData* frame, T x) { frame->destructionQueue->push(x); }
-template <typename T> void enqueueDestroy(T x) { enqueueDestroy(g_device->m_currentFrame, x); }
+template <typename T> void enqueueDestroy(T x) { g_device->m_pendingDestructionQueue->push(x); }
 
 GfxDevice::~GfxDevice()
 {
@@ -1248,6 +1251,14 @@ GfxDevice::~GfxDevice()
 		vkDestroyPipeline(m_vulkanDevice, it.second, g_allocationCallbacks);
 	}
 
+	for (auto& epoch : m_destructionEpochs)
+	{
+		epoch.queue->flush(this);
+	}
+	m_destructionEpochs.clear();
+
+	m_pendingDestructionQueue->flush(this);
+
 	for (FrameData& it : m_frameData)
 	{
 		it.descriptorPools.clear();
@@ -1259,8 +1270,6 @@ GfxDevice::~GfxDevice()
 		{
 			vkDestroySemaphore(m_vulkanDevice, it.presentCompleteSemaphore, g_allocationCallbacks);
 		}
-
-		it.destructionQueue->flush(this);
 	}
 
 	for (auto& contextPool : m_freeContexts)
@@ -1963,7 +1972,55 @@ void GfxDevice::createSwapChain()
 	m_swapChainValid = true;
 }
 
-GfxDevice::FrameData::FrameData() : destructionQueue(new DestructionQueueVK) {}
+GfxDevice::FrameData::FrameData() {}
+
+static void sealDestructionEpoch(GfxDevice* device, u64 progressValue)
+{
+	if (device->m_pendingDestructionQueue->items.empty())
+	{
+		return;
+	}
+	DestructionEpoch epoch;
+	epoch.progressId = GfxProgressId{progressValue};
+	epoch.queue = std::move(device->m_pendingDestructionQueue);
+	device->m_destructionEpochs.push_back(std::move(epoch));
+	device->m_pendingDestructionQueue = UniquePtr<DestructionQueueVK>(new DestructionQueueVK);
+}
+
+static void drainCompletedDestructionEpochs(GfxDevice* device)
+{
+	if (device->m_destructionEpochs.empty())
+	{
+		return;
+	}
+
+	u64 counterValue = 0;
+	V(vkGetSemaphoreCounterValue(device->m_vulkanDevice, device->m_progressSemaphore, &counterValue));
+
+	u32 completedCount = 0;
+	for (auto& epoch : device->m_destructionEpochs)
+	{
+		if (counterValue >= epoch.progressId.value)
+		{
+			epoch.queue->flush(device);
+			++completedCount;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (completedCount > 0)
+	{
+		const u32 remaining = u32(device->m_destructionEpochs.size()) - completedCount;
+		for (u32 i = 0; i < remaining; ++i)
+		{
+			device->m_destructionEpochs[i] = std::move(device->m_destructionEpochs[i + completedCount]);
+		}
+		device->m_destructionEpochs.resize(remaining);
+	}
+}
 
 inline void recycleContext(GfxContext* context)
 {
@@ -2044,7 +2101,7 @@ void GfxDevice::beginFrame()
 		m_currentFrame->lastGraphicsFence = VK_NULL_HANDLE;
 	}
 
-	m_currentFrame->destructionQueue->flush(this);
+	drainCompletedDestructionEpochs(this);
 
 	for (auto& it : m_currentFrame->descriptorPools)
 	{
@@ -2062,7 +2119,7 @@ void GfxDevice::endFrame()
 {
 	for (MemoryBlockVK& block : m_transientHostAllocator.m_fullBlocks)
 	{
-		m_currentFrame->destructionQueue->push(TransientHostMemoryBlockVK(block));
+		m_pendingDestructionQueue->push(TransientHostMemoryBlockVK(block));
 	}
 	m_transientHostAllocator.m_fullBlocks.clear();
 }
@@ -2361,6 +2418,8 @@ void GfxContext::split()
 
 	const u64 progressValue = m_device->m_nextProgressId++;
 	submit(m_device->m_graphicsQueue, m_device->m_progressSemaphore, progressValue);
+	sealDestructionEpoch(m_device, progressValue);
+	drainCompletedDestructionEpochs(m_device);
 
 	recycleContext(this);
 
@@ -3517,6 +3576,7 @@ GfxProgressId Gfx_Present()
 
 	const u64 progressValue = g_device->m_nextProgressId++;
 	g_context->submit(g_device->m_graphicsQueue, g_device->m_progressSemaphore, progressValue);
+	sealDestructionEpoch(g_device, progressValue);
 
 	g_device->m_currentFrame->lastGraphicsFence    = g_context->m_fence;
 	g_device->m_currentFrame->lastPresentProgressId = GfxProgressId{progressValue};
@@ -3625,6 +3685,7 @@ GfxProgressId Gfx_Submit()
 
 	const u64 progressValue = g_device->m_nextProgressId++;
 	g_context->submit(g_device->m_graphicsQueue, g_device->m_progressSemaphore, progressValue);
+	sealDestructionEpoch(g_device, progressValue);
 
 	recycleContext(g_context);
 
@@ -3648,6 +3709,7 @@ GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
 	if (!!(flags & GfxProgressFlags::Idle))
 	{
 		V(vkDeviceWaitIdle(g_vulkanDevice));
+		drainCompletedDestructionEpochs(g_device);
 		return GfxProgressStatus::Complete;
 	}
 
@@ -3659,6 +3721,7 @@ GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
 		waitInfo.pValues        = &id.value;
 
 		V(vkWaitSemaphores(g_vulkanDevice, &waitInfo, UINT64_MAX));
+		drainCompletedDestructionEpochs(g_device);
 
 		return GfxProgressStatus::Complete;
 	}
