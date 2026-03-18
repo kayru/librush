@@ -7,6 +7,7 @@
 #include "UtilResourcePool.h"
 #include "UtilTuple.h"
 
+#include <compare>
 #include <initializer_list>
 
 // clang-format off
@@ -1185,5 +1186,27 @@ template <typename T> inline void GfxRef<T>::retain(GfxArg<T> h)
 
 	m_handle = h;
 }
+
+// Opaque handle returned by Gfx_Submit / Gfx_Present, used with Gfx_QueryProgress.
+struct GfxProgressId
+{
+	u64 value = 0;
+	auto operator<=>(const GfxProgressId&) const = default;
+	explicit operator bool() const { return value != 0; }
+};
+
+enum class GfxProgressFlags : u32
+{
+	None     = 0,
+	Wait     = 1 << 0, // block until the specific progress ID is reached
+	Idle     = 1 << 1, // block until all GPU work is complete
+};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxProgressFlags, u32);
+
+enum class GfxProgressStatus
+{
+	Complete,
+	Pending,
+};
 
 } // namespace Rush

@@ -663,9 +663,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_nvMeshShaderFeatures.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
 	m_physicalDeviceDescriptorIndexingFeatures.pNext = &m_bufferDeviceAddressFeatures;
 	m_bufferDeviceAddressFeatures.pNext = &m_shaderDrawParametersFeatures;
+	m_shaderDrawParametersFeatures.pNext = &m_timelineSemaphoreFeatures;
+	m_timelineSemaphoreFeatures.pNext = nullptr;
 
 	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
+	RUSH_ASSERT(m_timelineSemaphoreFeatures.timelineSemaphore);
 
 	auto enumeratedDeviceLayers     = enumerateDeviceLayers(m_physicalDevice);
 	auto enumeratedDeviceExtensions = enumerateDeviceExtensions(m_physicalDevice);
@@ -875,6 +878,12 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		m_physicalDeviceFeatures2.pNext = &m_physicalDeviceRayQueryFeatures;
 	}
 
+	m_timelineSemaphoreFeatures.timelineSemaphore = VK_TRUE;
+	// Break the query-phase chain link before re-inserting at head
+	m_shaderDrawParametersFeatures.pNext = nullptr;
+	m_timelineSemaphoreFeatures.pNext = m_physicalDeviceFeatures2.pNext;
+	m_physicalDeviceFeatures2.pNext = &m_timelineSemaphoreFeatures;
+
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
 	deviceCreateInfo.pQueueCreateInfos       = queueCreateInfos.data();
@@ -996,6 +1005,19 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		cmdPoolInfo.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
 		V(vkCreateCommandPool(m_vulkanDevice, &cmdPoolInfo, g_allocationCallbacks, &m_transferCommandPool));
+	}
+
+	// Timeline semaphores for progress tracking
+
+	{
+		VkSemaphoreTypeCreateInfo timelineInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+		timelineInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+		timelineInfo.initialValue  = 0;
+
+		VkSemaphoreCreateInfo semaphoreInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+		semaphoreInfo.pNext = &timelineInfo;
+
+		V(vkCreateSemaphore(m_vulkanDevice, &semaphoreInfo, g_allocationCallbacks, &m_progressSemaphore));
 	}
 
 	// Pipeline cache
@@ -1265,6 +1287,8 @@ GfxDevice::~GfxDevice()
 	}
 
 	vkDestroyPipelineCache(m_vulkanDevice, m_pipelineCache, g_allocationCallbacks);
+
+	vkDestroySemaphore(m_vulkanDevice, m_progressSemaphore, g_allocationCallbacks);
 
 	if (m_swapChain)
 	{
@@ -2008,7 +2032,13 @@ void GfxDevice::beginFrame()
 	m_currentFrame             = &m_frameData[currentFrameIndex];
 	m_currentFrame->frameIndex = g_device->m_frameCount;
 
-	if (m_currentFrame->lastGraphicsFence)
+	if (m_currentFrame->lastPresentProgressId)
+	{
+		Gfx_QueryProgress(m_currentFrame->lastPresentProgressId, GfxProgressFlags::Wait);
+		m_currentFrame->lastPresentProgressId = {};
+		m_currentFrame->lastGraphicsFence = VK_NULL_HANDLE;
+	}
+	else if (m_currentFrame->lastGraphicsFence)
 	{
 		V(vkWaitForFences(g_vulkanDevice, 1, &m_currentFrame->lastGraphicsFence, true, UINT64_MAX));
 		m_currentFrame->lastGraphicsFence = VK_NULL_HANDLE;
@@ -2329,14 +2359,15 @@ void GfxContext::split()
 
 	endBuild();
 
-	submit(m_device->m_graphicsQueue);
+	const u64 progressValue = m_device->m_nextProgressId++;
+	submit(m_device->m_graphicsQueue, m_device->m_progressSemaphore, progressValue);
 
 	recycleContext(this);
 
 	beginBuild();
 }
 
-void GfxContext::submit(VkQueue queue)
+void GfxContext::submit(VkQueue queue, VkSemaphore timelineSemaphore, u64 timelineValue)
 {
 	if (!m_pendingBufferUploads.empty())
 	{
@@ -2349,12 +2380,40 @@ void GfxContext::submit(VkQueue queue)
 		m_pendingBufferUploads.clear();
 	}
 
-	VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+	DynamicArray<VkSemaphore> signalSemaphores;
+	if (m_useCompletionSemaphore)
+	{
+		signalSemaphores.push_back(m_completionSemaphore);
+	}
+	if (timelineSemaphore != VK_NULL_HANDLE)
+	{
+		signalSemaphores.push_back(timelineSemaphore);
+	}
 
+	VkTimelineSemaphoreSubmitInfo timelineInfo = {VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+
+	DynamicArray<u64> waitValues(m_waitSemaphores.size(), 0);
+	DynamicArray<u64> signalValues;
+	if (m_useCompletionSemaphore)
+	{
+		signalValues.push_back(0);
+	}
+	if (timelineSemaphore != VK_NULL_HANDLE)
+	{
+		signalValues.push_back(timelineValue);
+	}
+
+	timelineInfo.waitSemaphoreValueCount   = (u32)waitValues.size();
+	timelineInfo.pWaitSemaphoreValues      = waitValues.data();
+	timelineInfo.signalSemaphoreValueCount = (u32)signalValues.size();
+	timelineInfo.pSignalSemaphoreValues    = signalValues.data();
+
+	VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+	submitInfo.pNext                = &timelineInfo;
 	submitInfo.waitSemaphoreCount   = (u32)m_waitSemaphores.size();
 	submitInfo.pWaitSemaphores      = m_waitSemaphores.data();
-	submitInfo.pSignalSemaphores    = &m_completionSemaphore;
-	submitInfo.signalSemaphoreCount = m_useCompletionSemaphore ? 1 : 0;
+	submitInfo.signalSemaphoreCount = (u32)signalSemaphores.size();
+	submitInfo.pSignalSemaphores    = signalSemaphores.data();
 	submitInfo.commandBufferCount   = 1;
 	submitInfo.pCommandBuffers      = &m_commandBuffer;
 	submitInfo.pWaitDstStageMask    = m_waitDstStageMasks.data();
@@ -3443,7 +3502,7 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 	g_device->m_pendingScreenshotUserData = userData;
 }
 
-void Gfx_Present()
+GfxProgressId Gfx_Present()
 {
 	if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
 	{
@@ -3456,9 +3515,11 @@ void Gfx_Present()
 		}
 	}
 
-	g_context->submit(g_device->m_graphicsQueue);
+	const u64 progressValue = g_device->m_nextProgressId++;
+	g_context->submit(g_device->m_graphicsQueue, g_device->m_progressSemaphore, progressValue);
 
-	g_device->m_currentFrame->lastGraphicsFence = g_context->m_fence;
+	g_device->m_currentFrame->lastGraphicsFence    = g_context->m_fence;
+	g_device->m_currentFrame->lastPresentProgressId = GfxProgressId{progressValue};
 
 	if (g_device->m_pendingScreenshotCallback)
 	{
@@ -3545,48 +3606,94 @@ void Gfx_Present()
 	}
 
 	g_device->m_frameCount++;
+
+	return GfxProgressId{progressValue};
 }
 
 void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval = interval; }
 
-void Gfx_Finish(GfxFinishFlags flags)
+GfxProgressId Gfx_Submit()
 {
 	g_device->flushUploadContext(g_context);
 
-	if (g_context->m_isActive)
+	if (!g_context->m_isActive)
 	{
-		g_context->split();
+		return Gfx_GetPendingProgressId();
 	}
 
-	V(vkDeviceWaitIdle(g_vulkanDevice));
+	g_context->endBuild();
 
-	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
+	const u64 progressValue = g_device->m_nextProgressId++;
+	g_context->submit(g_device->m_graphicsQueue, g_device->m_progressSemaphore, progressValue);
+
+	recycleContext(g_context);
+
+	g_context->beginBuild();
+
+	return GfxProgressId{progressValue};
+}
+
+GfxProgressId Gfx_GetPendingProgressId()
+{
+	return GfxProgressId{g_device->m_nextProgressId - 1};
+}
+
+GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
+{
+	if (id.value == 0)
 	{
-		resolveTimestampStats(g_device->m_currentFrame);
+		return GfxProgressStatus::Complete;
+	}
 
-		// Reset query pool usage here so custom timers stay valid across many finishes.
-		GfxDevice::FrameData* frameData = g_device->m_currentFrame;
-		if (frameData)
+	if (!!(flags & GfxProgressFlags::Idle))
+	{
+		V(vkDeviceWaitIdle(g_vulkanDevice));
+		return GfxProgressStatus::Complete;
+	}
+
+	if (!!(flags & GfxProgressFlags::Wait))
+	{
+		VkSemaphoreWaitInfo waitInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+		waitInfo.semaphoreCount = 1;
+		waitInfo.pSemaphores    = &g_device->m_progressSemaphore;
+		waitInfo.pValues        = &id.value;
+
+		V(vkWaitSemaphores(g_vulkanDevice, &waitInfo, UINT64_MAX));
+
+		return GfxProgressStatus::Complete;
+	}
+
+	u64 counterValue = 0;
+	V(vkGetSemaphoreCounterValue(g_vulkanDevice, g_device->m_progressSemaphore, &counterValue));
+
+	return counterValue >= id.value ? GfxProgressStatus::Complete : GfxProgressStatus::Pending;
+}
+
+void Gfx_ResolveTimestamps()
+{
+	resolveTimestampStats(g_device->m_currentFrame);
+
+	GfxDevice::FrameData* frameData = g_device->m_currentFrame;
+	if (frameData)
+	{
+		static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
+
+		if (g_context && g_context->m_isActive &&
+		    frameData->timestampPool != VK_NULL_HANDLE &&
+		    !frameData->timestampPoolData.empty())
 		{
-			static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
-
-			if (g_context && g_context->m_isActive &&
-			    frameData->timestampPool != VK_NULL_HANDLE &&
-			    !frameData->timestampPoolData.empty())
-			{
-				vkCmdResetQueryPool(
-					g_context->m_commandBuffer,
-					frameData->timestampPool,
-					0,
-					u32(frameData->timestampPoolData.size()));
-			}
-
-			for (u16& it : frameData->timestampSlotMap)
-			{
-				it = InvalidTimestampSlotIndex;
-			}
-			frameData->timestampIssuedCount = 0;
+			vkCmdResetQueryPool(
+				g_context->m_commandBuffer,
+				frameData->timestampPool,
+				0,
+				u32(frameData->timestampPoolData.size()));
 		}
+
+		for (u16& it : frameData->timestampSlotMap)
+		{
+			it = InvalidTimestampSlotIndex;
+		}
+		frameData->timestampIssuedCount = 0;
 	}
 }
 

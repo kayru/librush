@@ -186,6 +186,10 @@ public:
 	id<MTLCommandQueue> m_commandQueue = nil;
 	CAMetalLayer* m_metalLayer = nil;
 
+	id<MTLSharedEvent> m_progressEvent = nil;
+	u64                m_nextProgressId = 1;
+	id<MTLCommandBuffer> m_lastSubmittedCommandBuffer = nil;
+
 	struct Resources
 	{
 		ResourcePool<ShaderMTL, UntypedResourceHandle> shaders;

@@ -11,6 +11,25 @@
 
 #include "WindowMac.h"
 
+static void waitForSharedEvent(id<MTLSharedEvent> event, uint64_t targetValue)
+{
+	if (event.signaledValue >= targetValue)
+	{
+		return;
+	}
+
+	dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+	MTLSharedEventListener* listener = [[MTLSharedEventListener alloc] init];
+	[event notifyListener:listener
+		atValue:targetValue
+		block:^(id<MTLSharedEvent> e, uint64_t v) {
+			dispatch_semaphore_signal(sema);
+		}];
+	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	dispatch_release(sema);
+	[listener release];
+}
+
 namespace Rush
 {
 
@@ -212,6 +231,8 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	}
 
+	m_progressEvent = [m_metalDevice newSharedEvent];
+
 	// default resources
 
 	m_resources.blendStates[InvalidResourceHandle()].desc = GfxBlendStateDesc::makeOpaque();
@@ -275,6 +296,8 @@ GfxDevice::~GfxDevice()
 {
 	g_metalDevice = nil;
 
+	[m_progressEvent release];
+	[m_lastSubmittedCommandBuffer release];
 	[m_commandBuffer release];
 	[m_commandQueue release];
 	[m_metalDevice release];
@@ -411,7 +434,7 @@ void Gfx_EndFrame()
 	}
 }
 
-void Gfx_Present()
+GfxProgressId Gfx_Present()
 {
 	RUSH_ASSERT(g_device->m_commandBuffer);
 
@@ -427,6 +450,9 @@ void Gfx_Present()
 	{
 		[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
 	}
+
+	const u64 progressValue = g_device->m_nextProgressId++;
+	[g_device->m_commandBuffer encodeSignalEvent:g_device->m_progressEvent value:progressValue];
 	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
 		if (buffer.GPUEndTime > buffer.GPUStartTime)
 		{
@@ -488,6 +514,8 @@ void Gfx_Present()
 	
 	[g_device->m_drawable release];
 	g_device->m_drawable = nil;
+
+	return GfxProgressId{progressValue};
 }
 
 void Gfx_SetPresentInterval(u32 interval)
@@ -506,14 +534,13 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 	g_device->m_pendingScreenshot.userData = userData;
 }
 
-void Gfx_Finish(GfxFinishFlags flags)
+GfxProgressId Gfx_Submit()
 {
 	if (!g_device || !g_device->m_commandBuffer)
 	{
-		return;
+		return {};
 	}
 
-	// Ensure any active encoders are closed before committing.
 	if (g_context)
 	{
 		if (g_context->m_commandEncoder)
@@ -530,27 +557,65 @@ void Gfx_Finish(GfxFinishFlags flags)
 		}
 	}
 
-	id<MTLCommandBuffer> finishedCommandBuffer = g_device->m_commandBuffer;
-	[finishedCommandBuffer commit];
-	[finishedCommandBuffer waitUntilCompleted];
+	const u64 progressValue = g_device->m_nextProgressId++;
+	[g_device->m_commandBuffer encodeSignalEvent:g_device->m_progressEvent value:progressValue];
+	[g_device->m_commandBuffer commit];
 
-	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
-	{
-		for (double& timer : g_device->m_stats.customTimer)
-		{
-			timer = 0.0;
-		}
+	[g_device->m_lastSubmittedCommandBuffer release];
+	g_device->m_lastSubmittedCommandBuffer = g_device->m_commandBuffer;
 
-		if (finishedCommandBuffer.GPUEndTime > finishedCommandBuffer.GPUStartTime)
-		{
-			// Metal timer-scope queries are not implemented yet; report end-to-end command buffer GPU time in slot 0.
-			g_device->m_stats.customTimer[0] = finishedCommandBuffer.GPUEndTime - finishedCommandBuffer.GPUStartTime;
-		}
-	}
-
-	[g_device->m_commandBuffer release];
 	g_device->m_commandBuffer = [g_device->m_commandQueue commandBuffer];
 	[g_device->m_commandBuffer retain];
+
+	return GfxProgressId{progressValue};
+}
+
+GfxProgressId Gfx_GetPendingProgressId()
+{
+	return GfxProgressId{g_device->m_nextProgressId - 1};
+}
+
+GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
+{
+	if (id.value == 0)
+	{
+		return GfxProgressStatus::Complete;
+	}
+
+	if (!!(flags & GfxProgressFlags::Idle))
+	{
+		waitForSharedEvent(g_device->m_progressEvent, g_device->m_nextProgressId - 1);
+		return GfxProgressStatus::Complete;
+	}
+
+	if (!!(flags & GfxProgressFlags::Wait))
+	{
+		waitForSharedEvent(g_device->m_progressEvent, id.value);
+		return GfxProgressStatus::Complete;
+	}
+
+	return g_device->m_progressEvent.signaledValue >= id.value
+		? GfxProgressStatus::Complete
+		: GfxProgressStatus::Pending;
+}
+
+void Gfx_ResolveTimestamps()
+{
+	if (!g_device || !g_device->m_lastSubmittedCommandBuffer)
+	{
+		return;
+	}
+
+	for (double& timer : g_device->m_stats.customTimer)
+	{
+		timer = 0.0;
+	}
+
+	id<MTLCommandBuffer> buf = g_device->m_lastSubmittedCommandBuffer;
+	if (buf.GPUEndTime > buf.GPUStartTime)
+	{
+		g_device->m_stats.customTimer[0] = buf.GPUEndTime - buf.GPUStartTime;
+	}
 }
 
 const GfxCapability& Gfx_GetCapability()

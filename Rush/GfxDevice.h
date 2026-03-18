@@ -171,10 +171,28 @@ void       Gfx_Release(GfxDevice* dev);
 
 void                 Gfx_BeginFrame();
 void                 Gfx_EndFrame();
-void                 Gfx_Present();
+GfxProgressId        Gfx_Present();                // submit commands + present swapchain, return progress ID
 void                 Gfx_SetPresentInterval(u32 interval);
 const GfxCapability& Gfx_GetCapability();
-void                 Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None);
+
+// GPU progress tracking: Submit/Present return a GfxProgressId.
+// QueryProgress can poll (no flags), wait for a specific ID (Wait), or drain all work (Idle).
+// ResolveTimestamps requires the relevant submit to have completed.
+GfxProgressId        Gfx_Submit();                // flush pending commands to GPU, return progress ID
+GfxProgressId        Gfx_GetPendingProgressId();  // return the most recently submitted progress ID
+GfxProgressStatus    Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags = GfxProgressFlags::None);
+void                 Gfx_ResolveTimestamps();     // read back GPU timestamp query results
+
+// Submit and wait for all GPU work to complete
+inline void Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None)
+{
+	GfxProgressId id = Gfx_Submit();
+	Gfx_QueryProgress(id, GfxProgressFlags::Idle);
+	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
+	{
+		Gfx_ResolveTimestamps();
+	}
+}
 
 const GfxStats& Gfx_Stats();
 void            Gfx_ResetStats();
@@ -403,7 +421,7 @@ inline void Gfx_AddImageBarrier(
 
 #ifndef RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 inline GfxContext* Gfx_BeginAsyncCompute(GfxContext*) { return nullptr; }
-inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*){};
+inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*) {}
 #endif //RUSH_RENDER_SUPPORT_ASYNC_COMPUTE
 
 #ifndef RUSH_RENDER_SUPPORT_MESH_SHADER
@@ -428,9 +446,12 @@ inline GfxDevice* Gfx_CreateDevice(Window* window, const GfxConfig& cfg) { retur
 inline void Gfx_Release(GfxDevice* dev) {}
 inline void Gfx_BeginFrame() {}
 inline void Gfx_EndFrame() {}
-inline void Gfx_Present() {}
+inline GfxProgressId Gfx_Present() { return {}; }
 inline void Gfx_SetPresentInterval(u32 interval) {}
-inline void Gfx_Finish(GfxFinishFlags flags) {}
+inline GfxProgressId Gfx_Submit() { return {}; }
+inline GfxProgressId Gfx_GetPendingProgressId() { return {}; }
+inline GfxProgressStatus Gfx_QueryProgress(GfxProgressId, GfxProgressFlags) { return GfxProgressStatus::Complete; }
+inline void Gfx_ResolveTimestamps() {}
 inline const GfxCapability& Gfx_GetCapability() { static const GfxCapability cap; return cap; }
 inline const GfxStats& Gfx_Stats() { static const GfxStats stats; return stats; }
 inline void Gfx_ResetStats() {}

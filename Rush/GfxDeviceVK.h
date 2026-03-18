@@ -471,6 +471,7 @@ public:
 	VkPhysicalDeviceRayQueryFeaturesKHR m_physicalDeviceRayQueryFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
 	VkPhysicalDeviceDescriptorIndexingFeatures m_physicalDeviceDescriptorIndexingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 	VkPhysicalDeviceMeshShaderFeaturesNV m_nvMeshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
+	VkPhysicalDeviceTimelineSemaphoreFeatures m_timelineSemaphoreFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES };
 	VkPhysicalDeviceBufferDeviceAddressFeatures m_bufferDeviceAddressFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
 	VkPhysicalDeviceShaderDrawParametersFeatures m_shaderDrawParametersFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES };
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
@@ -491,6 +492,9 @@ public:
 	VkCommandPool m_transferCommandPool = VK_NULL_HANDLE;
 
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
+
+	VkSemaphore m_progressSemaphore = VK_NULL_HANDLE;
+	u64         m_nextProgressId  = 1;
 
 	std::unordered_map<PipelineKey, VkPipeline, PipelineKey::Hash>          m_pipelines;
 	std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKey::Hash>    m_renderPasses;
@@ -566,8 +570,9 @@ public:
 
 		UniquePtr<DestructionQueueVK> destructionQueue;
 
-		u32     frameIndex             = ~0u;
-		VkFence lastGraphicsFence      = VK_NULL_HANDLE;
+		u32           frameIndex             = ~0u;
+		VkFence       lastGraphicsFence      = VK_NULL_HANDLE;
+		GfxProgressId lastPresentProgressId;
 
 		VkSemaphore presentCompleteSemaphore = VK_NULL_HANDLE;
 		bool        presentCompleteSemaphoreWaited = false;
@@ -681,7 +686,7 @@ public:
 
 	void beginBuild();
 	void endBuild();
-	void submit(VkQueue queue);
+	void submit(VkQueue queue, VkSemaphore timelineSemaphore = VK_NULL_HANDLE, u64 timelineValue = 0);
 	void split();
 	void addDependency(VkSemaphore waitSemaphore, VkPipelineStageFlags waitDstStageMask);
 
