@@ -231,6 +231,7 @@ public:
 		void* userData = nullptr;
 		u32 width = 0;
 		u32 height = 0;
+		GfxImageCopyInfo copyInfo;
 	};
 
 	PendingScreenshot m_pendingScreenshot;

@@ -3501,24 +3501,19 @@ void GfxDevice::captureScreenshot()
 	GfxContext* context = allocateContext(GfxContextType::Graphics, "Screenshot");
 	context->beginBuild();
 
-	// copy image to buffer
-
-	VkBufferImageCopy bufferImageCopy;
-	bufferImageCopy.bufferOffset      = 0;
-	bufferImageCopy.bufferRowLength   = 0;
-	bufferImageCopy.bufferImageHeight = 0;
-	bufferImageCopy.imageSubresource  = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-	bufferImageCopy.imageOffset       = VkOffset3D{0, 0, 0};
-	bufferImageCopy.imageExtent       = VkExtent3D{m_swapChainExtent.width, m_swapChainExtent.height, 1};
-
 	VkImage swapChainImage = m_swapChainImages[m_swapChainIndex];
 
 	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
-	context->flushBarriers();
+	const GfxTexture swapChainTexture = m_swapChainTextures[m_swapChainIndex].get();
+	const GfxBuffer  stagingHandle    = m_resources.buffers.push(BufferVK{});
+	BufferVK& stagingBuf = m_resources.buffers[stagingHandle];
+	stagingBuf.info.buffer = buffer;
 
-	vkCmdCopyImageToBuffer(
-	    context->m_commandBuffer, swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &bufferImageCopy);
+	GfxImageRegion region;
+	Gfx_CopyTextureToBuffer(context, swapChainTexture, region, stagingHandle);
+
+	m_resources.buffers.remove(stagingHandle);
 
 	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
@@ -5672,6 +5667,58 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 void Gfx_EndPass(GfxContext* rc) { rc->endRenderPass(); }
 
 void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) { rc->resolveImage(src, dst); }
+
+GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat format, Tuple3u size)
+{
+	const u32 bpp = getBitsPerPixel(format);
+	GfxImageCopyInfo info;
+	info.bytesPerRow = size.x * bpp / 8;
+	info.rowCount    = size.y;
+	return info;
+}
+
+GfxImageCopyInfo Gfx_CopyTextureToBuffer(
+    GfxContext*           ctx,
+    GfxTextureArg         src,
+    const GfxImageRegion& srcRegion,
+    GfxBufferArg          dst,
+    u64                   dstOffset)
+{
+	RUSH_ASSERT(!ctx->m_isRenderPassActive);
+
+	const TextureVK& srcTex  = g_device->m_resources.textures[src];
+	const BufferVK&  dstBuf  = g_device->m_resources.buffers[dst];
+
+	Tuple3u copySize = srcRegion.size;
+	if (copySize.x == 0 && copySize.y == 0 && copySize.z == 0)
+	{
+		copySize.x = max<u32>(1, srcTex.desc.width >> srcRegion.mipLevel);
+		copySize.y = max<u32>(1, srcTex.desc.height >> srcRegion.mipLevel);
+		copySize.z = max<u32>(1, srcTex.desc.depth >> srcRegion.mipLevel);
+	}
+
+	const GfxImageCopyInfo info = Gfx_GetImageCopyInfo(srcTex.desc.format, copySize);
+
+	VkBufferImageCopy region;
+	region.bufferOffset      = dstOffset;
+	region.bufferRowLength   = 0;
+	region.bufferImageHeight = 0;
+	region.imageSubresource  = VkImageSubresourceLayers{
+	    VK_IMAGE_ASPECT_COLOR_BIT, srcRegion.mipLevel, srcRegion.arrayLayer, 1};
+	region.imageOffset = VkOffset3D{
+	    static_cast<s32>(srcRegion.offset.x),
+	    static_cast<s32>(srcRegion.offset.y),
+	    static_cast<s32>(srcRegion.offset.z)};
+	region.imageExtent = VkExtent3D{copySize.x, copySize.y, copySize.z};
+
+	ctx->flushBarriers();
+
+	vkCmdCopyImageToBuffer(
+	    ctx->m_commandBuffer, srcTex.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	    dstBuf.info.buffer, 1, &region);
+
+	return info;
+}
 
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 {

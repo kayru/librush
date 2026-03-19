@@ -411,26 +411,31 @@ void Gfx_EndFrame()
 
 		const u32 width = (u32)[g_device->m_backBufferTexture width];
 		const u32 height = (u32)[g_device->m_backBufferTexture height];
-		const u32 bytesPerRow = width * 4;
-		const u32 alignedBytesPerRow = (bytesPerRow + 0xFF) & ~0xFFu;
-		const u32 bufferSize = alignedBytesPerRow * height;
+
+		// Register temporary texture/buffer handles for Gfx_CopyTextureToBuffer
+		TextureMTL tempTex;
+		tempTex.native = g_device->m_backBufferTexture;
+		tempTex.desc = GfxTextureDesc::make2D(width, height, GfxFormat_BGRA8_Unorm);
+		const GfxTexture srcHandle = g_device->m_resources.textures.push(tempTex);
+
+		const GfxImageCopyInfo preInfo = Gfx_GetImageCopyInfo(GfxFormat_BGRA8_Unorm, {width, height, 1});
+		const u32 bufferSize = preInfo.bytesPerRow * preInfo.rowCount;
 
 		g_device->m_pendingScreenshot.width = width;
 		g_device->m_pendingScreenshot.height = height;
 		g_device->m_pendingScreenshot.buffer =
 		    [g_device->m_metalDevice newBufferWithLength:bufferSize options:MTLResourceStorageModeShared];
 
-		id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
-		[blit copyFromTexture:g_device->m_backBufferTexture
-		          sourceSlice:0
-		          sourceLevel:0
-		         sourceOrigin:MTLOriginMake(0, 0, 0)
-		           sourceSize:MTLSizeMake(width, height, 1)
-		             toBuffer:g_device->m_pendingScreenshot.buffer
-		    destinationOffset:0
-	   destinationBytesPerRow:alignedBytesPerRow
-	 destinationBytesPerImage:bufferSize];
-		[blit endEncoding];
+		BufferMTL tempBuf;
+		tempBuf.native = g_device->m_pendingScreenshot.buffer;
+		const GfxBuffer dstHandle = g_device->m_resources.buffers.push(tempBuf);
+
+		GfxImageRegion region;
+		const GfxImageCopyInfo info = Gfx_CopyTextureToBuffer(g_context, srcHandle, region, dstHandle);
+		g_device->m_pendingScreenshot.copyInfo = info;
+
+		g_device->m_resources.textures.remove(srcHandle);
+		g_device->m_resources.buffers.remove(dstHandle);
 	}
 }
 
@@ -477,15 +482,13 @@ GfxProgressId Gfx_Present()
 			const u32 height = g_device->m_pendingScreenshot.height;
 			if (src && width && height)
 			{
-				const u32 bytesPerRow = width * 4;
-				const u32 alignedBytesPerRow = (bytesPerRow + 0xFF) & ~0xFFu;
 				const size_t pixelCount = static_cast<size_t>(width) * height;
 				DynamicArray<ColorRGBA8> pixels(pixelCount);
 				ImageView imageView;
 				imageView.data = src;
 				imageView.width = width;
 				imageView.height = height;
-				imageView.bytesPerRow = alignedBytesPerRow;
+				imageView.bytesPerRow = g_device->m_pendingScreenshot.copyInfo.bytesPerRow;
 				imageView.format = GfxFormat_BGRA8_Unorm;
 				convertToRGBA8(imageView, ArrayView<ColorRGBA8>(pixels));
 
@@ -2330,6 +2333,52 @@ void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 	[encoder endEncoding];
 }
 
+GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat format, Tuple3u size)
+{
+	const u32 bpp = getBitsPerPixel(format);
+	const u32 rawBytesPerRow = size.x * bpp / 8;
+	GfxImageCopyInfo info;
+	info.bytesPerRow = (rawBytesPerRow + 0xFF) & ~0xFFu;
+	info.rowCount    = size.y;
+	return info;
+}
+
+GfxImageCopyInfo Gfx_CopyTextureToBuffer(
+    GfxContext*           ctx,
+    GfxTextureArg         src,
+    const GfxImageRegion& srcRegion,
+    GfxBufferArg          dst,
+    u64                   dstOffset)
+{
+	RUSH_ASSERT(!ctx->m_computeCommandEncoder);
+
+	const TextureMTL& srcTex = g_device->m_resources.textures[src];
+	const BufferMTL&  dstBuf = g_device->m_resources.buffers[dst];
+
+	Tuple3u copySize = srcRegion.size;
+	if (copySize.x == 0 && copySize.y == 0 && copySize.z == 0)
+	{
+		copySize.x = max<u32>(1, srcTex.desc.width >> srcRegion.mipLevel);
+		copySize.y = max<u32>(1, srcTex.desc.height >> srcRegion.mipLevel);
+		copySize.z = max<u32>(1, srcTex.desc.depth >> srcRegion.mipLevel);
+	}
+
+	const GfxImageCopyInfo info = Gfx_GetImageCopyInfo(srcTex.desc.format, copySize);
+
+	id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
+	[blit copyFromTexture:srcTex.native
+	          sourceSlice:srcRegion.arrayLayer
+	          sourceLevel:srcRegion.mipLevel
+	         sourceOrigin:MTLOriginMake(srcRegion.offset.x, srcRegion.offset.y, srcRegion.offset.z)
+	           sourceSize:MTLSizeMake(copySize.x, copySize.y, copySize.z)
+	             toBuffer:dstBuf.native
+	    destinationOffset:dstOffset
+	destinationBytesPerRow:info.bytesPerRow
+	destinationBytesPerImage:info.bytesPerRow * info.rowCount];
+	[blit endEncoding];
+
+	return info;
+}
 
 void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags, float depth, u32 stencil)
 {

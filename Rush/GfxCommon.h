@@ -1187,6 +1187,20 @@ template <typename T> inline void GfxRef<T>::retain(GfxArg<T> h)
 	m_handle = h;
 }
 
+struct GfxImageRegion
+{
+	u32     mipLevel   = 0;
+	u32     arrayLayer = 0;
+	Tuple3u offset     = {};
+	Tuple3u size       = {};  // {0,0,0} = full mip extent
+};
+
+struct GfxImageCopyInfo
+{
+	u32 bytesPerRow = 0;  // actual row pitch used (may include padding)
+	u32 rowCount    = 0;  // number of rows
+};
+
 // Opaque handle returned by Gfx_Submit / Gfx_Present, used with Gfx_QueryProgress.
 struct GfxProgressId
 {

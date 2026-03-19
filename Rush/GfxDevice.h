@@ -298,6 +298,15 @@ void Gfx_AddImageBarrier(GfxContext* rc, GfxTextureArg textureHandle, GfxResourc
     GfxSubresourceRange* subresourceRange = nullptr);
 void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst);
 
+GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat format, Tuple3u size);
+
+GfxImageCopyInfo Gfx_CopyTextureToBuffer(
+    GfxContext*           ctx,
+    GfxTextureArg         src,
+    const GfxImageRegion& srcRegion,
+    GfxBufferArg          dst,
+    u64                   dstOffset = 0);
+
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ);
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize);
 
@@ -501,6 +510,8 @@ inline void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nex
 inline void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState) {}
 inline void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset) {}
 inline void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) {}
+inline GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat, Tuple3u) { return {}; }
+inline GfxImageCopyInfo Gfx_CopyTextureToBuffer(GfxContext*, GfxTextureArg, const GfxImageRegion&, GfxBufferArg, u64) { return {}; }
 inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ) {}
 inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize) {}
 inline void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount) {}
