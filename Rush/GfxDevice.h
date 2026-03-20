@@ -229,6 +229,10 @@ void                             Gfx_BuildAccelerationStructure(GfxContext* ctx,
 void                             Gfx_SetAccelerationStructure(GfxContext* ctx, u32 idx, GfxAccelerationStructureArg h);
 void                             Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipeline, GfxBufferArg hitGroups, u32 width, u32 height = 1, u32 depth = 1);
 
+// Declares resource residency for bindless resources.
+// NOTE: Gaphics usage requires an active render pass.
+void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxResourceUsage usage);
+
 void Gfx_Retain(GfxDevice* dev);
 void Gfx_Retain(GfxContext* rc);
 
@@ -534,6 +538,7 @@ inline void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxTexture* storageImages = nullptr,
 	const GfxBuffer* storageBuffers = nullptr,
 	const GfxAccelerationStructure* accelStructures = nullptr) {}
+inline void gfx_useResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxResourceUsage usage) {}
 #endif // RUSH_RENDER_API == RUSH_RENDER_API_NULL
 
 }

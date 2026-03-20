@@ -1432,7 +1432,7 @@ void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 
 void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
-	if (!h.valid())
+	if (!h.valid() || size==0)
 	{
 		return;
 	}
@@ -1664,6 +1664,13 @@ u64 Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h)
 
 void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer)
 {
+	RUSH_ASSERT_MSG(ctx->m_commandEncoder == nil, "Can't build acceleration structure inside a render pass.");
+	if (ctx->m_computeCommandEncoder)
+	{
+		[ctx->m_computeCommandEncoder endEncoding];
+		ctx->m_computeCommandEncoder = nil;
+	}
+
 	AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[h];
 
 	if (accel.type == GfxAccelerationStructureType::BottomLevel)
@@ -2448,6 +2455,80 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 
 	rc->m_storageBuffers[idx].retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
+}
+
+void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxResourceUsage usage)
+{
+	const bool isCompute = (usage == GfxResourceUsage::ComputeRead || usage == GfxResourceUsage::ComputeReadWrite);
+	const bool isReadWrite = (usage == GfxResourceUsage::ComputeReadWrite || usage == GfxResourceUsage::GraphicsReadWrite);
+
+	MTLResourceUsage mtlUsage = isReadWrite
+		? (MTLResourceUsageRead | MTLResourceUsageWrite)
+		: MTLResourceUsageRead;
+
+	// Ensure the appropriate encoder exists
+	if (isCompute)
+	{
+		if (!rc->m_computeCommandEncoder)
+		{
+			if (rc->m_commandEncoder)
+			{
+				[rc->m_commandEncoder endEncoding];
+				rc->m_commandEncoder = nil;
+			}
+			rc->m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
+			[rc->m_computeCommandEncoder retain];
+		}
+	}
+	else
+	{
+		RUSH_ASSERT_MSG(rc->m_commandEncoder != nil, "Gfx_UseResources with graphics usage requires an active render pass (call Gfx_BeginPass first).");
+	}
+
+	// Collect native resources
+	DynamicArray<id<MTLResource>> resources;
+	resources.reserve(residencySet.buffers.size() + residencySet.textures.size());
+
+	for (size_t i = 0; i < residencySet.buffers.size(); ++i)
+	{
+		if (!residencySet.buffers[i].valid())
+		{
+			continue;
+		}
+		const BufferMTL& buffer = g_device->m_resources.buffers[residencySet.buffers[i]];
+		if (buffer.native)
+		{
+			resources.push_back(buffer.native);
+		}
+	}
+
+	for (size_t i = 0; i < residencySet.textures.size(); ++i)
+	{
+		if (!residencySet.textures[i].valid())
+		{
+			continue;
+		}
+		const TextureMTL& texture = g_device->m_resources.textures[residencySet.textures[i]];
+		if (texture.native)
+		{
+			resources.push_back(texture.native);
+		}
+	}
+
+	if (resources.empty())
+	{
+		return;
+	}
+
+	if (isCompute)
+	{
+		[rc->m_computeCommandEncoder useResources:resources.data() count:resources.size() usage:mtlUsage];
+	}
+	else
+	{
+		[rc->m_commandEncoder useResources:resources.data() count:resources.size() usage:mtlUsage
+			stages:MTLRenderStageVertex | MTLRenderStageFragment];
+	}
 }
 
 void Gfx_SetAccelerationStructure(GfxContext* rc, u32 idx, GfxAccelerationStructureArg h)

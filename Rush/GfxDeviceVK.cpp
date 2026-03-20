@@ -5544,6 +5544,11 @@ void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 	}
 }
 
+void Gfx_UseResources(GfxContext*, const GfxResidencySet&, GfxResourceUsage)
+{
+	// No-op on Vulkan: buffer device addresses don't require explicit residency tracking.
+}
+
 void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < RUSH_COUNTOF(GfxContext::m_pending.textures));

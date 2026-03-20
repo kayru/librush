@@ -1223,4 +1223,20 @@ enum class GfxProgressStatus
 	Pending,
 };
 
+// Specifies how resources in a GfxResidencySet will be accessed
+enum class GfxResourceUsage : u8
+{
+	ComputeRead,
+	ComputeReadWrite,
+	GraphicsRead,
+	GraphicsReadWrite,
+};
+
+// Collection of resources that need explicit residency tracking
+struct GfxResidencySet
+{
+	DynamicArray<GfxBuffer> buffers;
+	DynamicArray<GfxTexture> textures;
+};
+
 } // namespace Rush
