@@ -295,22 +295,29 @@ static Key translateKeyMac(const NSEvent* event)
 		case '\\':				return Key_Backslash;
 		case ']':				return Key_RightBracket;
 		case '\r':				return Key_Enter;
-		case NSRightArrowFunctionKey: 			return Key_Right;
-		case NSLeftArrowFunctionKey: 			return Key_Left;
-		case NSDownArrowFunctionKey: 			return Key_Down;
-		case NSUpArrowFunctionKey: 				return Key_Up;
-		case NSF1FunctionKey: 				return Key_F1;
-		case NSF2FunctionKey: 				return Key_F2;
-		case NSF3FunctionKey: 				return Key_F3;
-		case NSF4FunctionKey: 				return Key_F4;
-		case NSF5FunctionKey: 				return Key_F5;
-		case NSF6FunctionKey: 				return Key_F6;
-		case NSF7FunctionKey: 				return Key_F7;
-		case NSF8FunctionKey: 				return Key_F8;
-		case NSF9FunctionKey: 				return Key_F9;
-		case NSF10FunctionKey: 				return Key_F10;
-		case NSF11FunctionKey: 				return Key_F11;
-		case NSF12FunctionKey: 				return Key_F12;
+		case '\t':				return Key_Tab;
+		case 27:				return Key_Escape;
+		case 127:				return Key_Backspace;
+		case NSDeleteFunctionKey:		return Key_Delete;
+		case NSHomeFunctionKey:			return Key_Home;
+		case NSEndFunctionKey:			return Key_End;
+		case NSInsertFunctionKey:		return Key_Insert;
+		case NSRightArrowFunctionKey: 	return Key_Right;
+		case NSLeftArrowFunctionKey: 	return Key_Left;
+		case NSDownArrowFunctionKey: 	return Key_Down;
+		case NSUpArrowFunctionKey: 		return Key_Up;
+		case NSF1FunctionKey: 			return Key_F1;
+		case NSF2FunctionKey: 			return Key_F2;
+		case NSF3FunctionKey: 			return Key_F3;
+		case NSF4FunctionKey: 			return Key_F4;
+		case NSF5FunctionKey: 			return Key_F5;
+		case NSF6FunctionKey: 			return Key_F6;
+		case NSF7FunctionKey: 			return Key_F7;
+		case NSF8FunctionKey: 			return Key_F8;
+		case NSF9FunctionKey: 			return Key_F9;
+		case NSF10FunctionKey: 			return Key_F10;
+		case NSF11FunctionKey: 			return Key_F11;
+		case NSF12FunctionKey: 			return Key_F12;
 		default:						return Key_Unknown;
 	};
 }
@@ -470,10 +477,14 @@ bool WindowMac::processEvent(NSEvent* event)
 			auto e = WindowEvent::KeyDown(key);
 			broadcast(e);
 
-			NSString* chars = [event charactersIgnoringModifiers];
+			NSString* chars = [event characters];
 			if ([chars length] != 0)
 			{
-				broadcast(WindowEvent::Char([chars characterAtIndex:0]));
+				unichar ch = [chars characterAtIndex:0];
+				if (ch >= 32 && ch != 127 && ch < 0xF700)
+				{
+					broadcast(WindowEvent::Char(ch));
+				}
 			}
 
 			return true;
