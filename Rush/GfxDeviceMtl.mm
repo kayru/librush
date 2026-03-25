@@ -1487,6 +1487,12 @@ void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
 }
 
 
+u64 Gfx_GetBufferAddress(GfxBufferArg h)
+{
+	BufferMTL& buffer = g_device->m_resources.buffers[h];
+	return [buffer.native gpuAddress];
+}
+
 static MTLPrimitiveAccelerationStructureDescriptor* createPrimitiveAccelerationStructureDescriptor(
     const DynamicArray<GfxRayTracingGeometryDesc>& geometries)
 {
