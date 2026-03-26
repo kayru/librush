@@ -351,6 +351,8 @@ void GfxDevice::createDefaultDepthBuffer(u32 width, u32 height)
 
 void GfxDevice::beginFrame()
 {
+	drainCompletedDestructionEpochs();
+
 	if (!m_headless && !m_resizeEvents.empty())
 	{
 		createDefaultDepthBuffer(
@@ -465,6 +467,9 @@ GfxProgressId Gfx_Present()
 		}
 	}];
 	[g_device->m_commandBuffer commit];
+
+	g_device->sealDestructionEpoch(GfxProgressId{progressValue});
+
 	if (g_device->m_pendingScreenshot.callback)
 	{
 		if (g_device->m_headless || !g_device->m_backBufferTexture)
@@ -472,6 +477,13 @@ GfxProgressId Gfx_Present()
 			Log::warning("Gfx_RequestScreenshot is not supported in headless mode");
 			g_device->m_pendingScreenshot.callback = nullptr;
 			g_device->m_pendingScreenshot.userData = nullptr;
+		}
+
+		[g_device->m_commandBuffer waitUntilCompleted];
+		if (g_device->m_commandBuffer.status == MTLCommandBufferStatusError)
+		{
+			Log::error("GPU command buffer error: %s",
+				[[g_device->m_commandBuffer.error localizedDescription] UTF8String]);
 		}
 
 		[g_device->m_commandBuffer waitUntilCompleted];
@@ -564,13 +576,16 @@ GfxProgressId Gfx_Submit()
 	[g_device->m_commandBuffer encodeSignalEvent:g_device->m_progressEvent value:progressValue];
 	[g_device->m_commandBuffer commit];
 
+	const GfxProgressId progressId{progressValue};
+	g_device->sealDestructionEpoch(progressId);
+
 	[g_device->m_lastSubmittedCommandBuffer release];
 	g_device->m_lastSubmittedCommandBuffer = g_device->m_commandBuffer;
 
 	g_device->m_commandBuffer = [g_device->m_commandQueue commandBuffer];
 	[g_device->m_commandBuffer retain];
 
-	return GfxProgressId{progressValue};
+	return progressId;
 }
 
 GfxProgressId Gfx_GetPendingProgressId()
@@ -1430,6 +1445,61 @@ void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 	}
 }
 
+void GfxDevice::DestructionQueue::flush()
+{
+	for (id<MTLResource> r : resources)
+	{
+		[r release];
+	}
+	resources.clear();
+}
+
+void GfxDevice::sealDestructionEpoch(GfxProgressId progressId)
+{
+	if (m_pendingDestructionQueue.empty())
+	{
+		return;
+	}
+	DestructionEpoch epoch;
+	epoch.progressId = progressId;
+	epoch.queue = std::move(m_pendingDestructionQueue);
+	m_destructionEpochs.push_back(std::move(epoch));
+}
+
+void GfxDevice::drainCompletedDestructionEpochs()
+{
+	if (m_destructionEpochs.empty())
+	{
+		return;
+	}
+
+	const u64 completedValue = [m_progressEvent signaledValue];
+
+	u32 completedCount = 0;
+	for (auto& epoch : m_destructionEpochs)
+	{
+		if (completedValue >= epoch.progressId.value)
+		{
+			epoch.queue.flush();
+			++completedCount;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (completedCount > 0)
+	{
+		const u32 remaining = u32(m_destructionEpochs.size()) - completedCount;
+		for (u32 i = 0; i < remaining; ++i)
+		{
+			m_destructionEpochs[i] = std::move(m_destructionEpochs[i + completedCount]);
+		}
+		m_destructionEpochs.resize(remaining);
+	}
+}
+
 void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
 	if (!h.valid() || size==0)
@@ -1439,11 +1509,8 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
 
-	// FIXME: recreating buffer invalidates existing bindings/in-flight usage; needs rebinding or update path.
-	[buffer.native release];
+	g_device->enqueueDestroy(buffer.native);
 	buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
-
-	// TODO: re-bind buffer if necessary
 }
 
 void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
@@ -1461,7 +1528,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 
 	if (!buffer.native || (size > 0 && [buffer.native length] < size))
 	{
-		[buffer.native release];
+		g_device->enqueueDestroy(buffer.native);
 		buffer.native = [g_metalDevice newBufferWithLength:size options:0];
 	}
 
@@ -1542,14 +1609,14 @@ static void ensureAccelerationStructureResources(
 	MTLAccelerationStructureSizes sizes = [g_metalDevice accelerationStructureSizesWithDescriptor:descriptor];
 	if (!accel.native || sizes.accelerationStructureSize > accel.accelerationStructureSize)
 	{
-		[accel.native release];
+		g_device->enqueueDestroy(accel.native);
 		accel.native = [g_metalDevice newAccelerationStructureWithSize:sizes.accelerationStructureSize];
 		accel.accelerationStructureSize = sizes.accelerationStructureSize;
 	}
 
 	if (sizes.buildScratchBufferSize == 0)
 	{
-		[accel.scratchBuffer release];
+		g_device->enqueueDestroy(accel.scratchBuffer);
 		accel.scratchBuffer = nil;
 		accel.scratchBufferSize = 0;
 		return;
@@ -1557,7 +1624,7 @@ static void ensureAccelerationStructureResources(
 
 	if (!accel.scratchBuffer || sizes.buildScratchBufferSize > accel.scratchBufferSize)
 	{
-		[accel.scratchBuffer release];
+		g_device->enqueueDestroy(accel.scratchBuffer);
 		accel.scratchBuffer = [g_metalDevice newBufferWithLength:sizes.buildScratchBufferSize
 			options:MTLResourceStorageModePrivate];
 		accel.scratchBufferSize = sizes.buildScratchBufferSize;
@@ -1755,11 +1822,12 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 			dst.accelerationStructureIndex = accelIndex;
 		}
 
-		[accel.instanceBuffer release];
+		g_device->enqueueDestroy(accel.instanceBuffer);
 		accel.instanceBuffer = [g_metalDevice newBufferWithBytes:instances.data()
 			length:instances.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
 			options:0];
 
+		// instancedAccelerationStructures is an NSArray, not MTLResource -- release directly
 		[accel.instancedAccelerationStructures release];
 		accel.instancedAccelerationStructures = [instancedAccelerationStructures copy];
 		[instancedAccelerationStructures release];
@@ -2931,7 +2999,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	const GfxDescriptorSetDesc& desc = ds.desc;
 
 	// Allocate a fresh argument buffer each update to avoid overwriting in-flight GPU data.
-	[ds.argBuffer release];
+	g_device->enqueueDestroy(ds.argBuffer);
 	ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
 
 	[ds.encoder setArgumentBuffer:ds.argBuffer offset:0];

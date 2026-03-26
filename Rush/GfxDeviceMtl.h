@@ -238,6 +238,27 @@ public:
 
 	GfxRef<GfxTexture> m_defaultDepthBuffer;
 	bool m_headless = false;
+
+	struct DestructionQueue
+	{
+		DynamicArray<id<MTLResource>> resources;
+		void push(id<MTLResource> r) { if (r) { resources.push_back(r); } }
+		bool empty() const { return resources.empty(); }
+		void flush();
+	};
+
+	struct DestructionEpoch
+	{
+		GfxProgressId progressId;
+		DestructionQueue queue;
+	};
+
+	DestructionQueue m_pendingDestructionQueue;
+	DynamicArray<DestructionEpoch> m_destructionEpochs;
+
+	void enqueueDestroy(id<MTLResource> resource) { m_pendingDestructionQueue.push(resource); }
+	void sealDestructionEpoch(GfxProgressId progressId);
+	void drainCompletedDestructionEpochs();
 };
 
 class GfxContext : public GfxRefCount
