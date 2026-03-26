@@ -192,5 +192,5 @@ if (MSVC)
 	# target_compile_options(Rush PRIVATE )
 	#-WX -w4201 -w4100 -wd4514
 else()
-	target_compile_options(Rush PRIVATE -Wall)
+	target_compile_options(Rush PRIVATE -Wall -Werror)
 endif()
