@@ -172,7 +172,7 @@ Mat4 Mat4::perspective(float aspect, float fov, float zn, float zf, bool reverse
 
 	float a, b;
 
-	if (zf == INFINITY)
+	if (zf >= FLT_MAX)
 	{
 		if (reverseZ)
 		{

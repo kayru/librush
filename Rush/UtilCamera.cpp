@@ -5,9 +5,9 @@
 namespace Rush
 {
 
-Camera::Camera(CoordinateSystem coordSystem) : Camera(1.0f, Pi * 0.25f, 1.0f, INFINITY, coordSystem) {}
+Camera::Camera(CoordinateSystem coordSystem) : Camera(1.0f, Pi * 0.25f, 1.0f, FLT_MAX, coordSystem) {}
 Camera::Camera(float aspect, float fov, float clipNear, CoordinateSystem coordSystem)
-: Camera(aspect, fov, clipNear, INFINITY, coordSystem)
+: Camera(aspect, fov, clipNear, FLT_MAX, coordSystem)
 {
 }
 Camera::Camera(float aspect, float fov, float clipNear, float clipFar, CoordinateSystem coordSystem)
@@ -57,9 +57,9 @@ void Camera::blendTo(const Camera& other, float positionAlpha, float orientation
 	m_fov      = lerp(m_fov, other.m_fov, parameterAlpha);
 	m_clipNear = lerp(m_clipNear, other.m_clipNear, parameterAlpha);
 
-	if (m_clipFar == INFINITY || other.m_clipFar == INFINITY)
+	if (m_clipFar >= FLT_MAX || other.m_clipFar >= FLT_MAX)
 	{
-		m_clipFar = INFINITY;
+		m_clipFar = FLT_MAX;
 	}
 	else
 	{

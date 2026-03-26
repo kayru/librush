@@ -382,46 +382,53 @@ enum GfxFormatComponent : u32
 	GfxFormatComponent_DepthStencil = GfxFormatComponent_Depth | GfxFormatComponent_Stencil,
 };
 
+constexpr u32 makeGfxFormat(GfxFormatStorage s, GfxFormatType t, GfxFormatComponent c)
+{
+	return u32(s) | u32(t) | u32(c);
+}
+
+#define RUSH_GFX_FORMAT(storage, type, component) \
+	makeGfxFormat(GfxFormatStorage_##storage, GfxFormatType_##type, GfxFormatComponent_##component)
+
 enum GfxFormat : u32
 {
-	GfxFormat_Unknown = GfxFormatComponent_Unknown | GfxFormatStorage_Unknown | GfxFormatType_Unknown,
+	GfxFormat_Unknown = RUSH_GFX_FORMAT(Unknown, Unknown, Unknown),
 
-	GfxFormat_D24_Unorm_S8_Uint = GfxFormatStorage_R24G8 | GfxFormatType_Unorm_Uint | GfxFormatComponent_DepthStencil,
-	GfxFormat_D24_Unorm_X8      = GfxFormatStorage_R24G8 | GfxFormatType_Unorm_Typeless | GfxFormatComponent_Depth,
-	GfxFormat_D32_Float         = GfxFormatStorage_R32 | GfxFormatType_Float | GfxFormatComponent_Depth,
-	GfxFormat_D32_Float_S8_Uint =
-	    GfxFormatStorage_R32G8X24 | GfxFormatType_Float_Uint | GfxFormatComponent_DepthStencil,
-	GfxFormat_R8_Unorm     = GfxFormatStorage_R8 | GfxFormatType_Unorm | GfxFormatComponent_R,
-	GfxFormat_R16_Float    = GfxFormatStorage_R16 | GfxFormatType_Float | GfxFormatComponent_R,
-	GfxFormat_R16_Uint     = GfxFormatStorage_R16 | GfxFormatType_Uint | GfxFormatComponent_R,
-	GfxFormat_R32_Float    = GfxFormatStorage_R32 | GfxFormatType_Float | GfxFormatComponent_R,
-	GfxFormat_R32_Uint     = GfxFormatStorage_R32 | GfxFormatType_Uint | GfxFormatComponent_R,
-	GfxFormat_RG8_Unorm    = GfxFormatStorage_RG8 | GfxFormatType_Unorm | GfxFormatComponent_RG,
-	GfxFormat_RG16_Float   = GfxFormatStorage_RG16 | GfxFormatType_Float | GfxFormatComponent_RG,
-	GfxFormat_RG32_Float   = GfxFormatStorage_RG32 | GfxFormatType_Float | GfxFormatComponent_RG,
-	GfxFormat_RGB32_Float  = GfxFormatStorage_RGB32 | GfxFormatType_Float | GfxFormatComponent_RGB,
-	GfxFormat_RGB8_Unorm   = GfxFormatStorage_RGB8 | GfxFormatType_Unorm | GfxFormatComponent_RGB,
-	GfxFormat_RGBA16_Float = GfxFormatStorage_RGBA16 | GfxFormatType_Float | GfxFormatComponent_RGBA,
-	GfxFormat_RGBA16_Unorm = GfxFormatStorage_RGB16 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_RGBA32_Float = GfxFormatStorage_RGBA32 | GfxFormatType_Float | GfxFormatComponent_RGBA,
-	GfxFormat_RGBA8_Unorm  = GfxFormatStorage_RGBA8 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_RGBA8_sRGB   = GfxFormatStorage_RGBA8 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
-	GfxFormat_BGRA8_Unorm  = GfxFormatStorage_BGRA8 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_BGRA8_sRGB   = GfxFormatStorage_BGRA8 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
+	GfxFormat_D24_Unorm_S8_Uint = RUSH_GFX_FORMAT(R24G8, Unorm_Uint, DepthStencil),
+	GfxFormat_D24_Unorm_X8      = RUSH_GFX_FORMAT(R24G8, Unorm_Typeless, Depth),
+	GfxFormat_D32_Float         = RUSH_GFX_FORMAT(R32, Float, Depth),
+	GfxFormat_D32_Float_S8_Uint = RUSH_GFX_FORMAT(R32G8X24, Float_Uint, DepthStencil),
+	GfxFormat_R8_Unorm     = RUSH_GFX_FORMAT(R8, Unorm, R),
+	GfxFormat_R16_Float    = RUSH_GFX_FORMAT(R16, Float, R),
+	GfxFormat_R16_Uint     = RUSH_GFX_FORMAT(R16, Uint, R),
+	GfxFormat_R32_Float    = RUSH_GFX_FORMAT(R32, Float, R),
+	GfxFormat_R32_Uint     = RUSH_GFX_FORMAT(R32, Uint, R),
+	GfxFormat_RG8_Unorm    = RUSH_GFX_FORMAT(RG8, Unorm, RG),
+	GfxFormat_RG16_Float   = RUSH_GFX_FORMAT(RG16, Float, RG),
+	GfxFormat_RG32_Float   = RUSH_GFX_FORMAT(RG32, Float, RG),
+	GfxFormat_RGB32_Float  = RUSH_GFX_FORMAT(RGB32, Float, RGB),
+	GfxFormat_RGB8_Unorm   = RUSH_GFX_FORMAT(RGB8, Unorm, RGB),
+	GfxFormat_RGBA16_Float = RUSH_GFX_FORMAT(RGBA16, Float, RGBA),
+	GfxFormat_RGBA16_Unorm = RUSH_GFX_FORMAT(RGB16, Unorm, RGBA),
+	GfxFormat_RGBA32_Float = RUSH_GFX_FORMAT(RGBA32, Float, RGBA),
+	GfxFormat_RGBA8_Unorm  = RUSH_GFX_FORMAT(RGBA8, Unorm, RGBA),
+	GfxFormat_RGBA8_sRGB   = RUSH_GFX_FORMAT(RGBA8, sRGB, RGBA),
+	GfxFormat_BGRA8_Unorm  = RUSH_GFX_FORMAT(BGRA8, Unorm, RGBA),
+	GfxFormat_BGRA8_sRGB   = RUSH_GFX_FORMAT(BGRA8, sRGB, RGBA),
 
 	// Block-compressed formats
-	GfxFormat_BC1_Unorm      = GfxFormatStorage_BC1 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_BC1_Unorm_sRGB = GfxFormatStorage_BC1 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
-	GfxFormat_BC2_Unorm      = GfxFormatStorage_BC2 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_BC2_Unorm_sRGB = GfxFormatStorage_BC2 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
-	GfxFormat_BC3_Unorm      = GfxFormatStorage_BC3 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_BC3_Unorm_sRGB = GfxFormatStorage_BC3 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
-	GfxFormat_BC4_Unorm      = GfxFormatStorage_BC4 | GfxFormatType_Unorm | GfxFormatComponent_R,
-	GfxFormat_BC5_Unorm      = GfxFormatStorage_BC5 | GfxFormatType_Unorm | GfxFormatComponent_RG,
-	GfxFormat_BC6H_UFloat    = GfxFormatStorage_BC6H | GfxFormatType_UFloat | GfxFormatComponent_RGB,
-	GfxFormat_BC6H_SFloat    = GfxFormatStorage_BC6H | GfxFormatType_Float | GfxFormatComponent_RGB,
-	GfxFormat_BC7_Unorm      = GfxFormatStorage_BC7 | GfxFormatType_Unorm | GfxFormatComponent_RGBA,
-	GfxFormat_BC7_Unorm_sRGB = GfxFormatStorage_BC7 | GfxFormatType_sRGB | GfxFormatComponent_RGBA,
+	GfxFormat_BC1_Unorm      = RUSH_GFX_FORMAT(BC1, Unorm, RGBA),
+	GfxFormat_BC1_Unorm_sRGB = RUSH_GFX_FORMAT(BC1, sRGB, RGBA),
+	GfxFormat_BC2_Unorm      = RUSH_GFX_FORMAT(BC2, Unorm, RGBA),
+	GfxFormat_BC2_Unorm_sRGB = RUSH_GFX_FORMAT(BC2, sRGB, RGBA),
+	GfxFormat_BC3_Unorm      = RUSH_GFX_FORMAT(BC3, Unorm, RGBA),
+	GfxFormat_BC3_Unorm_sRGB = RUSH_GFX_FORMAT(BC3, sRGB, RGBA),
+	GfxFormat_BC4_Unorm      = RUSH_GFX_FORMAT(BC4, Unorm, R),
+	GfxFormat_BC5_Unorm      = RUSH_GFX_FORMAT(BC5, Unorm, RG),
+	GfxFormat_BC6H_UFloat    = RUSH_GFX_FORMAT(BC6H, UFloat, RGB),
+	GfxFormat_BC6H_SFloat    = RUSH_GFX_FORMAT(BC6H, Float, RGB),
+	GfxFormat_BC7_Unorm      = RUSH_GFX_FORMAT(BC7, Unorm, RGBA),
+	GfxFormat_BC7_Unorm_sRGB = RUSH_GFX_FORMAT(BC7, sRGB, RGBA),
 };
 
 enum class GfxUsageFlags : u8
@@ -618,8 +625,8 @@ enum class GfxCullFace : u8
 inline GfxFormatType      getGfxFormatType(GfxFormat fmt) { return (GfxFormatType)(fmt & 0x000000FF); }
 inline GfxFormatStorage   getGfxFormatStorage(GfxFormat fmt) { return (GfxFormatStorage)(fmt & 0x0000FF00); }
 inline GfxFormatComponent getGfxFormatComponent(GfxFormat fmt) { return (GfxFormatComponent)(fmt & 0x00FF0000); }
-inline bool               isGfxFormatDepth(GfxFormat fmt) { return (fmt & GfxFormatComponent_Depth) != 0; }
-inline bool               isGfxFormatStencil(GfxFormat fmt) { return (fmt & GfxFormatComponent_Stencil) != 0; }
+inline bool               isGfxFormatDepth(GfxFormat fmt) { return (u32(fmt) & u32(GfxFormatComponent_Depth)) != 0; }
+inline bool               isGfxFormatStencil(GfxFormat fmt) { return (u32(fmt) & u32(GfxFormatComponent_Stencil)) != 0; }
 
 inline bool isGfxFormatBlockCompressed(GfxFormat fmt)
 {
