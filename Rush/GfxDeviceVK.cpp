@@ -2899,7 +2899,9 @@ static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDesc
 		writeDescriptorSet.pImageInfo       = &imageInfos[imageInfoCount];
 		writeDescriptorSet.pBufferInfo      = nullptr;
 		writeDescriptorSet.pTexelBufferView = nullptr;
-		bindingIndex += writeDescriptorSet.descriptorCount;
+
+		const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
+		bindingIndex += isTextureArray ? 1 : writeDescriptorSet.descriptorCount;
 
 		for (u32 i = 0; i < desc.textures; ++i)
 		{
