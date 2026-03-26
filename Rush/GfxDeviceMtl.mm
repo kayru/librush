@@ -493,8 +493,6 @@ GfxProgressId Gfx_Present()
 		}
 
 		[g_device->m_commandBuffer waitUntilCompleted];
-
-		[g_device->m_commandBuffer waitUntilCompleted];
 		if (g_device->m_pendingScreenshot.buffer)
 		{
 			const u8* src = reinterpret_cast<const u8*>([g_device->m_pendingScreenshot.buffer contents]);
