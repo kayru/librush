@@ -39,7 +39,7 @@ struct BufferMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 	id<MTLBuffer> native = nil;
-	u32 stride = 0;
+	GfxBufferDesc desc;
 	MTLIndexType indexType = MTLIndexTypeUInt32;
 
 	void destroy();
@@ -78,6 +78,7 @@ struct DescriptorSetMTL : GfxRefCount
 	DynamicArray<GfxSampler> samplers;
 	DynamicArray<GfxTexture> storageImages;
 	DynamicArray<GfxBuffer>  storageBuffers;
+	DynamicArray<id<MTLTexture>> typedBufferTextures;
 	DynamicArray<GfxAccelerationStructure> accelerationStructures;
 
 	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc

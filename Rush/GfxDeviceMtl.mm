@@ -1393,6 +1393,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 
 	BufferMTL res;
 	res.uniqueId = g_device->generateId();
+	res.desc = desc;
 
 	MTLResourceOptions options = 0;
 #if TARGET_OS_OSX
@@ -1421,12 +1422,10 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 		if(desc.format == GfxFormat_R32_Uint)
 		{
 			res.indexType = MTLIndexTypeUInt32;
-			res.stride = 4;
 		}
 		else if(desc.format == GfxFormat_R16_Uint)
 		{
 			res.indexType = MTLIndexTypeUInt16;
-			res.stride = 2;
 		}
 		else
 		{
@@ -2011,6 +2010,16 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 		 usage:MTLResourceUsageRead | MTLResourceUsageWrite];
 	}
 
+	for (u64 j=0; j<ds.typedBufferTextures.size(); ++j)
+	{
+		if (ds.typedBufferTextures[j])
+		{
+			[commandEncoder
+			 useResource:ds.typedBufferTextures[j]
+			 usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+		}
+	}
+
 	for (u64 j=0; j<ds.accelerationStructures.size(); ++j)
 	{
 		AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[ds.accelerationStructures[j]];
@@ -2235,7 +2244,7 @@ void GfxContext::applyState()
 		}
 		for(u32 i=0; i<dsetDesc.rwTypedBuffers; ++i)
 		{
-			//TODO: bind typed storage buffers
+			storageBuffers[dsetDesc.rwBuffers + i] = m_storageBuffers[dsetDesc.rwBuffers + i].get();
 		}
 
 		updateDescriptorSet(*defaultDescriptorSet,
@@ -2551,7 +2560,7 @@ void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferA
 	[rc->m_indexBuffer release];
 
 	rc->m_indexType = g_device->m_resources.buffers[h].indexType;
-	rc->m_indexStride = g_device->m_resources.buffers[h].stride;
+	rc->m_indexStride = g_device->m_resources.buffers[h].desc.stride;
 	rc->m_indexBuffer = g_device->m_resources.buffers[h].native;
 	rc->m_indexBufferOffset = offset;
 
@@ -2983,18 +2992,19 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 		++argumentIndex;
 	}
 
-	// FIXME: rwTypedBuffers should index storageBuffers with rwBuffers offset.
 	for(u32 i=0; i<desc.rwTypedBuffers; ++i)
 	{
 		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypePointer];
+		[descriptor setDataType: MTLDataTypeTexture];
 		[descriptor setAccess: MTLBindingAccessReadWrite];
+		[descriptor setTextureType: MTLTextureType2D];
 		[descriptor setIndex: argumentIndex];
 		[descriptors addObject: descriptor];
 		++argumentIndex;
 	}
 
 	res.storageBuffers.resize(desc.rwBuffers + desc.rwTypedBuffers);
+	res.typedBufferTextures.resize(desc.rwTypedBuffers);
 
 	for(u32 i=0; i<desc.accelerationStructures; ++i)
 	{
@@ -3116,9 +3126,37 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 
 	for(u32 i=0; i<desc.rwTypedBuffers; ++i)
 	{
-		BufferMTL& buf = g_device->m_resources.buffers[storageBuffers[i]];
-		ds.storageBuffers[i] = storageBuffers[i];
-		[ds.encoder setBuffer:buf.native offset:0 atIndex:idxOffset+i];
+		const u32 idx = desc.rwBuffers + i;
+		BufferMTL& buf = g_device->m_resources.buffers[storageBuffers[idx]];
+		ds.storageBuffers[idx] = storageBuffers[idx];
+
+		// spirv-cross emulates texel buffers as 2D textures with width 4096.
+		// Create a buffer-backed texture matching that layout.
+		RUSH_ASSERT(buf.desc.format != GfxFormat_Unknown);
+		const u32 texelCount = buf.desc.count;
+		const u32 texWidth = min(texelCount, 4096u);
+		const u32 texHeight = (texelCount + 4095u) / 4096u;
+
+		MTLTextureDescriptor* texDesc = [MTLTextureDescriptor new];
+		texDesc.textureType = MTLTextureType2D;
+		texDesc.pixelFormat = convertPixelFormat(buf.desc.format);
+		texDesc.width = texWidth;
+		texDesc.height = texHeight;
+		texDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+		texDesc.storageMode = buf.native.storageMode;
+
+		const u32 bytesPerRowUnaligned = texWidth * buf.desc.stride;
+		const u32 bytesPerRow = (bytesPerRowUnaligned + 15u) & ~15u;
+		id<MTLTexture> tex = [buf.native newTextureWithDescriptor:texDesc offset:0 bytesPerRow:bytesPerRow];
+		[texDesc release];
+
+		if (ds.typedBufferTextures[i])
+		{
+			[ds.typedBufferTextures[i] release];
+		}
+		ds.typedBufferTextures[i] = tex;
+
+		[ds.encoder setTexture:tex atIndex:idxOffset+i];
 	}
 	idxOffset += desc.rwTypedBuffers;
 
@@ -3146,6 +3184,12 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 
 void DescriptorSetMTL::destroy()
 {
+	for (id<MTLTexture> tex : typedBufferTextures)
+	{
+		[tex release];
+	}
+	typedBufferTextures.clear();
+
 	if (g_device)
 	{
 		g_device->enqueueDestroy(argBuffer);
