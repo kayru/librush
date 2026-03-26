@@ -2555,8 +2555,6 @@ void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
 
 void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h)
 {
-	RUSH_ASSERT_MSG(offset==0, "Index buffer offset is not implemented");
-
 	[rc->m_indexBuffer release];
 
 	rc->m_indexType = g_device->m_resources.buffers[h].indexType;
