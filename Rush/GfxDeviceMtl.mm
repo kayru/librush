@@ -387,6 +387,7 @@ void GfxDevice::beginFrame()
 
 	m_commandBuffer = [m_commandQueue commandBuffer];
 	[m_commandBuffer retain];
+
 }
 
 void Gfx_BeginFrame()
@@ -465,6 +466,11 @@ GfxProgressId Gfx_Present()
 		{
 			g_device->m_stats.lastFrameGpuTime = buffer.GPUEndTime - buffer.GPUStartTime;
 		}
+		if (buffer.status == MTLCommandBufferStatusError)
+		{
+			Log::warning("GPU error (present): %s",
+				[[buffer.error localizedDescription] UTF8String]);
+		}
 	}];
 	[g_device->m_commandBuffer commit];
 
@@ -480,11 +486,6 @@ GfxProgressId Gfx_Present()
 		}
 
 		[g_device->m_commandBuffer waitUntilCompleted];
-		if (g_device->m_commandBuffer.status == MTLCommandBufferStatusError)
-		{
-			Log::error("GPU command buffer error: %s",
-				[[g_device->m_commandBuffer.error localizedDescription] UTF8String]);
-		}
 
 		[g_device->m_commandBuffer waitUntilCompleted];
 		if (g_device->m_pendingScreenshot.buffer)
@@ -574,6 +575,14 @@ GfxProgressId Gfx_Submit()
 
 	const u64 progressValue = g_device->m_nextProgressId++;
 	[g_device->m_commandBuffer encodeSignalEvent:g_device->m_progressEvent value:progressValue];
+	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		if (buffer.status == MTLCommandBufferStatusError)
+		{
+			Log::warning("GPU error (submit %llu): %s",
+				(unsigned long long)progressValue,
+				[[buffer.error localizedDescription] UTF8String]);
+		}
+	}];
 	[g_device->m_commandBuffer commit];
 
 	const GfxProgressId progressId{progressValue};
@@ -1160,7 +1169,15 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 
 void TextureMTL::destroy()
 {
-	[native release];
+	if (g_device)
+	{
+		g_device->enqueueDestroy(native);
+	}
+	else
+	{
+		[native release];
+	}
+	native = nil;
 }
 
 GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
@@ -1202,7 +1219,15 @@ GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
 
 void SamplerMTL::destroy()
 {
-	[native release];
+	if (g_device)
+	{
+		g_device->enqueueDestroy(native);
+	}
+	else
+	{
+		[native release];
+	}
+	native = nil;
 }
 
 static MTLSamplerAddressMode convertSamplerAddressMode(GfxTextureWrap mode)
@@ -1322,15 +1347,36 @@ GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& de
 
 void BufferMTL::destroy()
 {
-	[native release];
+	if (g_device)
+	{
+		g_device->enqueueDestroy(native);
+	}
+	else
+	{
+		[native release];
+	}
+	native = nil;
 }
 
 void AccelerationStructureMTL::destroy()
 {
 	[instancedAccelerationStructures release];
-	[instanceBuffer release];
-	[scratchBuffer release];
-	[native release];
+	instancedAccelerationStructures = nil;
+	if (g_device)
+	{
+		g_device->enqueueDestroy(instanceBuffer);
+		g_device->enqueueDestroy(scratchBuffer);
+		g_device->enqueueDestroy(native);
+	}
+	else
+	{
+		[instanceBuffer release];
+		[scratchBuffer release];
+		[native release];
+	}
+	instanceBuffer = nil;
+	scratchBuffer = nil;
+	native = nil;
 }
 
 GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
@@ -1447,11 +1493,11 @@ void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 
 void GfxDevice::DestructionQueue::flush()
 {
-	for (id<MTLResource> r : resources)
+	for (id obj : objects)
 	{
-		[r release];
+		[obj release];
 	}
-	resources.clear();
+	objects.clear();
 }
 
 void GfxDevice::sealDestructionEpoch(GfxProgressId progressId)

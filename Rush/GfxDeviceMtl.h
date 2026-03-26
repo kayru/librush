@@ -241,9 +241,9 @@ public:
 
 	struct DestructionQueue
 	{
-		DynamicArray<id<MTLResource>> resources;
-		void push(id<MTLResource> r) { if (r) { resources.push_back(r); } }
-		bool empty() const { return resources.empty(); }
+		DynamicArray<id> objects;
+		void push(id obj) { if (obj) { objects.push_back(obj); } }
+		bool empty() const { return objects.empty(); }
 		void flush();
 	};
 
@@ -256,7 +256,7 @@ public:
 	DestructionQueue m_pendingDestructionQueue;
 	DynamicArray<DestructionEpoch> m_destructionEpochs;
 
-	void enqueueDestroy(id<MTLResource> resource) { m_pendingDestructionQueue.push(resource); }
+	void enqueueDestroy(id obj) { m_pendingDestructionQueue.push(obj); }
 	void sealDestructionEpoch(GfxProgressId progressId);
 	void drainCompletedDestructionEpochs();
 };
