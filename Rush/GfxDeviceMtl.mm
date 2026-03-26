@@ -470,6 +470,13 @@ GfxProgressId Gfx_Present()
 		{
 			Log::warning("GPU error (present): %s",
 				[[buffer.error localizedDescription] UTF8String]);
+			if (@available(macOS 14.0, *))
+			{
+				for (id<MTLFunctionLog> log in buffer.logs)
+				{
+					Log::warning("  GPU log: %s", [[log description] UTF8String]);
+				}
+			}
 		}
 	}];
 	[g_device->m_commandBuffer commit];
@@ -571,6 +578,9 @@ GfxProgressId Gfx_Submit()
 			[g_context->m_computeCommandEncoder release];
 			g_context->m_computeCommandEncoder = nil;
 		}
+
+		// Force full re-bind on next dispatch since the command buffer is new
+		g_context->m_dirtyState = ~0u;
 	}
 
 	const u64 progressValue = g_device->m_nextProgressId++;
@@ -3143,8 +3153,17 @@ void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 
 void DescriptorSetMTL::destroy()
 {
+	if (g_device)
+	{
+		g_device->enqueueDestroy(argBuffer);
+	}
+	else
+	{
+		[argBuffer release];
+	}
+	argBuffer = nil;
 	[encoder release];
-	[argBuffer release];
+	encoder = nil;
 }
 
 }
