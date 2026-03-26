@@ -279,7 +279,6 @@ void        Gfx_EndAsyncCompute(GfxContext* parentContext, GfxContext* asyncCont
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc);
 void Gfx_EndPass(GfxContext* rc);
 
-void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags = GfxClearFlags::All, float depth = 1.0f, u32 stencil = 0);
 void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport);
 void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect);
 void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h);
@@ -498,7 +497,6 @@ inline GfxContext* Gfx_AcquireContext() { return {}; }
 inline void Gfx_Release(GfxContext* rc) {}
 inline void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc) {}
 inline void Gfx_EndPass(GfxContext* rc) {}
-inline void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags, float depth, u32 stencil) {}
 inline void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport) {}
 inline void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect) {}
 inline void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h) {}

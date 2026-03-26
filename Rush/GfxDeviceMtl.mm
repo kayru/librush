@@ -2515,11 +2515,6 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
 	return info;
 }
 
-void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags, float depth, u32 stencil)
-{
-	Log::error("Not implemented");
-}
-
 void Gfx_SetViewport(GfxContext* rc, const GfxViewport& viewport)
 {
 	MTLViewport metalViewport = { viewport.x, viewport.y, viewport.w, viewport.h, viewport.depthMin, viewport.depthMax };

@@ -491,24 +491,6 @@ enum class GfxPrimitive : u8
 	count
 };
 
-enum class GfxClearFlags : u8
-{
-	None = 0,
-
-	Color   = 1 << 0,
-	Depth   = 1 << 1,
-	Stencil = 1 << 2,
-
-	DepthStencil      = Depth | Stencil,
-	StencilColor      = Stencil | Color,
-	ColorDepth        = Color | Depth,
-	ColorDepthStencil = Color | Depth | Stencil,
-
-	All = 0xFF
-};
-
-RUSH_IMPLEMENT_FLAG_OPERATORS(GfxClearFlags, u8);
-
 enum class GfxBufferFlags : u32
 {
 	None         = RUSH_GFX_BUFFER_FLAG_NONE,

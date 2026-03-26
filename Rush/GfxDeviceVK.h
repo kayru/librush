@@ -645,10 +645,11 @@ public:
 
 struct ClearParamsVK
 {
-	GfxClearFlags flags   = GfxClearFlags::None;
-	ColorRGBA     color   = ColorRGBA::Black();
-	float         depth   = 1.0f;
-	u32           stencil = 0;
+	bool      clearColor        = false;
+	bool      clearDepthStencil = false;
+	ColorRGBA color             = ColorRGBA::Black();
+	float     depth             = 1.0f;
+	u32       stencil           = 0;
 
 	VkClearValue getClearColor() const
 	{

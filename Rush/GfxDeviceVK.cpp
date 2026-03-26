@@ -2654,17 +2654,8 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	m_pendingClear.depth   = desc.clearDepth;
 	m_pendingClear.stencil = desc.clearStencil;
 
-	m_pendingClear.flags = GfxClearFlags::None;
-
-	if (!!(desc.flags & GfxPassFlags::ClearColor))
-	{
-		m_pendingClear.flags = m_pendingClear.flags | GfxClearFlags::Color;
-	}
-
-	if (!!(desc.flags & GfxPassFlags::ClearDepthStencil))
-	{
-		m_pendingClear.flags = m_pendingClear.flags | GfxClearFlags::DepthStencil;
-	}
+	m_pendingClear.clearColor        = !!(desc.flags & GfxPassFlags::ClearColor);
+	m_pendingClear.clearDepthStencil = !!(desc.flags & GfxPassFlags::ClearDepthStencil);
 
 	m_currentRenderRect.extent.width  = UINT32_MAX;
 	m_currentRenderRect.extent.height = UINT32_MAX;
@@ -2731,7 +2722,7 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	renderPassBeginInfo.renderPass            = m_device->createRenderPass(desc);
 	renderPassBeginInfo.framebuffer           = m_device->createFrameBuffer(desc, renderPassBeginInfo.renderPass);
 	renderPassBeginInfo.renderArea            = m_currentRenderRect;
-	if (m_pendingClear.flags != GfxClearFlags::None)
+	if (m_pendingClear.clearColor || m_pendingClear.clearDepthStencil)
 	{
 		renderPassBeginInfo.clearValueCount = clearValueCount;
 		renderPassBeginInfo.pClearValues    = clearValues;
@@ -5386,26 +5377,6 @@ void Gfx_Release(GfxContext* rc)
 	}
 
 	delete rc;
-}
-
-void Gfx_Clear(GfxContext* rc, ColorRGBA8 color, GfxClearFlags clearFlags, float depth, u32 stencil)
-{
-	// TODO: handle depth and stencil clears here as well
-
-	RUSH_ASSERT(rc->m_isRenderPassActive);
-
-	ColorRGBA         colorFloat = (ColorRGBA)color;
-	VkClearAttachment clearAttachment;
-	clearAttachment.aspectMask                  = VK_IMAGE_ASPECT_COLOR_BIT;
-	clearAttachment.clearValue.color.float32[0] = colorFloat.r;
-	clearAttachment.clearValue.color.float32[1] = colorFloat.g;
-	clearAttachment.clearValue.color.float32[2] = colorFloat.b;
-	clearAttachment.clearValue.color.float32[3] = colorFloat.a;
-	clearAttachment.colorAttachment             = 0;
-
-	VkClearRect clearRect = {};
-	clearRect.rect        = rc->m_currentRenderRect;
-	vkCmdClearAttachments(rc->m_commandBuffer, 1, &clearAttachment, 1, &clearRect);
 }
 
 void Gfx_SetViewport(GfxContext* rc, const GfxViewport& viewport)
