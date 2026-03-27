@@ -110,12 +110,14 @@ using namespace Rush;
 
 - (void)windowDidBecomeKey:(NSNotification*)notification
 {
-    RUSH_UNUSED(notification);
+	RushWindow* window = notification.object;
+	window->parent->setFocused(true);
 }
 
 - (void)windowDidResignKey:(NSNotification*)notification
 {
-    RUSH_UNUSED(notification);
+	RushWindow* window = notification.object;
+	window->parent->setFocused(false);
 }
 
 @end
@@ -183,6 +185,15 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	m_metalLayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
 	[window.contentView setLayer:m_metalLayer];
 	updateResolutionScale();
+
+	if (desc.fullScreen)
+	{
+		setFullscreen(true);
+	}
+	else if (desc.maximized)
+	{
+		[window zoom:nil];
+	}
 }
 
 WindowMac::~WindowMac()
@@ -197,21 +208,52 @@ void* WindowMac::nativeHandle()
 
 void WindowMac::setCaption(const char* str)
 {
-	// TODO
+	NSString* title = str ? [NSString stringWithUTF8String:str] : @"";
+	[m_nativeWindow setTitle:title];
 }
 
 void WindowMac::setSize(const Tuple2i& size)
 {
-	// TODO
+	[m_nativeWindow setContentSize:NSMakeSize(size.x, size.y)];
+	processResize((float)size.x, (float)size.y);
 }
 
 void WindowMac::setPosition(const Tuple2i& position)
 {
-	// TODO
+	const CGFloat screenHeight = [[NSScreen mainScreen] frame].size.height;
+	const NSPoint point = NSMakePoint((CGFloat)position.x, screenHeight - (CGFloat)position.y);
+	[m_nativeWindow setFrameTopLeftPoint:point];
+	m_pos = position;
 }
 
 static Key translateKeyMac(const NSEvent* event)
 {
+	const u16 keyCode = [event keyCode];
+
+	// Numpad keys must be detected by hardware keyCode
+	// since charactersIgnoringModifiers cannot distinguish them from number row
+	switch (keyCode)
+	{
+		case 82: return Key_KP0;
+		case 83: return Key_KP1;
+		case 84: return Key_KP2;
+		case 85: return Key_KP3;
+		case 86: return Key_KP4;
+		case 87: return Key_KP5;
+		case 88: return Key_KP6;
+		case 89: return Key_KP7;
+		case 91: return Key_KP8;
+		case 92: return Key_KP9;
+		case 65: return Key_KPDecimal;
+		case 75: return Key_KPDivide;
+		case 67: return Key_KPMultiply;
+		case 78: return Key_KPSubtract;
+		case 69: return Key_KPAdd;
+		case 76: return Key_KPEnter;
+		case 81: return Key_KPEqual;
+		default: break;
+	}
+
 	NSString* key = [event charactersIgnoringModifiers];
 	if ([key length] == 0)
 	{
@@ -318,6 +360,24 @@ static Key translateKeyMac(const NSEvent* event)
 		case NSF10FunctionKey: 			return Key_F10;
 		case NSF11FunctionKey: 			return Key_F11;
 		case NSF12FunctionKey: 			return Key_F12;
+		case NSF13FunctionKey: 			return Key_F13;
+		case NSF14FunctionKey: 			return Key_F14;
+		case NSF15FunctionKey: 			return Key_F15;
+		case NSF16FunctionKey: 			return Key_F16;
+		case NSF17FunctionKey: 			return Key_F17;
+		case NSF18FunctionKey: 			return Key_F18;
+		case NSF19FunctionKey: 			return Key_F19;
+		case NSF20FunctionKey: 			return Key_F20;
+		case NSF21FunctionKey: 			return Key_F21;
+		case NSF22FunctionKey: 			return Key_F22;
+		case NSF23FunctionKey: 			return Key_F23;
+		case NSF24FunctionKey: 			return Key_F24;
+		case NSPageUpFunctionKey: 		return Key_PageUp;
+		case NSPageDownFunctionKey: 	return Key_PageDown;
+		case NSPrintScreenFunctionKey: 	return Key_PrintScreen;
+		case NSScrollLockFunctionKey: 	return Key_ScrollLock;
+		case NSPauseFunctionKey: 		return Key_Pause;
+		case '`':						return Key_Backquote;
 		default:						return Key_Unknown;
 	};
 }
@@ -399,6 +459,48 @@ void WindowMac::setMouseLock(bool state)
 	}
 }
 
+bool WindowMac::setFullscreen(bool state)
+{
+	if (state == m_fullScreen)
+	{
+		return true;
+	}
+
+	if (state)
+	{
+		m_windowedSize = m_size;
+
+		const NSRect frame = [m_nativeWindow frame];
+		m_windowedPos.x = (int)frame.origin.x;
+		m_windowedPos.y = (int)frame.origin.y;
+		m_windowedStyleMask = (u32)[m_nativeWindow styleMask];
+
+		NSScreen* screen = [m_nativeWindow screen] ?: [NSScreen mainScreen];
+		const NSRect screenFrame = [screen frame];
+
+		[m_nativeWindow setStyleMask:NSWindowStyleMaskBorderless];
+		[m_nativeWindow setFrame:screenFrame display:YES];
+		[m_nativeWindow setLevel:NSMainMenuWindowLevel + 1];
+	}
+	else
+	{
+		[m_nativeWindow setStyleMask:(NSWindowStyleMask)m_windowedStyleMask];
+		[m_nativeWindow setLevel:NSNormalWindowLevel];
+
+		const NSRect restoreFrame = NSMakeRect(
+			m_windowedPos.x, m_windowedPos.y,
+			m_windowedSize.x, m_windowedSize.y);
+		[m_nativeWindow setFrame:restoreFrame display:YES];
+	}
+
+	m_fullScreen = state;
+
+	const NSRect contentRect = [[m_nativeWindow contentView] frame];
+	processResize((float)contentRect.size.width, (float)contentRect.size.height);
+
+	return true;
+}
+
 bool WindowMac::processEvent(NSEvent* event)
 {
 	NSEventType eventType = [event type];
@@ -435,20 +537,24 @@ bool WindowMac::processEvent(NSEvent* event)
 		}
 		case NSEventTypeLeftMouseDown:
 		{
+			const bool doubleClick = [event clickCount] >= 2;
 			m_mouse.buttons[0] = true;
-			broadcast(WindowEvent::MouseDown(m_mouse.pos, 0, false));
+			m_mouse.doubleclick = doubleClick;
+			broadcast(WindowEvent::MouseDown(m_mouse.pos, 0, doubleClick));
 			return true;
 		}
 		case NSEventTypeLeftMouseUp:
 		{
 			m_mouse.buttons[0] = false;
 			broadcast(WindowEvent::MouseUp(m_mouse.pos, 0));
-			return false;
+			return true;
 		}
 		case NSEventTypeRightMouseDown:
 		{
+			const bool doubleClick = [event clickCount] >= 2;
 			m_mouse.buttons[1] = true;
-			broadcast(WindowEvent::MouseDown(m_mouse.pos, 1, false));
+			m_mouse.doubleclick = doubleClick;
+			broadcast(WindowEvent::MouseDown(m_mouse.pos, 1, doubleClick));
 			return true;
 		}
 		case NSEventTypeRightMouseUp:
@@ -458,21 +564,40 @@ bool WindowMac::processEvent(NSEvent* event)
 			return true;
 		}
 		case NSEventTypeOtherMouseDown:
-			//Log::message("NSOtherMouseDown");
-			return false;
+		{
+			const bool doubleClick = [event clickCount] >= 2;
+			m_mouse.buttons[2] = true;
+			m_mouse.doubleclick = doubleClick;
+			broadcast(WindowEvent::MouseDown(m_mouse.pos, 2, doubleClick));
+			return true;
+		}
 		case NSEventTypeOtherMouseUp:
-			//Log::message("NSOtherMouseUp");
-			return false;
+		{
+			m_mouse.buttons[2] = false;
+			broadcast(WindowEvent::MouseUp(m_mouse.pos, 2));
+			return true;
+		}
 		case NSEventTypeScrollWheel:
 		{
-			float deltaY = [event deltaY] * 0.25f;
+			const float deltaX = [event deltaX] * 0.25f;
+			const float deltaY = [event deltaY] * 0.25f;
+			m_mouse.wheelH += deltaX;
 			m_mouse.wheelV += deltaY;
-			broadcast(WindowEvent::Scroll(0.0f, deltaY));
+			broadcast(WindowEvent::Scroll(deltaX, deltaY));
 			return true;
 		}
 		case NSEventTypeKeyDown:
 		{
 			Key key = translateKeyMac(event);
+
+			if (key == Key_Enter
+				&& ([event modifierFlags] & NSEventModifierFlagOption)
+				&& getDesc().handleShortcutFullScreen)
+			{
+				toggleFullscreen();
+				return true;
+			}
+
 			m_keyboard.keys[key] = true;
 			auto e = WindowEvent::KeyDown(key);
 			broadcast(e);
@@ -518,6 +643,18 @@ bool WindowMac::processEvent(NSEvent* event)
 				break;
 			case 54:
 				key = Key_RightSuper;
+				break;
+			case 58:
+				key = Key_LeftAlt;
+				break;
+			case 61:
+				key = Key_RightAlt;
+				break;
+			case 62:
+				key = Key_RightControl;
+				break;
+			case 57:
+				key = Key_CapsLock;
 				break;
 			default:
 				key = Key_Unknown;

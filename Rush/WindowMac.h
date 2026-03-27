@@ -29,6 +29,7 @@ public:
 	virtual void	setSize(const Tuple2i& size) override;
 	virtual void	setPosition(const Tuple2i& position) override;
 	virtual void	setMouseLock(bool state) override;
+	virtual bool	setFullscreen(bool state) override;
 
 	bool processEvent(NSEvent* event);
 	void processResize(float newWidth, float newHeight);
@@ -41,6 +42,9 @@ private:
 	NSWindow* m_nativeWindow = nullptr;
 	CAMetalLayer* m_metalLayer = nullptr;
 	Rush::Vec2 m_preLockMousePos;
+	Tuple2i m_windowedSize;
+	Tuple2i m_windowedPos;
+	u32 m_windowedStyleMask = 0;
 };
 
 }

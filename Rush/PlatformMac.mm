@@ -7,6 +7,8 @@
 
 #import <Cocoa/Cocoa.h>
 #include <mach-o/dyld.h>
+#include <sys/sysctl.h>
+#include <unistd.h>
 #include <limits.h>
 #include <string_view>
 #include <string>
@@ -90,7 +92,16 @@ const char* Platform_GetExecutableDirectory()
 	return result;
 }
 
-void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
+bool Platform_IsDebuggerPresent()
+{
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };
+	struct kinfo_proc info = {};
+	size_t size = sizeof(info);
+	sysctl(mib, 4, &info, &size, nullptr, 0);
+	return (info.kp_proc.p_flag & P_TRACED) != 0;
+}
+
+void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
 	@autoreleasepool
 	{
