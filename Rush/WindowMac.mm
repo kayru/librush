@@ -1,4 +1,5 @@
 #include "WindowMac.h"
+#include "MathCommon.h"
 #include "UtilLog.h"
 
 #if defined(RUSH_PLATFORM_MAC)
@@ -413,27 +414,29 @@ void WindowMac::updateResolutionScale()
 	const bool scaleChanged = (m_resolutionScale.x != scaleFloat) || (m_resolutionScale.y != scaleFloat);
 	m_resolutionScale = Vec2(scaleFloat, scaleFloat);
 
+	bool sizeChanged = false;
+
 	if (m_metalLayer)
 	{
 		NSView* contentView = [m_nativeWindow contentView];
 		if (contentView)
 		{
-			NSRect bounds = [contentView bounds];
+			const NSRect bounds = [contentView bounds];
 			m_metalLayer.frame = bounds;
 			const Tuple2i pendingSize((int)bounds.size.width, (int)bounds.size.height);
 			if (pendingSize.x > 0 && pendingSize.y > 0 && m_size != pendingSize)
 			{
 				m_size = pendingSize;
-				broadcast(WindowEvent::Resize(m_size.x, m_size.y));
+				sizeChanged = true;
 			}
+			m_metalLayer.contentsScale = scale;
+			m_metalLayer.drawableSize = CGSizeMake(
+				(CGFloat)m_size.x * scale,
+				(CGFloat)m_size.y * scale);
 		}
-		m_metalLayer.contentsScale = scale;
-		m_metalLayer.drawableSize = CGSizeMake(
-			(CGFloat)m_size.x * scale,
-			(CGFloat)m_size.y * scale);
 	}
 
-	if (scaleChanged)
+	if (sizeChanged || scaleChanged)
 	{
 		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
 	}
@@ -513,12 +516,17 @@ bool WindowMac::processEvent(NSEvent* event)
 		{
 			if (m_mouseLocked)
 			{
-				float dx = (float)[event deltaX];
-				float dy = (float)[event deltaY];
+				const float dx = (float)[event deltaX];
+				const float dy = (float)[event deltaY];
 				m_mouse.pos += Vec2(dx, dy);
 			}
 			else
 			{
+				if ([event window] != m_nativeWindow)
+				{
+					return false;
+				}
+
 				NSPoint mouseLocation = [event locationInWindow];
 				if (m_nativeWindow)
 				{
@@ -528,9 +536,10 @@ bool WindowMac::processEvent(NSEvent* event)
 						mouseLocation = [contentView convertPoint:mouseLocation fromView:nil];
 					}
 				}
-				float xPos = mouseLocation.x;
-				float yPos = (float)getSize().y - mouseLocation.y;
-				m_mouse.pos = Vec2(xPos, yPos);
+				const Tuple2i size = getSize();
+				const float xPos = clamp((float)mouseLocation.x, 0.0f, (float)size.x);
+				const float yPos = clamp((float)size.y - (float)mouseLocation.y, 0.0f, (float)size.y);
+				m_mouse.pos = Vec2((float)xPos, (float)yPos);
 			}
 			broadcast(WindowEvent::MouseMove(m_mouse.pos));
 			return true;
@@ -565,24 +574,38 @@ bool WindowMac::processEvent(NSEvent* event)
 		}
 		case NSEventTypeOtherMouseDown:
 		{
-			const bool doubleClick = [event clickCount] >= 2;
-			m_mouse.buttons[2] = true;
-			m_mouse.doubleclick = doubleClick;
-			broadcast(WindowEvent::MouseDown(m_mouse.pos, 2, doubleClick));
+			const int button = (int)[event buttonNumber];
+			if (button >= 0 && button < 10)
+			{
+				const bool doubleClick = [event clickCount] >= 2;
+				m_mouse.buttons[button] = true;
+				m_mouse.doubleclick = doubleClick;
+				broadcast(WindowEvent::MouseDown(m_mouse.pos, button, doubleClick));
+			}
 			return true;
 		}
 		case NSEventTypeOtherMouseUp:
 		{
-			m_mouse.buttons[2] = false;
-			broadcast(WindowEvent::MouseUp(m_mouse.pos, 2));
+			const int button = (int)[event buttonNumber];
+			if (button >= 0 && button < 10)
+			{
+				m_mouse.buttons[button] = false;
+				broadcast(WindowEvent::MouseUp(m_mouse.pos, button));
+			}
 			return true;
 		}
 		case NSEventTypeScrollWheel:
 		{
 			const float deltaX = [event deltaX] * 0.25f;
 			const float deltaY = [event deltaY] * 0.25f;
-			m_mouse.wheelH += deltaX;
-			m_mouse.wheelV += deltaY;
+			m_scrollAccumH += deltaX;
+			m_scrollAccumV += deltaY;
+			const int wholeH = (int)m_scrollAccumH;
+			const int wholeV = (int)m_scrollAccumV;
+			m_scrollAccumH -= (float)wholeH;
+			m_scrollAccumV -= (float)wholeV;
+			m_mouse.wheelH += wholeH;
+			m_mouse.wheelV += wholeV;
 			broadcast(WindowEvent::Scroll(deltaX, deltaY));
 			return true;
 		}
