@@ -93,7 +93,6 @@ struct Mat4;
 
 // descType, handleType, memberName
 #define RUSH_GFX_RESOURCE_LIST(X) \
-	X(GfxVertexFormatDesc, GfxVertexFormat, vertexFormats) \
 	X(GfxVertexShaderDesc, GfxVertexShader, shaders) \
 	X(GfxPixelShaderDesc, GfxPixelShader, shaders) \
 	X(GfxGeometryShaderDesc, GfxGeometryShader, shaders) \
@@ -104,10 +103,8 @@ struct Mat4;
 	X(GfxTextureDesc, GfxTexture, textures) \
 	X(GfxBufferDesc, GfxBuffer, buffers) \
 	X(GfxSamplerDesc, GfxSampler, samplers) \
-	X(GfxBlendStateDesc, GfxBlendState, blendStates) \
-	X(GfxDepthStencilDesc, GfxDepthStencilState, depthStencilStates) \
-	X(GfxRasterizerDesc, GfxRasterizerState, rasterizerStates) \
-	X(GfxTechniqueDesc, GfxTechnique, techniques) \
+	X(GfxRenderPipelineDesc, GfxRenderPipeline, renderPipelines) \
+	X(GfxComputePipelineDesc, GfxComputePipeline, computePipelines) \
 	X(GfxDescriptorSetDesc, GfxDescriptorSet, descriptorSets) \
 	X(GfxQueryPoolDesc, GfxQueryPool, queryPools)
 
@@ -720,7 +717,8 @@ struct GfxDepthStencilDesc
 	bool           enable      = true;
 	bool           writeEnable = true;
 
-	// TODO: Stencil and others
+	static GfxDepthStencilDesc makeWriteTest(GfxCompareFunc func);
+	static GfxDepthStencilDesc makeReadOnly(GfxCompareFunc func);
 };
 
 struct GfxRasterizerDesc
@@ -730,12 +728,16 @@ struct GfxRasterizerDesc
 	GfxCullFace cullFace            = GfxCullFace::Back;
 	float       depthBias           = 0.0f;
 	float       depthBiasSlopeScale = 0.0f;
+
+	static GfxRasterizerDesc makeNoCull();
+	static GfxRasterizerDesc makeCullBack(GfxCullMode cullMode = GfxCullMode::CCW);
+	static GfxRasterizerDesc makeWireframe();
 };
 
 struct GfxVertexFormatDesc
 {
 
-	static const u32 MaxStreams  = 8;
+	static const u32 MaxStreams  = RUSH_GFX_MAX_VERTEX_STREAMS;
 	static const u32 MaxElements = 16;
 
 public:
@@ -890,32 +892,66 @@ struct GfxSpecializationConstant
 	u32    size;
 };
 
-struct GfxTechniqueDesc
+struct GfxRenderTargetDesc
 {
-	GfxTechniqueDesc() {}
+	static constexpr u32 MaxTargets = RUSH_GFX_MAX_RENDER_TARGETS;
 
-	GfxTechniqueDesc(
-	    GfxPixelShaderArg _ps, GfxVertexShaderArg _vs, GfxVertexFormatArg _vf, const GfxShaderBindingDesc& _bindings)
-	: ps(_ps), vs(_vs), vf(_vf), bindings(_bindings)
+	GfxFormat colorFormats[MaxTargets] = {};
+	GfxFormat depthFormat              = GfxFormat_Unknown;
+	u32       sampleCount              = 1;
+
+	u32 getColorTargetCount() const
 	{
+		u32 count = 0;
+		for (u32 i = 0; i < MaxTargets; ++i)
+		{
+			if (colorFormats[i] != GfxFormat_Unknown)
+			{
+				count = i + 1;
+			}
+		}
+		return count;
 	}
 
-	GfxTechniqueDesc(GfxPixelShaderArg _ps, GfxMeshShaderArg _ms, const GfxShaderBindingDesc& _bindings)
-	: ps(_ps), ms(_ms), bindings(_bindings)
-	{
-	}
+	bool operator==(const GfxRenderTargetDesc&) const = default;
 
-	GfxTechniqueDesc(GfxComputeShaderArg _cs, const GfxShaderBindingDesc& _bindings, const Tuple3<u16>& _workGroupSize)
-	: cs(_cs), bindings(_bindings), workGroupSize(_workGroupSize)
-	{
-	}
+	static GfxRenderTargetDesc fromPassDesc(const struct GfxPassDesc& pass);
+};
 
+struct GfxRenderPipelineDesc
+{
+	GfxVertexShader   vs;
+	GfxPixelShader    ps;
+	GfxGeometryShader gs;
+	GfxMeshShader     ms;
+
+	GfxVertexFormatDesc  vertexFormat;
+	GfxShaderBindingDesc bindings = {};
+
+	u32                              specializationConstantCount = 0;
+	const GfxSpecializationConstant* specializationConstants     = nullptr;
+	const void*                      specializationData          = nullptr;
+	u32                              specializationDataSize      = 0;
+
+	GfxBlendStateDesc   blend[GfxRenderTargetDesc::MaxTargets] = {};
+	GfxDepthStencilDesc depthStencil = GfxDepthStencilDesc::makeReadOnly(GfxCompareFunc::Always);
+	GfxRasterizerDesc   rasterizer   = GfxRasterizerDesc::makeNoCull();
+	GfxPrimitive        primitive    = GfxPrimitive::TriangleList;
+
+	GfxRenderTargetDesc renderTarget;
+
+	void setBlendState(const GfxBlendStateDesc& state)
+	{
+		for (auto& b : blend)
+		{
+			b = state;
+		}
+	}
+};
+
+struct GfxComputePipelineDesc
+{
 	GfxComputeShader     cs;
-	GfxPixelShader       ps;
-	GfxGeometryShader    gs;
-	GfxVertexShader      vs;
-	GfxMeshShader        ms;
-	GfxVertexFormat      vf;
 	GfxShaderBindingDesc bindings      = {};
 	Tuple3<u16>          workGroupSize = {};
 
@@ -923,10 +959,6 @@ struct GfxTechniqueDesc
 	const GfxSpecializationConstant* specializationConstants     = nullptr;
 	const void*                      specializationData          = nullptr;
 	u32                              specializationDataSize      = 0;
-
-	float psWaveLimit = 1.0f;
-	float vsWaveLimit = 1.0f;
-	float csWaveLimit = 1.0f;
 };
 
 struct GfxTextureDesc
@@ -1044,7 +1076,7 @@ struct GfxAccelerationStructureDesc
 	GfxAccelerationStructureType type = GfxAccelerationStructureType::BottomLevel;
 
 	GfxRayTracingGeometryDesc* geometries   = nullptr;
-	u32                        geometyCount = 0;
+	u32                        geometryCount = 0;
 
 	u32                        instanceCount = 0;
 };
@@ -1061,7 +1093,7 @@ struct GfxRayTracingPipelineDesc
 	u32 maxRecursionDepth = 1;
 };
 
-enum class GfxQuueryType : u8
+enum class GfxQueryType : u8
 {
 	Occlusion = 0,
 	Timestamp = 1,
@@ -1069,7 +1101,7 @@ enum class GfxQuueryType : u8
 
 struct GfxQueryPoolDesc
 {
-	GfxQuueryType type  = GfxQuueryType::Occlusion;
+	GfxQueryType type  = GfxQueryType::Occlusion;
 	u32           count = 0;
 };
 

@@ -106,6 +106,8 @@ struct GfxCapability
 	u32 rtSbtMaxStride = 0;
 	u32 rtSbtAlignment = 0;
 
+	GfxRenderTargetDesc backBufferDesc;
+
 	bool shaderTypeSupported(GfxShaderSourceType type) const { return (shaderTypeMask & (1 << type)) != 0; }
 };
 
@@ -137,7 +139,7 @@ RUSH_IMPLEMENT_FLAG_OPERATORS(GfxPassFlags, u32)
 
 struct GfxPassDesc
 {
-	static constexpr u32 MaxTargets = 8;
+	static constexpr u32 MaxTargets = RUSH_GFX_MAX_RENDER_TARGETS;
 
 	GfxTexture   color[MaxTargets];
 	GfxTexture   depth;
@@ -197,18 +199,15 @@ inline void Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None)
 const GfxStats& Gfx_Stats();
 void            Gfx_ResetStats();
 
-GfxOwn<GfxVertexFormat>      Gfx_CreateVertexFormat(const GfxVertexFormatDesc& fmt);
 GfxOwn<GfxVertexShader>      Gfx_CreateVertexShader(const GfxShaderSource& code);
 GfxOwn<GfxPixelShader>       Gfx_CreatePixelShader(const GfxShaderSource& code);
 GfxOwn<GfxGeometryShader>    Gfx_CreateGeometryShader(const GfxShaderSource& code);
 GfxOwn<GfxComputeShader>     Gfx_CreateComputeShader(const GfxShaderSource& code);
 GfxOwn<GfxMeshShader>        Gfx_CreateMeshShader(const GfxShaderSource& code);
-GfxOwn<GfxTechnique>         Gfx_CreateTechnique(const GfxTechniqueDesc& desc);
+GfxOwn<GfxRenderPipeline>    Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& desc);
+GfxOwn<GfxComputePipeline>   Gfx_CreateComputePipeline(const GfxComputePipelineDesc& desc);
 GfxOwn<GfxTexture>           Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data = nullptr, u32 count = 0, const void* texels = nullptr);
-GfxOwn<GfxBlendState>        Gfx_CreateBlendState(const GfxBlendStateDesc& desc);
 GfxOwn<GfxSampler>           Gfx_CreateSamplerState(const GfxSamplerDesc& desc);
-GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc);
-GfxOwn<GfxRasterizerState>   Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc);
 GfxOwn<GfxBuffer>            Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data = nullptr);
 
 #ifdef RUSH_RENDER_SUPPORT_QUERY
@@ -278,22 +277,36 @@ void        Gfx_EndAsyncCompute(GfxContext* parentContext, GfxContext* asyncCont
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc);
 void Gfx_EndPass(GfxContext* rc);
+const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc);
+
+inline GfxRenderTargetDesc Gfx_GetRenderTargetDesc(GfxContext* rc)
+{
+	const GfxPassDesc* pass = Gfx_GetCurrentPassDesc(rc);
+	RUSH_ASSERT_MSG(pass, "Gfx_GetRenderTargetDesc called outside of a render pass");
+	GfxRenderTargetDesc result = GfxRenderTargetDesc::fromPassDesc(*pass);
+	// TODO: this conflates "no attachments" with "use back buffer", which breaks UAV-only passes.
+	// Fixing requires Gfx_BeginPass to not force-bind the back buffer when no attachments are specified.
+	const bool useBackBuffer = !pass->color[0].valid() && !pass->depth.valid();
+	if (useBackBuffer)
+	{
+		const auto& bbDesc = Gfx_GetCapability().backBufferDesc;
+		result.colorFormats[0] = bbDesc.colorFormats[0];
+		result.sampleCount = bbDesc.sampleCount;
+	}
+	return result;
+}
 
 void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport);
 void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect);
-void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h);
-void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type);
+void Gfx_SetRenderPipeline(GfxContext* rc, GfxRenderPipelineArg h);
+void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h);
 void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h);
 void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h);
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h);
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h);
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h);
 void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h);
 void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h);
 void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h);
 void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h);
-void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState);
-void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nextState);
-void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState);
 void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset = 0);
 void Gfx_FlushBarriers(GfxContext* rc);
 void Gfx_AddFullPipelineBarrier(GfxContext* rc);
@@ -355,7 +368,7 @@ template <typename T> inline void Gfx_SetScissorRect(GfxContext* rc, const Tuple
 	Gfx_SetScissorRect(rc, rect);
 }
 
-inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) { Gfx_SetVertexStream(rc, idx, 0, ~0u, h); }
+inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) { Gfx_SetVertexStream(rc, idx, 0, h); }
 inline void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h) { Gfx_SetIndexStream(rc, 0, GfxFormat_Unknown, h); }
 
 inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(GfxBufferFlags flags, GfxFormat format, u32 count = 0, u32 stride = 0, const void* data = nullptr)
@@ -467,17 +480,14 @@ inline void Gfx_ResolveTimestamps() {}
 inline const GfxCapability& Gfx_GetCapability() { static const GfxCapability cap; return cap; }
 inline const GfxStats& Gfx_Stats() { static const GfxStats stats; return stats; }
 inline void Gfx_ResetStats() {}
-inline GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& fmt) { return {}; }
 inline GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code) { return {}; }
 inline GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code) { return {}; }
 inline GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code) { return {}; }
 inline GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code) { return {}; }
-inline GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc) { return {}; }
+inline GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& desc) { return {}; }
+inline GfxOwn<GfxComputePipeline> Gfx_CreateComputePipeline(const GfxComputePipelineDesc& desc) { return {}; }
 inline GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& tex, const GfxTextureData* data, u32 count, const void* texels) { return {}; }
-inline GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc) { return {}; }
 inline GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc) { return {}; }
-inline GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc) { return {}; }
-inline GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc) { return {}; }
 inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data) { return {}; }
 inline void Gfx_Retain(GfxDevice* dev) {}
 inline void Gfx_Retain(GfxContext* rc) {}
@@ -497,19 +507,17 @@ inline GfxContext* Gfx_AcquireContext() { return {}; }
 inline void Gfx_Release(GfxContext* rc) {}
 inline void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc) {}
 inline void Gfx_EndPass(GfxContext* rc) {}
+inline const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc) { return nullptr; }
 inline void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport) {}
 inline void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect) {}
-inline void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h) {}
-inline void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type) {}
+inline void Gfx_SetRenderPipeline(GfxContext* rc, GfxRenderPipelineArg h) {}
+inline void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h) {}
 inline void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h) {}
-inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h) {}
+inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h) {}
 inline void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h) {}
 inline void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h) {}
 inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h) {}
 inline void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h) {}
-inline void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState) {}
-inline void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nextState) {}
-inline void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState) {}
 inline void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset) {}
 inline void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) {}
 inline GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat, Tuple3u) { return {}; }

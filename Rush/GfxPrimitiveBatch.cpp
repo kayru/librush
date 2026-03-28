@@ -10,16 +10,6 @@ namespace Rush
 
 extern const char* MSL_EmbeddedShaders;
 
-class BatchVertexFormat : public GfxVertexFormatDesc
-{
-public:
-	BatchVertexFormat()
-	{
-		add(0, DataType::Float3, Semantic::Position, 0);
-		add(0, DataType::Float2, Semantic::Texcoord, 0);
-		add(0, DataType::Color, Semantic::Color, 0);
-	}
-};
 
 PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 : m_context(Gfx_AcquireContext())
@@ -77,34 +67,19 @@ PrimitiveBatch::PrimitiveBatch(u32 maxBatchVertices)
 	}
 #endif // RUSH_RENDER_API != RUSH_RENDER_API_NULL
 
-	BatchVertexFormat fmtDesc;
-
-	m_vertexFormat2D = Gfx_CreateVertexFormat(fmtDesc);
-	m_vertexFormat3D = Gfx_CreateVertexFormat(fmtDesc);
+	m_vertexFormat2D.add(0, GfxVertexFormatDesc::DataType::Float3, GfxVertexFormatDesc::Semantic::Position, 0);
+	m_vertexFormat2D.add(0, GfxVertexFormatDesc::DataType::Float2, GfxVertexFormatDesc::Semantic::Texcoord, 0);
+	m_vertexFormat2D.add(0, GfxVertexFormatDesc::DataType::Color, GfxVertexFormatDesc::Semantic::Color, 0);
+	m_vertexFormat3D = m_vertexFormat2D;
 
 	GfxBufferDesc desc(GfxBufferFlags::TransientConstant, GfxFormat_Unknown, 1, sizeof(Constants));
 	m_constantBuffer = Gfx_CreateBuffer(desc, nullptr);
 
-	{
-		GfxShaderBindingDesc bindings;
-		bindings.descriptorSets[0].constantBuffers = 1;
-		m_techniques[TechniqueID_Plain2D] =
-		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader2D, m_vertexFormat2D, bindings));
-		m_techniques[TechniqueID_Plain3D] =
-		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderPlain, m_vertexShader3D, m_vertexFormat3D, bindings));
-	}
+	m_plainBindings.descriptorSets[0].constantBuffers = 1;
 
-	{
-		GfxShaderBindingDesc bindings;
-		bindings.descriptorSets[0].constantBuffers = 1;
-		bindings.descriptorSets[0].samplers        = 1;
-		bindings.descriptorSets[0].textures        = 1;
-
-		m_techniques[TechniqueID_Textured2D] =
-		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader2D, m_vertexFormat2D, bindings));
-		m_techniques[TechniqueID_Textured3D] =
-		    Gfx_CreateTechnique(GfxTechniqueDesc(m_pixelShaderTextured, m_vertexShader3D, m_vertexFormat3D, bindings));
-	}
+	m_texturedBindings.descriptorSets[0].constantBuffers = 1;
+	m_texturedBindings.descriptorSets[0].samplers        = 1;
+	m_texturedBindings.descriptorSets[0].textures        = 1;
 
 	GfxBufferDesc vbDesc(GfxBufferFlags::TransientVertex, GfxFormat_Unknown, m_maxBatchVertices, sizeof(BatchVertex));
 
@@ -127,26 +102,67 @@ PrimitiveBatch::~PrimitiveBatch()
 	Gfx_Release(m_context);
 }
 
-GfxTechnique PrimitiveBatch::getNextTechnique()
+GfxRenderPipelineDesc PrimitiveBatch::makePipelineDesc(PipelineID id, const GfxRenderTargetDesc& renderTargetDesc) const
 {
-	if (m_currTexture.valid())
+	const u32  bits     = u32(id);
+	const bool textured = (bits & PipelineBit_Textured) != 0;
+	const bool is3D     = (bits & PipelineBit_Is3D) != 0;
+	const bool lines    = (bits & PipelineBit_Lines) != 0;
+
+	GfxRenderPipelineDesc desc;
+	desc.ps           = textured ? m_pixelShaderTextured.get() : m_pixelShaderPlain.get();
+	desc.vs           = is3D ? m_vertexShader3D.get() : m_vertexShader2D.get();
+	desc.vertexFormat = is3D ? m_vertexFormat3D : m_vertexFormat2D;
+	desc.bindings     = textured ? m_texturedBindings : m_plainBindings;
+	desc.blend[0]     = GfxBlendStateDesc::makeLerp();
+	desc.depthStencil = GfxDepthStencilDesc::makeReadOnly(GfxCompareFunc::Always);
+	desc.rasterizer   = GfxRasterizerDesc::makeNoCull();
+	desc.primitive    = lines ? GfxPrimitive::LineList : GfxPrimitive::TriangleList;
+	desc.renderTarget = renderTargetDesc;
+	return desc;
+}
+
+PrimitiveBatch::PipelineSet& PrimitiveBatch::findOrAddPipelineSet(const GfxRenderTargetDesc& renderTargetDesc)
+{
+	for (auto& set : m_pipelineCache)
 	{
-		switch (m_mode)
+		if (set.renderTarget == renderTargetDesc)
 		{
-		case BatchMode_2D: return m_techniques[TechniqueID_Textured2D].get();
-		case BatchMode_3D: return m_techniques[TechniqueID_Textured3D].get();
-		default: return InvalidResourceHandle();
+			return set;
 		}
 	}
-	else
+	m_pipelineCache.push_back({});
+	m_pipelineCache.back().renderTarget = renderTargetDesc;
+	return m_pipelineCache.back();
+}
+
+GfxRenderPipeline PrimitiveBatch::getOrCreatePipeline(const GfxRenderTargetDesc& renderTargetDesc, PipelineID id)
+{
+	PipelineSet& set = findOrAddPipelineSet(renderTargetDesc);
+	if (!set.pipelines[u32(id)].valid())
 	{
-		switch (m_mode)
-		{
-		case BatchMode_2D: return m_techniques[TechniqueID_Plain2D].get();
-		case BatchMode_3D: return m_techniques[TechniqueID_Plain3D].get();
-		default: return InvalidResourceHandle();
-		}
+		set.pipelines[u32(id)] = Gfx_CreateRenderPipeline(makePipelineDesc(id, renderTargetDesc));
 	}
+	return set.pipelines[u32(id)].get();
+}
+
+void PrimitiveBatch::createPipelines(const GfxRenderTargetDesc& renderTargetDesc)
+{
+	for (u32 i = 0; i < PipelineID_COUNT; ++i)
+	{
+		getOrCreatePipeline(renderTargetDesc, PipelineID(i));
+	}
+}
+
+GfxRenderPipeline PrimitiveBatch::getNextPipeline()
+{
+	const u32 bits = (m_currTexture.valid() ? PipelineBit_Textured : 0)
+	               | (m_currPrim == GfxPrimitive::LineList ? PipelineBit_Lines : 0)
+	               | (m_mode == BatchMode_3D ? PipelineBit_Is3D : 0);
+	const PipelineID id = PipelineID(bits);
+
+	const GfxRenderTargetDesc renderTargetDesc = Gfx_GetRenderTargetDesc(m_context);
+	return getOrCreatePipeline(renderTargetDesc, id);
 }
 
 void PrimitiveBatch::flush()
@@ -154,17 +170,18 @@ void PrimitiveBatch::flush()
 	RUSH_ASSERT(m_mode != BatchMode_Invalid);
 
 	if (m_vertices.size() == 0)
+	{
 		return;
+	}
 
-	GfxTechnique nextTechnique = getNextTechnique();
+	GfxRenderPipeline nextPipeline = getNextPipeline();
 
-	Gfx_SetTechnique(m_context, nextTechnique);
+	Gfx_SetRenderPipeline(m_context, nextPipeline);
 
 	Gfx_UpdateBuffer(m_context, m_vertexBuffer, m_vertices.data(), (u32)m_vertices.sizeInBytes());
 	Gfx_SetTexture(m_context, 0, m_currTexture);
 	Gfx_SetSampler(m_context, 0, m_currSampler);
 	Gfx_SetVertexStream(m_context, 0, m_vertexBuffer);
-	Gfx_SetPrimitive(m_context, m_currPrim);
 
 	if (m_constantBuffer.valid())
 	{

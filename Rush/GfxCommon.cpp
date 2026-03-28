@@ -1,4 +1,5 @@
 #include "GfxCommon.h"
+#include "GfxDevice.h"
 #include "UtilLog.h"
 #include <string.h>
 
@@ -280,6 +281,76 @@ GfxBlendStateDesc GfxBlendStateDesc::makePremultiplied()
 	res.alphaOp       = GfxBlendOp::Add;
 
 	return res;
+}
+
+GfxDepthStencilDesc GfxDepthStencilDesc::makeWriteTest(GfxCompareFunc func)
+{
+	GfxDepthStencilDesc res;
+	res.enable      = true;
+	res.writeEnable = true;
+	res.compareFunc = func;
+	return res;
+}
+
+GfxDepthStencilDesc GfxDepthStencilDesc::makeReadOnly(GfxCompareFunc func)
+{
+	GfxDepthStencilDesc res;
+	res.enable      = (func != GfxCompareFunc::Always);
+	res.writeEnable = false;
+	res.compareFunc = func;
+	return res;
+}
+
+GfxRasterizerDesc GfxRasterizerDesc::makeNoCull()
+{
+	GfxRasterizerDesc res;
+	res.fillMode = GfxFillMode::Solid;
+	res.cullMode = GfxCullMode::None;
+	return res;
+}
+
+GfxRasterizerDesc GfxRasterizerDesc::makeCullBack(GfxCullMode cullMode)
+{
+	GfxRasterizerDesc res;
+	res.fillMode = GfxFillMode::Solid;
+	res.cullMode = cullMode;
+	res.cullFace = GfxCullFace::Back;
+	return res;
+}
+
+GfxRasterizerDesc GfxRasterizerDesc::makeWireframe()
+{
+	GfxRasterizerDesc res;
+	res.fillMode = GfxFillMode::Wireframe;
+	res.cullMode = GfxCullMode::None;
+	return res;
+}
+
+GfxRenderTargetDesc GfxRenderTargetDesc::fromPassDesc(const GfxPassDesc& pass)
+{
+	GfxRenderTargetDesc config;
+	for (u32 i = 0; i < MaxTargets; ++i)
+	{
+		if (pass.color[i].valid())
+		{
+			const auto& desc = Gfx_GetTextureDesc(pass.color[i]);
+			config.colorFormats[i] = desc.format;
+			if (config.sampleCount <= 1)
+			{
+				config.sampleCount = desc.samples;
+			}
+		}
+	}
+	if (pass.depth.valid())
+	{
+		const auto& desc = Gfx_GetTextureDesc(pass.depth);
+		config.depthFormat = desc.format;
+		if (config.sampleCount <= 1)
+		{
+			config.sampleCount = desc.samples;
+		}
+	}
+	return config;
 }
 
 GfxSamplerDesc GfxSamplerDesc::makeLinear()

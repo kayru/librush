@@ -209,8 +209,7 @@ struct rush_platform_context* rush_platform_startup(const rush_app_config* in_cf
 	rush_platform_context* context = new rush_platform_context;
 
 	AppConfig cfg = convert(in_cfg);
-	GfxConfig gfx_cfg(cfg);	
-	gfx_cfg.preferredCoordinateSystem = GfxConfig::PreferredCoordinateSystem_Direct3D;
+	GfxConfig gfx_cfg(cfg);
 	cfg.gfxConfig = &gfx_cfg;
 
 	Platform_Startup(cfg);
@@ -340,10 +339,6 @@ rush_gfx_context* rush_platform_get_context()
 	return (rush_gfx_context*)Platform_GetGfxContext();
 }
 
-void rush_gfx_release_vertex_format(rush_gfx_vertex_format h)
-{
-	Gfx_Release(convertHandle<GfxVertexFormat>(h));
-}
 void rush_gfx_release_vertex_shader(rush_gfx_vertex_shader h)
 {
 	Gfx_Release(convertHandle<GfxVertexShader>(h));
@@ -372,29 +367,21 @@ void rush_gfx_release_acceleration_structure(rush_gfx_acceleration_structure h)
 {
 	Gfx_Release(convertHandle<GfxAccelerationStructure>(h));
 }
-void rush_gfx_release_technique(rush_gfx_technique h)
+void rush_gfx_release_render_pipeline(rush_gfx_render_pipeline h)
 {
-	Gfx_Release(convertHandle<GfxTechnique>(h));
+	Gfx_Release(convertHandle<GfxRenderPipeline>(h));
+}
+void rush_gfx_release_compute_pipeline(rush_gfx_compute_pipeline h)
+{
+	Gfx_Release(convertHandle<GfxComputePipeline>(h));
 }
 void rush_gfx_release_texture(rush_gfx_texture h)
 {
 	Gfx_Release(convertHandle<GfxTexture>(h));
 }
-void rush_gfx_release_blend_state(rush_gfx_blend_state h)
-{
-	Gfx_Release(convertHandle<GfxBlendState>(h));
-}
 void rush_gfx_release_sampler(rush_gfx_sampler h)
 {
 	Gfx_Release(convertHandle<GfxSampler>(h));
-}
-void rush_gfx_release_depth_stencil_state(rush_gfx_depth_stencil_state h)
-{
-	Gfx_Release(convertHandle<GfxDepthStencilState>(h));
-}
-void rush_gfx_release_rasterizer_state(rush_gfx_rasterizer_state h)
-{
-	Gfx_Release(convertHandle<GfxRasterizerState>(h));
 }
 void rush_gfx_release_buffer(rush_gfx_buffer h)
 {
@@ -555,20 +542,68 @@ rush_gfx_texture rush_gfx_create_texture(const rush_gfx_texture_desc* in_desc, c
 	return {Gfx_CreateTexture(desc, data, count, pixels).detach().index()};
 }
 
-rush_gfx_blend_state rush_gfx_create_blend_state(const rush_gfx_blend_state_desc* in_desc)
+static GfxBlendStateDesc convertBlendStateDesc(const rush_gfx_blend_state_desc& in)
 {
 	GfxBlendStateDesc desc;
+	desc.src           = GfxBlendParam(in.src);
+	desc.dst           = GfxBlendParam(in.dst);
+	desc.op            = GfxBlendOp(in.op);
+	desc.alphaSrc      = GfxBlendParam(in.alpha_src);
+	desc.alphaDst      = GfxBlendParam(in.alpha_dst);
+	desc.alphaOp       = GfxBlendOp(in.alpha_op);
+	desc.alphaSeparate = in.alpha_separate;
+	desc.enable        = in.enable;
+	return desc;
+}
 
-	desc.src           = GfxBlendParam(in_desc->src);
-	desc.dst           = GfxBlendParam(in_desc->dst);
-	desc.op            = GfxBlendOp(in_desc->op);
-	desc.alphaSrc      = GfxBlendParam(in_desc->alpha_src);
-	desc.alphaDst      = GfxBlendParam(in_desc->alpha_dst);
-	desc.alphaOp       = GfxBlendOp(in_desc->alpha_op);
-	desc.alphaSeparate = in_desc->alpha_separate;
-	desc.enable        = in_desc->enable;
+static GfxDepthStencilDesc convertDepthStencilDesc(const rush_gfx_depth_stencil_desc& in)
+{
+	GfxDepthStencilDesc desc;
+	desc.compareFunc = GfxCompareFunc(in.compare_func);
+	desc.enable      = in.enable;
+	desc.writeEnable = in.write_enable;
+	return desc;
+}
 
-	return { Gfx_CreateBlendState(desc).detach().index() };
+static GfxRasterizerDesc convertRasterizerDesc(const rush_gfx_rasterizer_desc& in)
+{
+	GfxRasterizerDesc desc;
+	desc.fillMode            = GfxFillMode(in.fill_mode);
+	desc.cullMode            = GfxCullMode(in.cull_mode);
+	desc.cullFace            = GfxCullFace(in.cull_face);
+	desc.depthBias           = in.depth_bias;
+	desc.depthBiasSlopeScale = in.depth_bias_slope_scale;
+	return desc;
+}
+
+static GfxRenderTargetDesc convertRenderTargetConfig(const rush_gfx_render_target_config& in)
+{
+	GfxRenderTargetDesc config;
+	for (u32 i = 0; i < GfxRenderTargetDesc::MaxTargets; ++i)
+	{
+		config.colorFormats[i] = GfxFormat(in.color_formats[i]);
+	}
+	config.depthFormat  = GfxFormat(in.depth_format);
+	config.sampleCount  = in.sample_count;
+	return config;
+}
+
+static GfxShaderBindingDesc convertBindings(const rush_gfx_shader_bindings_desc& in)
+{
+	GfxShaderBindingDesc bindings;
+	bindings.useDefaultDescriptorSet = in.use_default_descriptor_set;
+	for (u32 i = 0; i < in.descriptor_set_count && i < GfxShaderBindingDesc::MaxDescriptorSets; ++i)
+	{
+		if (i == 0 && bindings.useDefaultDescriptorSet)
+		{
+			(GfxDescriptorSetDesc&)bindings = convert(in.descriptor_sets[0]);
+		}
+		else
+		{
+			bindings.descriptorSets[i] = convert(in.descriptor_sets[i]);
+		}
+	}
+	return bindings;
 }
 
 rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* in_desc)
@@ -587,29 +622,6 @@ rush_gfx_sampler rush_gfx_create_sampler_state(const rush_gfx_sampler_desc* in_d
 	desc.mipLodBias    = in_desc->mip_lod_bias;
 
 	return { Gfx_CreateSamplerState(desc).detach().index() };
-}
-
-rush_gfx_depth_stencil_state rush_gfx_create_depth_stencil_state(const rush_gfx_depth_stencil_desc* in_desc)
-{
-	GfxDepthStencilDesc desc;
-
-	desc.compareFunc = GfxCompareFunc(in_desc->compare_func);
-	desc.enable      = in_desc->enable;
-	desc.writeEnable = in_desc->write_enable;
-
-	return { Gfx_CreateDepthStencilState(desc).detach().index() };
-}
-
-rush_gfx_rasterizer_state rush_gfx_create_rasterizer_state(const rush_gfx_rasterizer_desc* in_desc)
-{
-	GfxRasterizerDesc desc;
-
-	desc.fillMode            = GfxFillMode(in_desc->fill_mode);
-	desc.cullMode            = GfxCullMode(in_desc->cull_mode);
-	desc.depthBias           = in_desc->depth_bias;
-	desc.depthBiasSlopeScale = in_desc->depth_bias_slope_scale;
-
-	return { Gfx_CreateRasterizerState(desc).detach().index() };
 }
 
 namespace Rush { extern const char* MSL_EmbeddedShaders; }
@@ -652,6 +664,18 @@ void rush_gfx_finish()
 	Gfx_Finish();
 }
 
+static rush_gfx_render_target_config convertRenderTargetConfigOut(const GfxRenderTargetDesc& in)
+{
+	rush_gfx_render_target_config config = {};
+	for (u32 i = 0; i < GfxRenderTargetDesc::MaxTargets; ++i)
+	{
+		config.color_formats[i] = rush_gfx_format(in.colorFormats[i]);
+	}
+	config.depth_format  = rush_gfx_format(in.depthFormat);
+	config.sample_count  = in.sampleCount;
+	return config;
+}
+
 rush_gfx_capability rush_gfx_get_capability()
 {
 	const GfxCapability& caps = Gfx_GetCapability();
@@ -661,6 +685,7 @@ rush_gfx_capability rush_gfx_get_capability()
 	result.ray_tracing = caps.rayTracing;
 	result.ray_tracing_pipeline = caps.rayTracingPipeline;
 	result.ray_tracing_inline = caps.rayTracingInline;
+	result.back_buffer_render_target = convertRenderTargetConfigOut(caps.backBufferDesc);
 
 	return result;
 }
@@ -700,76 +725,84 @@ rush_gfx_compute_shader rush_gfx_create_compute_shader(const rush_gfx_shader_sou
 	return {Gfx_CreateComputeShader(convert(in_code)).detach().index()};
 }
 
-rush_gfx_vertex_format rush_gfx_create_vertex_format(const rush_gfx_vertex_element* elements, uint32_t count)
+static GfxVertexFormatDesc convertVertexElements(const rush_gfx_vertex_element* elements, u32 count)
 {
-	GfxVertexFormatDesc desc;
-	for (u32 i=0; i<count; ++i)
+	GfxVertexFormatDesc vf;
+	for (u32 i = 0; i < count; ++i)
 	{
 		const rush_gfx_vertex_element& elem = elements[i];
-		// TODO: just use GfxFormat everywhere instead of GfxVertexFormatDesc::DataType
 		GfxVertexFormatDesc::DataType type = GfxVertexFormatDesc::DataType::Unused;
-		switch(convert(elem.format))
+		switch (convert(elem.format))
 		{
-			default:
-				RUSH_LOG_ERROR("Unsupported vertex format");
-				type = GfxVertexFormatDesc::DataType::Unused;
-			case GfxFormat_R32_Float:    type = GfxVertexFormatDesc::DataType::Float1; break;
-			case GfxFormat_RG32_Float:   type = GfxVertexFormatDesc::DataType::Float2; break;
-			case GfxFormat_RGB32_Float:  type = GfxVertexFormatDesc::DataType::Float3; break;
-			case GfxFormat_RGBA32_Float: type = GfxVertexFormatDesc::DataType::Float4; break;
-			case GfxFormat_RGBA8_Unorm:  type = GfxVertexFormatDesc::DataType::Color; break;
-			case GfxFormat_R32_Uint:     type = GfxVertexFormatDesc::DataType::UInt; break;
+		default:
+			RUSH_LOG_ERROR("Unsupported vertex format");
+			break;
+		case GfxFormat_R32_Float:    type = GfxVertexFormatDesc::DataType::Float1; break;
+		case GfxFormat_RG32_Float:   type = GfxVertexFormatDesc::DataType::Float2; break;
+		case GfxFormat_RGB32_Float:  type = GfxVertexFormatDesc::DataType::Float3; break;
+		case GfxFormat_RGBA32_Float: type = GfxVertexFormatDesc::DataType::Float4; break;
+		case GfxFormat_RGBA8_Unorm:  type = GfxVertexFormatDesc::DataType::Color; break;
+		case GfxFormat_R32_Uint:     type = GfxVertexFormatDesc::DataType::UInt; break;
 		}
-		desc.add(elem.stream, type, (GfxVertexFormatDesc::Semantic)elem.semantic, elem.index);
+		vf.add(elem.stream, type, (GfxVertexFormatDesc::Semantic)elem.semantic, elem.index);
 	}
-	return {Gfx_CreateVertexFormat(desc).detach().index()};
+	return vf;
 }
 
-rush_gfx_technique rush_gfx_create_technique(const rush_gfx_technique_desc* in_desc)
+rush_gfx_render_pipeline rush_gfx_create_render_pipeline(const rush_gfx_render_pipeline_desc* in_desc)
 {
-	GfxShaderBindingDesc bindings;
-	bindings.useDefaultDescriptorSet = in_desc->bindings.use_default_descriptor_set;
+	GfxRenderPipelineDesc desc;
+	desc.vs       = convertHandle<GfxVertexShader>(in_desc->vs);
+	desc.ps       = convertHandle<GfxPixelShader>(in_desc->ps);
+	desc.gs       = convertHandle<GfxGeometryShader>(in_desc->gs);
+	desc.ms       = convertHandle<GfxMeshShader>(in_desc->ms);
 
-	for (u32 i=0; i<in_desc->bindings.descriptor_set_count && i <GfxShaderBindingDesc::MaxDescriptorSets; ++i)
-	{
-		if (i==0 && bindings.useDefaultDescriptorSet)
-		{
-			(GfxDescriptorSetDesc&)bindings = convert(in_desc->bindings.descriptor_sets[0]);
-		}
-		else
-		{
-			bindings.descriptorSets[i] = convert(in_desc->bindings.descriptor_sets[i]);            
-		}
-		
-	}
+	desc.vertexFormat = convertVertexElements(in_desc->vertex_elements, in_desc->vertex_element_count);
+	desc.bindings     = convertBindings(in_desc->bindings);
 
-	GfxTechniqueDesc desc;
-	desc.cs = convertHandle<GfxComputeShader>(in_desc->cs);
-	desc.ps = convertHandle<GfxPixelShader>(in_desc->ps);
-	desc.gs = convertHandle<GfxGeometryShader>(in_desc->gs);
-	desc.vs = convertHandle<GfxVertexShader>(in_desc->vs);
-	desc.ms = convertHandle<GfxMeshShader>(in_desc->ms);
-	desc.vf = convertHandle<GfxVertexFormat>(in_desc->vf);
-	desc.bindings = bindings;
-	desc.workGroupSize.x = in_desc->work_group_size[0];
-	desc.workGroupSize.y = in_desc->work_group_size[1];
-	desc.workGroupSize.z = in_desc->work_group_size[2];
 	desc.specializationConstantCount = in_desc->spec_constant_count;
 	desc.specializationConstants     = (const GfxSpecializationConstant*)in_desc->spec_constants;
 	desc.specializationData          = in_desc->spec_data;
 	desc.specializationDataSize      = in_desc->spec_data_size;
 
-	return {Gfx_CreateTechnique(desc).detach().index()};
+	for (u32 i = 0; i < GfxRenderTargetDesc::MaxTargets; ++i)
+	{
+		desc.blend[i] = convertBlendStateDesc(in_desc->blend[i]);
+	}
+	desc.depthStencil = convertDepthStencilDesc(in_desc->depth_stencil);
+	desc.rasterizer   = convertRasterizerDesc(in_desc->rasterizer);
+	desc.primitive    = GfxPrimitive(in_desc->primitive);
+	desc.renderTarget = convertRenderTargetConfig(in_desc->render_target);
+
+	return {Gfx_CreateRenderPipeline(desc).detach().index()};
 }
 
-void rush_gfx_set_technique(struct rush_gfx_context* ctx, rush_gfx_technique h)
+rush_gfx_compute_pipeline rush_gfx_create_compute_pipeline(const rush_gfx_compute_pipeline_desc* in_desc)
 {
-	Gfx_SetTechnique(convert(ctx), convertHandle<GfxTechnique>(h));
+	GfxComputePipelineDesc desc;
+	desc.cs       = convertHandle<GfxComputeShader>(in_desc->cs);
+	desc.bindings = convertBindings(in_desc->bindings);
+
+	desc.workGroupSize.x = in_desc->work_group_size[0];
+	desc.workGroupSize.y = in_desc->work_group_size[1];
+	desc.workGroupSize.z = in_desc->work_group_size[2];
+
+	desc.specializationConstantCount = in_desc->spec_constant_count;
+	desc.specializationConstants     = (const GfxSpecializationConstant*)in_desc->spec_constants;
+	desc.specializationData          = in_desc->spec_data;
+	desc.specializationDataSize      = in_desc->spec_data_size;
+
+	return {Gfx_CreateComputePipeline(desc).detach().index()};
 }
 
-void rush_gfx_set_primitive(struct rush_gfx_context* ctx, enum rush_gfx_primitive_type type)
+void rush_gfx_set_render_pipeline(struct rush_gfx_context* ctx, rush_gfx_render_pipeline h)
 {
-	Gfx_SetPrimitive(convert(ctx), (GfxPrimitive)type);
+	Gfx_SetRenderPipeline(convert(ctx), convertHandle<GfxRenderPipeline>(h));
+}
+
+void rush_gfx_set_compute_pipeline(struct rush_gfx_context* ctx, rush_gfx_compute_pipeline h)
+{
+	Gfx_SetComputePipeline(convert(ctx), convertHandle<GfxComputePipeline>(h));
 }
 
 void rush_gfx_set_index_stream(struct rush_gfx_context* ctx, rush_gfx_buffer h)
@@ -800,21 +833,6 @@ void rush_gfx_set_storage_image(struct rush_gfx_context* ctx, uint32_t idx, rush
 void rush_gfx_set_storage_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h)
 {
 	Gfx_SetStorageBuffer(convert(ctx), idx, convertHandle<GfxBuffer>(h));
-}
-
-void rush_gfx_set_blend_state(struct rush_gfx_context* ctx, rush_gfx_blend_state h)
-{
-	Gfx_SetBlendState(convert(ctx), convertHandle<GfxBlendState>(h));
-}
-
-void rush_gfx_set_depth_stencil_state(struct rush_gfx_context* ctx, rush_gfx_depth_stencil_state h)
-{
-	Gfx_SetDepthStencilState(convert(ctx), convertHandle<GfxDepthStencilState>(h));
-}
-
-void rush_gfx_set_rasterizer_state(struct rush_gfx_context* ctx, rush_gfx_rasterizer_state h)
-{
-	Gfx_SetRasterizerState(convert(ctx), convertHandle<GfxRasterizerState>(h));
 }
 
 void rush_gfx_set_constant_buffer(struct rush_gfx_context* ctx, uint32_t idx, rush_gfx_buffer h, uint32_t offset)

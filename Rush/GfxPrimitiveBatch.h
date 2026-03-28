@@ -7,6 +7,7 @@
 #include "UtilArray.h"
 #include "UtilTuple.h"
 
+
 namespace Rush
 {
 struct TexturedQuad2D
@@ -51,6 +52,8 @@ public:
 public:
 	PrimitiveBatch(u32 maxBatchVertices = 12000);
 	~PrimitiveBatch();
+
+	void createPipelines(const GfxRenderTargetDesc& renderTargetDesc);
 
 	Vec4        getTransform2D() const { return m_constants.transform2D; }
 	const Mat4& getViewProjMatrix() const { return m_constants.viewProjMatrix; }
@@ -114,7 +117,34 @@ public:
 	inline u32 getMaxBatchVertices() const { return m_maxBatchVertices; }
 
 private:
-	GfxTechnique getNextTechnique();
+
+	static constexpr u32 PipelineBit_Is3D     = 1 << 0;
+	static constexpr u32 PipelineBit_Lines    = 1 << 1;
+	static constexpr u32 PipelineBit_Textured = 1 << 2;
+	static constexpr u32 PipelineID_COUNT     = 1 << 3;
+
+	enum class PipelineID : u32
+	{
+		PlainTriangles2D    = 0,
+		PlainTriangles3D    = PipelineBit_Is3D,
+		PlainLines2D        = PipelineBit_Lines,
+		PlainLines3D        = PipelineBit_Lines | PipelineBit_Is3D,
+		TexturedTriangles2D = PipelineBit_Textured,
+		TexturedTriangles3D = PipelineBit_Textured | PipelineBit_Is3D,
+		TexturedLines2D     = PipelineBit_Textured | PipelineBit_Lines,
+		TexturedLines3D     = PipelineBit_Textured | PipelineBit_Lines | PipelineBit_Is3D,
+	};
+
+	struct PipelineSet
+	{
+		GfxRenderTargetDesc renderTarget;
+		GfxOwn<GfxRenderPipeline> pipelines[PipelineID_COUNT];
+	};
+
+	GfxRenderPipelineDesc makePipelineDesc(PipelineID id, const GfxRenderTargetDesc& renderTargetDesc) const;
+	PipelineSet&      findOrAddPipelineSet(const GfxRenderTargetDesc& renderTargetDesc);
+	GfxRenderPipeline getOrCreatePipeline(const GfxRenderTargetDesc& renderTargetDesc, PipelineID id);
+	GfxRenderPipeline getNextPipeline();
 
 	GfxContext* m_context;
 
@@ -134,8 +164,8 @@ private:
 	GfxOwn<GfxBuffer>            m_vertexBuffer;
 	LinearAllocator<BatchVertex> m_vertices;
 
-	GfxOwn<GfxVertexFormat> m_vertexFormat2D;
-	GfxOwn<GfxVertexFormat> m_vertexFormat3D;
+	GfxVertexFormatDesc m_vertexFormat2D;
+	GfxVertexFormatDesc m_vertexFormat3D;
 
 	struct Constants
 	{
@@ -153,16 +183,10 @@ private:
 	GfxOwn<GfxPixelShader> m_pixelShaderPlain;
 	GfxOwn<GfxPixelShader> m_pixelShaderTextured;
 
-	enum TechniqueID
-	{
-		TechniqueID_Plain2D,
-		TechniqueID_Plain3D,
-		TechniqueID_Textured2D,
-		TechniqueID_Textured3D,
-		TechniqueID_COUNT
-	};
+	GfxShaderBindingDesc m_plainBindings;
+	GfxShaderBindingDesc m_texturedBindings;
 
-	GfxOwn<GfxTechnique> m_techniques[TechniqueID_COUNT];
+	DynamicArray<PipelineSet> m_pipelineCache;
 
 	float m_depth;
 };

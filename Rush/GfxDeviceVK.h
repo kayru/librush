@@ -21,7 +21,6 @@
 namespace Rush
 {
 
-struct VkPipelineShaderStageCreateInfoWaveLimitAMD;
 struct DescriptorPoolVK;
 
 struct DestructionQueueVK;
@@ -75,37 +74,34 @@ struct PipelineBaseVK : GfxResourceBase
 
 };
 
-struct TechniqueVK : PipelineBaseVK
+struct RenderPipelineVK : PipelineBaseVK
 {
-	DynamicArray<VkPipelineShaderStageCreateInfo> shaderStages;
-	GfxRef<GfxVertexFormat>                       vf;
-	GfxRef<GfxVertexShader>                       vs;
-	GfxRef<GfxGeometryShader>                     gs;
-	GfxRef<GfxPixelShader>                        ps;
-	GfxRef<GfxComputeShader>                      cs;
-	GfxRef<GfxMeshShader>                         ms;
+	GfxRenderPipelineDesc desc;
 
-	VkShaderStageFlags pushConstantStageFlags = VkShaderStageFlags(0);
-	u32                pushConstantsSize      = 0;
+	GfxRef<GfxVertexShader>   vs;
+	GfxRef<GfxGeometryShader> gs;
+	GfxRef<GfxPixelShader>    ps;
+	GfxRef<GfxMeshShader>     ms;
+
+	VkPipeline pipeline = VK_NULL_HANDLE;
 
 	u32 instanceDataStream = 0xFFFFFFFF;
 	u32 vertexStreamCount  = 0;
 
-	VkSpecializationInfo* specializationInfo = nullptr;
-
-	VkPipelineShaderStageCreateInfoWaveLimitAMD* waveLimits = nullptr;
-
 	void destroy();
 };
 
-struct VertexFormatVK : GfxResourceBase
+struct ComputePipelineVK : PipelineBaseVK
 {
-	GfxVertexFormatDesc                            desc;
-	DynamicArray<VkVertexInputAttributeDescription> attributes;
-	u32                                            vertexStreamCount          = 0;
-	u32                                            instanceDataStream         = 0xFFFFFFFF;
-	u32                                            instanceDataAttributeIndex = 0xFFFFFFFF;
-	void                                           destroy(){};
+	GfxComputePipelineDesc desc;
+
+	GfxRef<GfxComputeShader> cs;
+
+	VkPipeline pipeline = VK_NULL_HANDLE;
+
+	Tuple3<u16> workGroupSize = {};
+
+	void destroy();
 };
 
 struct BufferVK : GfxResourceBase
@@ -122,27 +118,6 @@ struct BufferVK : GfxResourceBase
 	u64                       deviceAddress   = 0;
 
 	void destroy();
-};
-
-struct DepthStencilStateVK : GfxResourceBase
-{
-	GfxDepthStencilDesc desc;
-
-	void destroy(){};
-};
-
-struct RasterizerStateVK : GfxResourceBase
-{
-	GfxRasterizerDesc desc;
-
-	void destroy(){};
-};
-
-struct BlendStateVK : GfxResourceBase
-{
-	GfxBlendStateDesc desc;
-
-	void destroy(){};
 };
 
 struct TextureVK : GfxResourceBase
@@ -236,26 +211,6 @@ struct QueryPoolVK : GfxResourceBase
 	void destroy();
 };
 
-struct PipelineInfoVK
-{
-	enum
-	{
-		MaxVertexStreams = 2
-	};
-
-	GfxTechnique         techniqueHandle;
-	GfxPrimitive         primitiveType;
-	GfxDepthStencilState depthStencilStateHandle;
-	GfxRasterizerState   rasterizerStateHandle;
-	GfxBlendState        blendStateHandle;
-	u32                  vertexBufferStride[MaxVertexStreams];
-	u32                  instanceBufferStride;
-	VkRenderPass         renderPass;
-	u32                  colorAttachmentCount;
-	u32                  colorSampleCount;
-	u32                  depthSampleCount;
-};
-
 struct MemoryBlockVK
 {
 	VkDeviceMemory memory       = VK_NULL_HANDLE;
@@ -320,7 +275,6 @@ public:
 	GfxDevice(Window* window, const GfxConfig& cfg);
 	~GfxDevice();
 
-	VkPipeline    createPipeline(const PipelineInfoVK& info);
 	VkRenderPass  createRenderPass(const GfxPassDesc& desc);
 	VkFramebuffer createFrameBuffer(const GfxPassDesc& desc, VkRenderPass renderPass);
 
@@ -398,48 +352,6 @@ public:
 		};
 	};
 
-	struct PipelineKey
-	{
-		u32          techniqueId;
-		u32          blendStateId;
-		u32          depthStencilStateId;
-		u32          rasterizerStateId;
-		u32          vertexBufferStride[PipelineInfoVK::MaxVertexStreams];
-		u32          colorAttachmentCount;
-		u32          colorSampleCount;
-		u32          depthSampleCount;
-		GfxPrimitive primitiveType;
-
-		bool operator==(const PipelineKey& other) const
-		{
-			if (techniqueId != other.techniqueId || blendStateId != other.blendStateId ||
-			    depthStencilStateId != other.depthStencilStateId || rasterizerStateId != other.rasterizerStateId ||
-			    primitiveType != other.primitiveType || colorAttachmentCount != other.colorAttachmentCount ||
-				colorSampleCount != other.colorSampleCount || depthSampleCount != other.depthSampleCount)
-			{
-				return false;
-			}
-
-			for (u32 i = 0; i < RUSH_COUNTOF(vertexBufferStride); ++i)
-			{
-				if (vertexBufferStride[i] != other.vertexBufferStride[i])
-				{
-					return false;
-				}
-			}
-
-			return true;
-		}
-
-		struct Hash
-		{
-			size_t operator()(const PipelineKey& k) const
-			{
-				return (k.techniqueId) ^ (k.blendStateId << 16) ^ ((u32)k.primitiveType << 24);
-			}
-		};
-	};
-
 	struct DescriptorSetLayoutKey
 	{
 		GfxDescriptorSetDesc desc;
@@ -502,7 +414,6 @@ public:
 	VkSemaphore m_progressSemaphore = VK_NULL_HANDLE;
 	u64         m_nextProgressId  = 1;
 
-	std::unordered_map<PipelineKey, VkPipeline, PipelineKey::Hash>          m_pipelines;
 	std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKey::Hash>    m_renderPasses;
 	std::unordered_map<FrameBufferKey, VkFramebuffer, FrameBufferKey::Hash> m_frameBuffers;
 	std::unordered_map<DescriptorSetLayoutKey, VkDescriptorSetLayout, DescriptorSetLayoutKey::Hash> m_descriptorSetLayouts;
@@ -541,15 +452,12 @@ public:
 
 	struct Resources
 	{
-		ResourcePool<TechniqueVK, GfxTechnique>                         techniques;
 		ResourcePool<ShaderVK, UntypedResourceHandle>                   shaders;
-		ResourcePool<VertexFormatVK, GfxVertexFormat>                   vertexFormats;
 		ResourcePool<BufferVK, GfxBuffer>                               buffers;
-		ResourcePool<DepthStencilStateVK, GfxDepthStencilState>         depthStencilStates;
-		ResourcePool<RasterizerStateVK, GfxRasterizerState>             rasterizerStates;
 		ResourcePool<TextureVK, GfxTexture>                             textures;
-		ResourcePool<BlendStateVK, GfxBlendState>                       blendStates;
 		ResourcePool<SamplerVK, GfxSampler>                             samplers;
+		ResourcePool<RenderPipelineVK, GfxRenderPipeline>               renderPipelines;
+		ResourcePool<ComputePipelineVK, GfxComputePipeline>             computePipelines;
 		ResourcePool<DescriptorSetVK, GfxDescriptorSet>                 descriptorSets;
 		ResourcePool<RayTracingPipelineVK, GfxRayTracingPipeline>       rayTracingPipelines;
 		ResourcePool<AccelerationStructureVK, GfxAccelerationStructure> accelerationStructures;
@@ -625,7 +533,6 @@ public:
 	{
 		bool AMD_negative_viewport_height         = false;
 		bool AMD_shader_explicit_vertex_parameter = false;
-		bool AMD_wave_limits                      = false;
 		bool EXT_descriptor_indexing              = false;
 		bool EXT_sample_locations                 = false;
 		bool KHR_buffer_device_address            = false;
@@ -680,7 +587,7 @@ public:
 	{
 		MaxTextures        = 16,
 		MaxStorageImages   = 8,
-		MaxVertexStreams   = PipelineInfoVK::MaxVertexStreams,
+		MaxVertexStreams   = 2,
 		MaxConstantBuffers = 4,
 		MaxStorageBuffers  = 6,
 		MaxDescriptorSets  = GfxShaderBindingDesc::MaxDescriptorSets,
@@ -721,14 +628,11 @@ public:
 
 	enum DirtyStateFlag
 	{
-		DirtyStateFlag_Technique              = 1 << 0,
-		DirtyStateFlag_PrimitiveType          = 1 << 1,
+		DirtyStateFlag_RenderPipeline         = 1 << 0,
+		DirtyStateFlag_ComputePipeline        = 1 << 1,
 		DirtyStateFlag_VertexBuffer           = 1 << 2,
 		DirtyStateFlag_IndexBuffer            = 1 << 3,
 		DirtyStateFlag_Texture                = 1 << 4,
-		DirtyStateFlag_BlendState             = 1 << 5,
-		DirtyStateFlag_DepthStencilState      = 1 << 6,
-		DirtyStateFlag_RasterizerState        = 1 << 7,
 		DirtyStateFlag_Sampler                = 1 << 8,
 		DirtyStateFlag_ConstantBuffer         = 1 << 9,
 		DirtyStateFlag_StorageImage           = 1 << 10,
@@ -740,16 +644,15 @@ public:
 		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler |
 		                             DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer |
 		                             DirtyStateFlag_ConstantBufferOffset | DirtyStateFlag_AccelerationStructure,
-		DirtyStateFlag_Pipeline = DirtyStateFlag_Technique | DirtyStateFlag_PrimitiveType | DirtyStateFlag_BlendState |
-		                          DirtyStateFlag_DepthStencilState | DirtyStateFlag_RasterizerState,
+		DirtyStateFlag_Pipeline = DirtyStateFlag_RenderPipeline | DirtyStateFlag_ComputePipeline,
 	};
 
 	u32 m_dirtyState = 0xFFFFFFFF;
 
 	struct PendingState
 	{
-		GfxPrimitive             primitiveType = GfxPrimitive::TriangleList;
-		GfxTechnique             technique;
+		GfxRenderPipeline        renderPipeline;
+		GfxComputePipeline       computePipeline;
 		GfxRayTracingPipeline    rayTracingPipeline;
 		GfxBuffer                vertexBuffer[MaxVertexStreams];
 		GfxBuffer                indexBuffer;
@@ -759,11 +662,7 @@ public:
 		GfxTexture               storageImages[MaxStorageImages];
 		GfxBuffer                storageBuffers[MaxStorageBuffers];
 		GfxAccelerationStructure accelerationStructure;
-		GfxBlendState            blendState;
-		GfxDepthStencilState     depthStencilState;
-		GfxRasterizerState       rasterizerState;
 		u32                      constantBufferOffsets[MaxConstantBuffers] = {};
-		u32                      vertexBufferStride[MaxVertexStreams]      = {};
 		u32                      vertexBufferOffsets[MaxVertexStreams]     = {};
 		u32                      indexBufferOffset                         = 0;
 		GfxFormat                indexBufferFormat                         = GfxFormat_Unknown;

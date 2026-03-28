@@ -27,14 +27,6 @@ struct ShaderMTL : GfxRefCount
 	void destroy();
 };
 
-struct VertexFormatMTL : GfxRefCount
-{
-	u32 uniqueId = 0;
-	GfxVertexFormatDesc desc;
-	MTLVertexDescriptor* native = nil;
-	void destroy();
-};
-
 struct BufferMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
@@ -89,18 +81,38 @@ struct DescriptorSetMTL : GfxRefCount
 	void destroy();
 };
 
-struct TechniqueMTL : GfxRefCount
+struct RenderPipelineMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 
-	GfxTechniqueDesc desc;
+	GfxRenderPipelineDesc desc;
 
-	GfxRef<GfxVertexFormat> vf;
 	GfxRef<GfxVertexShader> vs;
 	GfxRef<GfxPixelShader> ps;
 
+	id<MTLRenderPipelineState> renderPipeline = nil;
+	id<MTLDepthStencilState> depthStencilState = nil;
+
+	u32 constantBufferOffset = 0;
+	u32 samplerOffset = 0;
+	u32 sampledImageOffset = 0;
+	u32 storageImageOffset = 0;
+	u32 storageBufferOffset = 0;
+	u32 descriptorSetCount = 0;
+
+	DescriptorSetMTL defaultDescriptorSet;
+
+	void destroy();
+};
+
+struct ComputePipelineMTL : GfxRefCount
+{
+	u32 uniqueId = 0;
+
+	GfxComputePipelineDesc desc;
+
 	id<MTLComputePipelineState> computePipeline = nil;
-	
+
 	u32 constantBufferOffset = 0;
 	u32 samplerOffset = 0;
 	u32 sampledImageOffset = 0;
@@ -111,7 +123,7 @@ struct TechniqueMTL : GfxRefCount
 	Tuple3<u16> workGroupSize = {};
 
 	DescriptorSetMTL defaultDescriptorSet;
-	
+
 	void destroy();
 };
 
@@ -134,19 +146,6 @@ struct RayTracingPipelineMTL : GfxRefCount
 	void destroy();
 };
 
-struct DepthStencilStateMTL : GfxRefCount
-{
-	u32 uniqueId = 0;
-	id<MTLDepthStencilState> native = nil;
-	void destroy();
-};
-
-struct RasterizerStateMTL : GfxRefCount
-{
-	u32 uniqueId = 0;
-	GfxRasterizerDesc desc;
-	void destroy();
-};
 
 struct TextureMTL : GfxRefCount
 {
@@ -157,12 +156,6 @@ struct TextureMTL : GfxRefCount
 	void destroy();
 };
 
-struct BlendStateMTL : GfxRefCount
-{
-	u32 uniqueId = 0;
-	GfxBlendStateDesc desc;
-	void destroy();
-};
 
 struct SamplerMTL : GfxRefCount
 {
@@ -194,15 +187,12 @@ public:
 	struct Resources
 	{
 		ResourcePool<ShaderMTL, UntypedResourceHandle> shaders;
-		ResourcePool<VertexFormatMTL, GfxVertexFormat> vertexFormats;
 		ResourcePool<BufferMTL, GfxBuffer> buffers;
 		ResourcePool<AccelerationStructureMTL, GfxAccelerationStructure> accelerationStructures;
 		ResourcePool<RayTracingPipelineMTL, GfxRayTracingPipeline> rayTracingPipelines;
-		ResourcePool<TechniqueMTL, GfxTechnique> techniques;
-		ResourcePool<DepthStencilStateMTL, GfxDepthStencilState> depthStencilStates;
-		ResourcePool<RasterizerStateMTL, GfxRasterizerState> rasterizerStates;
+		ResourcePool<RenderPipelineMTL, GfxRenderPipeline> renderPipelines;
+		ResourcePool<ComputePipelineMTL, GfxComputePipeline> computePipelines;
 		ResourcePool<TextureMTL, GfxTexture> textures;
-		ResourcePool<BlendStateMTL, GfxBlendState> blendStates;
 		ResourcePool<SamplerMTL, GfxSampler> samplers;
 		ResourcePool<DescriptorSetMTL, GfxDescriptorSet> descriptorSets;
 		ResourcePool<QueryPoolMTL, GfxQueryPool> queryPools;
@@ -285,14 +275,11 @@ public:
 
 	enum DirtyStateFlag
 	{
-		DirtyStateFlag_Technique = 1 << 0,
-		DirtyStateFlag_PrimitiveType = 1 << 1,
+		DirtyStateFlag_RenderPipeline = 1 << 0,
+		DirtyStateFlag_ComputePipeline = 1 << 1,
 		DirtyStateFlag_VertexBuffer = 1 << 2,
 		DirtyStateFlag_IndexBuffer = 1 << 3,
 		DirtyStateFlag_Texture = 1 << 4,
-		DirtyStateFlag_BlendState = 1 << 5,
-		DirtyStateFlag_DepthStencilState = 1 << 6,
-		DirtyStateFlag_RasterizerState = 1 << 7,
 		DirtyStateFlag_Sampler = 1 << 8,
 		DirtyStateFlag_ConstantBuffer = 1 << 9,
 		DirtyStateFlag_StorageImage = 1 << 10,
@@ -302,20 +289,17 @@ public:
 
 		DirtyStateFlag_Descriptors = DirtyStateFlag_ConstantBuffer | DirtyStateFlag_Texture | DirtyStateFlag_Sampler | DirtyStateFlag_StorageImage | DirtyStateFlag_StorageBuffer | DirtyStateFlag_AccelerationStructure,
 
-		DirtyStateFlag_Pipeline = DirtyStateFlag_Technique | DirtyStateFlag_PrimitiveType | DirtyStateFlag_BlendState | DirtyStateFlag_DepthStencilState | DirtyStateFlag_RasterizerState,
+		DirtyStateFlag_Pipeline = DirtyStateFlag_RenderPipeline | DirtyStateFlag_ComputePipeline,
 	};
 
 	u32 m_dirtyState = 0xFFFFFFFF;
 
 	id<MTLRenderCommandEncoder> m_commandEncoder = nil;
 	id<MTLComputeCommandEncoder> m_computeCommandEncoder = nil;
-	id<MTLDepthStencilState> m_depthStencilState = nil;
 
-	GfxRef<GfxTechnique> m_pendingTechnique;
+	GfxRef<GfxRenderPipeline> m_pendingRenderPipeline;
+	GfxRef<GfxComputePipeline> m_pendingComputePipeline;
 	GfxRef<GfxRayTracingPipeline> m_pendingRayTracingPipeline;
-	GfxRef<GfxBlendState> m_pendingBlendState;
-	GfxRef<GfxRasterizerState> m_pendingRasterizerState;
-	GfxRef<GfxDepthStencilState> m_pendingDepthStencilState;
 	GfxRef<GfxBuffer> m_constantBuffers[MaxConstantBuffers];
 	u64 m_constantBufferOffsets[MaxConstantBuffers] = {};
 	GfxRef<GfxSampler> m_samplers[MaxSamplers];
@@ -326,13 +310,14 @@ public:
 	GfxRef<GfxDescriptorSet> m_descriptorSets[MaxDescriptorSets];
 	GfxPassDesc m_passDesc;
 
+	GfxRef<GfxBuffer> m_vertexBuffers[MaxVertexStreams];
+
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;
 	u32 m_indexStride = 4;
 	u32 m_indexBufferOffset = 0;
 	id<MTLBuffer> m_indexBuffer = nil;
 
 	MTLPrimitiveType m_primitiveType = MTLPrimitiveTypeTriangle;
-	MTLPrimitiveTopologyClass m_primitiveTopology = MTLPrimitiveTopologyClassUnspecified;
 
 };
 

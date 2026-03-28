@@ -48,25 +48,6 @@ static PFN_vkCreateMetalSurfaceEXT              vkCreateMetalSurfaceEXT         
 // static PFN_vkGetPhysicalDeviceMetalFeaturesMVK  vkGetPhysicalDeviceMetalFeaturesMVK = VK_NULL_HANDLE;
 #endif
 
-#define VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD ((VkStructureType)(1000045000ull))
-#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD ((VkStructureType)(1000045001ull))
-
-typedef struct VkPipelineShaderStageCreateInfoWaveLimitAMD
-{
-	VkStructureType sType;
-	const void*     pNext;
-	float           wavesPerCu;
-	uint32_t*       cuEnableMask;
-} VkPipelineShaderStageCreateInfoWaveLimitAMD;
-
-typedef struct VkPhysicalDeviceWaveLimitPropertiesAMD
-{
-	VkStructureType sType;
-	void*           pNext;
-	uint32_t        cuCount;
-	uint32_t        maxWavesPerCu;
-} VkPhysicalDeviceWaveLimitPropertiesAMD;
-
 #define V(x)                                                                                                           \
 	{                                                                                                                  \
 		auto s = x;                                                                                                    \
@@ -386,9 +367,11 @@ static VkFormat convertFormat(GfxFormat format)
 {
 	switch (format)
 	{
+	case GfxFormat_Unknown: return VK_FORMAT_UNDEFINED;
 	case GfxFormat_R8_Unorm: return VK_FORMAT_R8_UNORM;
 	case GfxFormat_RG8_Unorm: return VK_FORMAT_R8G8_UNORM;
 	case GfxFormat_R16_Uint: return VK_FORMAT_R16_UINT;
+	case GfxFormat_RG16_Float: return VK_FORMAT_R16G16_SFLOAT;
 	case GfxFormat_RGBA16_Float: return VK_FORMAT_R16G16B16A16_SFLOAT;
 	case GfxFormat_RGBA32_Float: return VK_FORMAT_R32G32B32A32_SFLOAT;
 	case GfxFormat_RGB32_Float: return VK_FORMAT_R32G32B32_SFLOAT;
@@ -415,7 +398,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_BC6H_UFloat: return VK_FORMAT_BC6H_UFLOAT_BLOCK;
 	case GfxFormat_BC7_Unorm: return VK_FORMAT_BC7_UNORM_BLOCK;
 	case GfxFormat_BC7_Unorm_sRGB: return VK_FORMAT_BC7_SRGB_BLOCK;
-	default: RUSH_LOG_ERROR("Unsupported format"); return VK_FORMAT_UNDEFINED;
+	default: RUSH_LOG_ERROR("Unsupported format: %d", (int)format); return VK_FORMAT_UNDEFINED;
 	}
 }
 
@@ -536,7 +519,7 @@ struct DestructionQueueVK
 	DestructionQueueVK() = default;
 	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
 
-	using Item = std::variant<VkPipeline, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
+	using Item = std::variant<VkPipeline, VkPipelineLayout, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
 	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
 
 	DynamicArray<Item> items;
@@ -817,11 +800,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    enableDeviceExtension(VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME);
 	m_supportedExtensions.EXT_sample_locations = enableDeviceExtension(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
 
-	if (!cfg.debug)
-	{
-		m_supportedExtensions.AMD_wave_limits = enableDeviceExtension("VK_AMD_wave_limits", false);
-	}
-
 	m_supportedExtensions.KHR_maintenance1 = enableDeviceExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
 	void* physicalDeviceProps2Next = nullptr;
@@ -850,13 +828,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	VkPhysicalDeviceSubgroupProperties subgroupProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
 	subgroupProperties.pNext                              = physicalDeviceProps2Next;
 	physicalDeviceProps2Next                              = &subgroupProperties;
-
-	VkPhysicalDeviceWaveLimitPropertiesAMD waveLimitProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WAVE_LIMIT_PROPERTIES_AMD };
-	if (m_supportedExtensions.AMD_wave_limits)
-	{
-		waveLimitProps.pNext     = physicalDeviceProps2Next;
-		physicalDeviceProps2Next = &waveLimitProps;
-	}
 
 	if (vkGetPhysicalDeviceProperties2KHR)
 	{
@@ -1070,13 +1041,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_currentFrame = &m_frameData.back();
 
-	{
-		BlendStateVK defaultBlendState;
-		defaultBlendState.desc.src = GfxBlendParam::One;
-		defaultBlendState.desc.alphaSrc = GfxBlendParam::One;
-		std::swap(m_resources.blendStates[InvalidResourceHandle{}], defaultBlendState);
-	}
-
 	// Setup resize event notifications
 
 	m_resizeEvents.mask = WindowEventMask_Resize;
@@ -1230,25 +1194,17 @@ GfxDevice::~GfxDevice()
 	m_resources.queryPools.reset();
 	m_resources.accelerationStructures.reset();
 	m_resources.rayTracingPipelines.reset();
-	m_resources.techniques.reset();
+	m_resources.renderPipelines.reset();
+	m_resources.computePipelines.reset();
 	m_resources.shaders.reset();
-	m_resources.vertexFormats.reset();
 	m_resources.buffers.reset();
-	m_resources.depthStencilStates.reset();
-	m_resources.rasterizerStates.reset();
 	m_resources.textures.reset();
-	m_resources.blendStates.reset();
 	m_resources.samplers.reset();
 	m_resources.descriptorSets.reset();
 
 	for (auto& it : m_descriptorSetLayouts)
 	{
 		vkDestroyDescriptorSetLayout(m_vulkanDevice, it.second, g_allocationCallbacks);
-	}
-
-	for (auto& it : m_pipelines)
-	{
-		vkDestroyPipeline(m_vulkanDevice, it.second, g_allocationCallbacks);
 	}
 
 	for (auto& epoch : m_destructionEpochs)
@@ -1342,253 +1298,92 @@ GfxDevice::~GfxDevice()
 	vkDestroyInstance(m_vulkanInstance, g_allocationCallbacks);
 }
 
-VkPipeline GfxDevice::createPipeline(const PipelineInfoVK& info)
+static VkRenderPass createRenderPassFromConfig(const GfxRenderTargetDesc& rtConfig)
 {
-	RUSH_ASSERT(info.techniqueHandle.valid());
+	GfxDevice::RenderPassKey key = {};
 
-	PipelineKey key = {};
-	key.techniqueId = g_device->m_resources.techniques[info.techniqueHandle].getId();
+	key.flags              = GfxPassFlags::None;
+	key.depthStencilFormat = rtConfig.depthFormat;
 
-	if (!g_device->m_resources.techniques[info.techniqueHandle].cs.valid())
+	const u32 sampleCount = rtConfig.sampleCount > 0 ? rtConfig.sampleCount : 1;
+	key.colorSampleCount = sampleCount;
+	key.depthSampleCount = sampleCount;
+
+	u32 colorTargetCount = rtConfig.getColorTargetCount();
+	for (u32 i = 0; i < colorTargetCount; ++i)
 	{
-		key.blendStateId        = g_device->m_resources.blendStates[info.blendStateHandle].getId();
-		key.depthStencilStateId = g_device->m_resources.depthStencilStates[info.depthStencilStateHandle].getId();
-		key.rasterizerStateId   = g_device->m_resources.rasterizerStates[info.rasterizerStateHandle].getId();
-		for (u32 i = 0; i < RUSH_COUNTOF(key.vertexBufferStride); ++i)
-		{
-			key.vertexBufferStride[i] = info.vertexBufferStride[i];
-		}
-		key.primitiveType        = info.primitiveType;
-		key.colorAttachmentCount = info.colorAttachmentCount;
-		key.colorSampleCount     = info.colorSampleCount;
-		key.depthSampleCount     = info.depthSampleCount;
+		key.colorFormats[i] = rtConfig.colorFormats[i];
 	}
 
-	auto existingPipeline = m_pipelines.find(key);
-	if (existingPipeline != m_pipelines.end())
+	auto existingPass = g_device->m_renderPasses.find(key);
+	if (existingPass != g_device->m_renderPasses.end())
 	{
-		return existingPipeline->second;
+		return existingPass->second;
 	}
 
-	const TechniqueVK& technique = m_resources.techniques[info.techniqueHandle];
+	VkAttachmentDescription attachmentDesc[1 + GfxPassDesc::MaxTargets] = {};
+	u32                     attachmentCount                             = 0;
 
-	VkPipeline pipeline = VK_NULL_HANDLE;
+	VkAttachmentReference depthAttachmentReference = {};
+	const bool hasDepth = rtConfig.depthFormat != GfxFormat_Unknown;
 
-	if (technique.cs.valid())
+	if (hasDepth)
 	{
-		VkComputePipelineCreateInfo createInfo = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+		auto& attachment = attachmentDesc[attachmentCount];
 
-		createInfo.stage  = technique.shaderStages[0];
-		createInfo.layout = technique.pipelineLayout;
+		attachment.samples        = convertSampleCount(sampleCount);
+		attachment.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+		attachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachment.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachment.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachment.format         = convertFormat(rtConfig.depthFormat);
 
-		// setup done
+		depthAttachmentReference.attachment = attachmentCount;
+		depthAttachmentReference.layout     = attachment.initialLayout;
 
-		V(vkCreateComputePipelines(m_vulkanDevice, m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &pipeline));
-	}
-	else
-	{
-		VkGraphicsPipelineCreateInfo createInfo = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-
-		createInfo.stageCount = (u32)technique.shaderStages.size();
-		createInfo.pStages    = technique.shaderStages.data();
-		createInfo.layout     = technique.pipelineLayout;
-
-		// vertex buffers
-
-		const size_t                      maxCustomVertexAttributes = 32;
-		VkVertexInputAttributeDescription customVertexAttributes[maxCustomVertexAttributes];
-
-		VkPipelineVertexInputStateCreateInfo vi = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-		createInfo.pVertexInputState            = &vi;
-
-		if (technique.vf.valid())
-		{
-			const VertexFormatVK& vertexFormat = m_resources.vertexFormats[technique.vf.get()];
-			const ShaderVK&       vertexShader = m_resources.shaders[technique.vs.get()];
-
-			if (vertexShader.inputMappings.empty())
-			{
-				// default vertex input mappings (vertex shader must match vertex format perfectly)
-				vi.vertexAttributeDescriptionCount = (u32)vertexFormat.attributes.size();
-				vi.pVertexAttributeDescriptions    = vertexFormat.attributes.data();
-			}
-			else
-			{
-				u32 customAttributeCount = 0;
-
-				for (const auto& inputMapping : vertexShader.inputMappings)
-				{
-					u32  elementIndex = 0;
-					bool inputFound   = false;
-					for (const auto& element : vertexFormat.desc)
-					{
-						if (element.semantic == inputMapping.semantic && element.index == inputMapping.semanticIndex)
-						{
-							RUSH_ASSERT(customAttributeCount < maxCustomVertexAttributes);
-
-							VkVertexInputAttributeDescription& attrib = customVertexAttributes[customAttributeCount];
-							attrib                                    = vertexFormat.attributes[elementIndex];
-							attrib.location                           = inputMapping.location;
-							inputFound                                = true;
-							customAttributeCount++;
-							break;
-						}
-						elementIndex++;
-					}
-					if (!inputFound)
-					{
-						RUSH_LOG_ERROR("Vertex shader input '%s%d' not found in vertex format declaration.",
-						    toString(inputMapping.semantic), inputMapping.semanticIndex);
-					}
-				}
-
-				vi.vertexAttributeDescriptionCount = customAttributeCount;
-				vi.pVertexAttributeDescriptions    = customVertexAttributes;
-			}
-		}
-
-		VkVertexInputBindingDescription vd[PipelineInfoVK::MaxVertexStreams] = {};
-		vi.vertexBindingDescriptionCount                                     = 0;
-		vi.pVertexBindingDescriptions                                        = vd;
-
-		for (u32 i = 0; i < technique.vertexStreamCount; ++i)
-		{
-			vd[i].binding = i;
-			vd[i].stride  = info.vertexBufferStride[i];
-			vd[i].inputRate =
-			    technique.instanceDataStream == i ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
-			vi.vertexBindingDescriptionCount++;
-		}
-
-		// input assembly
-
-		VkPipelineInputAssemblyStateCreateInfo ia = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-		createInfo.pInputAssemblyState            = &ia;
-		ia.topology                               = convertPrimitiveType(info.primitiveType);
-		ia.primitiveRestartEnable                 = false;
-
-		// tessellation (not supported)
-
-		// VkPipelineTessellationStateCreateInfo ts = { VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO };
-		// createInfo.pTessellationState = &ts;
-		// ts.patchControlPoints = 0;
-
-		// viewport
-
-		VkPipelineViewportStateCreateInfo vp = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
-		createInfo.pViewportState            = &vp;
-		vp.viewportCount                     = 1;
-		vp.pViewports                        = nullptr; // dynamic viewport state is used
-		vp.scissorCount                      = 1;
-		vp.pScissors                         = nullptr; // dynamic scissor state is used
-
-		// rasterizer
-
-		const GfxRasterizerDesc& rasterizerDesc = g_device->m_resources.rasterizerStates[info.rasterizerStateHandle].desc;
-
-		VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-		createInfo.pRasterizationState            = &rs;
-		rs.depthClampEnable                       = false;
-		rs.rasterizerDiscardEnable                = false;
-		rs.polygonMode = rasterizerDesc.fillMode == GfxFillMode::Solid ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
-
-		rs.cullMode = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE
-		                                                           : VkCullModeFlagBits(rasterizerDesc.cullFace);
-		rs.frontFace =
-		    rasterizerDesc.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
-
-		rs.depthBiasEnable         = rasterizerDesc.depthBias != 0;
-		rs.depthBiasConstantFactor = rasterizerDesc.depthBias;
-		rs.depthBiasClamp          = 0.0f;
-		rs.depthBiasSlopeFactor    = rasterizerDesc.depthBiasSlopeScale;
-		rs.lineWidth               = 1.0f;
-
-		// multisample
-
-		RUSH_ASSERT(info.colorSampleCount == info.depthSampleCount); // TODO: support mixed attachments
-
-		VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-		createInfo.pMultisampleState            = &ms;
-		ms.rasterizationSamples                 = convertSampleCount(info.colorSampleCount);
-		ms.sampleShadingEnable                  = false;
-		ms.minSampleShading                     = 0.0f;
-		ms.pSampleMask                          = nullptr;
-		ms.alphaToCoverageEnable                = false;
-		ms.alphaToOneEnable                     = false;
-
-		// depth stencil
-
-		const GfxDepthStencilDesc& depthStencilDesc = g_device->m_resources.depthStencilStates[info.depthStencilStateHandle].desc;
-
-		VkPipelineDepthStencilStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-		createInfo.pDepthStencilState            = &ds;
-		ds.depthTestEnable                       = depthStencilDesc.enable;
-		ds.depthWriteEnable                      = depthStencilDesc.writeEnable;
-		ds.depthCompareOp                        = convertCompareFunc(depthStencilDesc.compareFunc);
-		ds.depthBoundsTestEnable                 = false;
-		ds.stencilTestEnable                     = false;
-		ds.back.failOp                           = VK_STENCIL_OP_KEEP;
-		ds.back.passOp                           = VK_STENCIL_OP_KEEP;
-		ds.back.compareOp                        = VK_COMPARE_OP_ALWAYS;
-		ds.front                                 = ds.back;
-		ds.minDepthBounds                        = 0.0f;
-		ds.maxDepthBounds                        = 1.0f;
-
-		// color blend
-
-		VkPipelineColorBlendStateCreateInfo cb = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-		createInfo.pColorBlendState            = &cb;
-		VkPipelineColorBlendAttachmentState colorAttachments[GfxPassDesc::MaxTargets] = {};
-
-		BlendStateVK& blendState = g_device->m_resources.blendStates[info.blendStateHandle];
-		// TODO: support separate target blend states
-		for (u32 i = 0; i < info.colorAttachmentCount; ++i)
-		{
-			colorAttachments[i].blendEnable         = blendState.desc.enable;
-			colorAttachments[i].colorBlendOp        = convertBlendOp(blendState.desc.op);
-			colorAttachments[i].srcColorBlendFactor = convertBlendParam(blendState.desc.src);
-			colorAttachments[i].dstColorBlendFactor = convertBlendParam(blendState.desc.dst);
-			colorAttachments[i].alphaBlendOp        = convertBlendOp(blendState.desc.alphaOp);
-			colorAttachments[i].srcAlphaBlendFactor = convertBlendParam(blendState.desc.alphaSrc);
-			colorAttachments[i].dstAlphaBlendFactor = convertBlendParam(blendState.desc.alphaDst);
-			colorAttachments[i].colorWriteMask      = 0xF; // TODO: support color write mask
-		}
-
-		cb.attachmentCount = info.colorAttachmentCount;
-		cb.pAttachments    = colorAttachments;
-
-		// dynamic state
-
-		VkPipelineDynamicStateCreateInfo dyn = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-		createInfo.pDynamicState             = &dyn;
-
-		StaticArray<VkDynamicState, 3> dynamicStates;
-		dynamicStates.pushBack(VK_DYNAMIC_STATE_VIEWPORT);
-		dynamicStates.pushBack(VK_DYNAMIC_STATE_SCISSOR);
-		if (m_caps.sampleLocations)
-		{
-			dynamicStates.pushBack(VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT);
-		}
-		dyn.dynamicStateCount = u32(dynamicStates.currentSize);
-		dyn.pDynamicStates    = dynamicStates.data;
-
-		// render pass
-
-		RUSH_ASSERT(info.renderPass);
-
-		createInfo.renderPass = info.renderPass;
-		createInfo.subpass    = 0;
-
-		// setup done
-
-		V(vkCreateGraphicsPipelines(m_vulkanDevice, m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &pipeline));
+		attachmentCount++;
 	}
 
-	RUSH_ASSERT(pipeline);
+	VkAttachmentReference colorAttachmentReferences[GfxPassDesc::MaxTargets] = {};
+	for (u32 i = 0; i < colorTargetCount; ++i)
+	{
+		auto& attachment = attachmentDesc[attachmentCount];
 
-	m_pipelines.insert(std::make_pair(key, pipeline));
+		attachment.format         = convertFormat(rtConfig.colorFormats[i]);
+		attachment.samples        = convertSampleCount(sampleCount);
+		attachment.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+		attachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		attachment.initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		attachment.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	return pipeline;
+		colorAttachmentReferences[i].attachment = attachmentCount;
+		colorAttachmentReferences[i].layout     = attachment.initialLayout;
+
+		attachmentCount++;
+	}
+
+	VkSubpassDescription subpassDesc    = {};
+	subpassDesc.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpassDesc.colorAttachmentCount    = colorTargetCount;
+	subpassDesc.pColorAttachments       = colorAttachmentReferences;
+	subpassDesc.pDepthStencilAttachment = hasDepth ? &depthAttachmentReference : nullptr;
+
+	VkRenderPassCreateInfo renderPassCreateInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+	renderPassCreateInfo.attachmentCount        = attachmentCount;
+	renderPassCreateInfo.pAttachments           = attachmentDesc;
+	renderPassCreateInfo.subpassCount           = 1;
+	renderPassCreateInfo.pSubpasses             = &subpassDesc;
+
+	VkRenderPass renderPass = VK_NULL_HANDLE;
+	V(vkCreateRenderPass(g_vulkanDevice, &renderPassCreateInfo, g_allocationCallbacks, &renderPass));
+
+	g_device->m_renderPasses.insert(std::make_pair(key, renderPass));
+
+	return renderPass;
 }
 
 VkRenderPass GfxDevice::createRenderPass(const GfxPassDesc& desc)
@@ -1970,6 +1765,9 @@ void GfxDevice::createSwapChain()
 	m_swapChainPresentMode = pendingPresentMode;
 
 	m_swapChainValid = true;
+
+	m_caps.backBufferDesc.colorFormats[0] = m_resources.textures[m_swapChainTextures[0].get()].desc.format;
+	m_caps.backBufferDesc.depthFormat     = m_resources.textures[m_depthBufferTexture.get()].desc.format;
 }
 
 GfxDevice::FrameData::FrameData() {}
@@ -2330,7 +2128,6 @@ GfxContext::GfxContext(GfxDevice* device, GfxContextType contextType)
 
 	memset(&m_currentRenderRect, 0, sizeof(m_currentRenderRect));
 	memset(&m_pending.constantBufferOffsets, 0, sizeof(m_pending.constantBufferOffsets));
-	memset(&m_pending.vertexBufferStride, 0, sizeof(m_pending.vertexBufferStride));
 
 	VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 	fenceCreateInfo.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
@@ -3022,14 +2819,17 @@ void GfxContext::applyState()
 		return;
 	}
 
-	RUSH_ASSERT(m_pending.technique.valid() || m_pending.rayTracingPipeline.valid());
+	RUSH_ASSERT(m_pending.renderPipeline.valid() || m_pending.computePipeline.valid() || m_pending.rayTracingPipeline.valid());
 
-	PipelineBaseVK& pipelineBase = m_pending.technique.valid() ? static_cast<PipelineBaseVK&>(m_device->m_resources.techniques[m_pending.technique])
-	                                                           : static_cast<PipelineBaseVK&>(m_device->m_resources.rayTracingPipelines[m_pending.rayTracingPipeline]);
+	PipelineBaseVK& pipelineBase = m_pending.renderPipeline.valid()
+		? static_cast<PipelineBaseVK&>(m_device->m_resources.renderPipelines[m_pending.renderPipeline])
+		: m_pending.computePipeline.valid()
+			? static_cast<PipelineBaseVK&>(m_device->m_resources.computePipelines[m_pending.computePipeline])
+			: static_cast<PipelineBaseVK&>(m_device->m_resources.rayTracingPipelines[m_pending.rayTracingPipeline]);
 
 	const GfxShaderBindingDesc& bindingDesc = pipelineBase.bindings;
 	const GfxDescriptorSetDesc& descSet = pipelineBase.bindings.descriptorSets[0];
-	if ((m_dirtyState & DirtyStateFlag_Technique) && bindingDesc.useDefaultDescriptorSet)
+	if ((m_dirtyState & DirtyStateFlag_Pipeline) && bindingDesc.useDefaultDescriptorSet)
 	{
 		m_dirtyState |= DirtyStateFlag_Descriptors;
 	}
@@ -3038,28 +2838,17 @@ void GfxContext::applyState()
 	{
 		m_currentBindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 
-		if (m_pending.technique.valid())
+		if (m_pending.renderPipeline.valid())
 		{
-			PipelineInfoVK info = {};
-
-			info.techniqueHandle = m_pending.technique;
-			info.primitiveType = m_pending.primitiveType;
-			info.depthStencilStateHandle = m_pending.depthStencilState;
-			info.rasterizerStateHandle = m_pending.rasterizerState;
-			info.blendStateHandle = m_pending.blendState;
-			for (u32 i = 0; i < RUSH_COUNTOF(info.vertexBufferStride); ++i)
-			{
-				info.vertexBufferStride[i] = m_pending.vertexBufferStride[i];
-			}
-			info.renderPass = m_currentRenderPass;
-			info.colorAttachmentCount = m_currentColorAttachmentCount;
-			info.colorSampleCount = m_currentColorSampleCount;
-			info.depthSampleCount = m_currentDepthSampleCount;
-
-			m_activePipeline = m_device->createPipeline(info);
-
-			const TechniqueVK& technique = m_device->m_resources.techniques[m_pending.technique];
-			m_currentBindPoint = technique.cs.valid() ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+			const RenderPipelineVK& rp = m_device->m_resources.renderPipelines[m_pending.renderPipeline];
+			m_activePipeline = rp.pipeline;
+			m_currentBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		}
+		else if (m_pending.computePipeline.valid())
+		{
+			const ComputePipelineVK& cp = m_device->m_resources.computePipelines[m_pending.computePipeline];
+			m_activePipeline = cp.pipeline;
+			m_currentBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
 		}
 		else if (m_pending.rayTracingPipeline.valid())
 		{
@@ -3074,15 +2863,20 @@ void GfxContext::applyState()
 
 	RUSH_ASSERT(m_currentBindPoint < VK_PIPELINE_BIND_POINT_MAX_ENUM);
 
-	if ((m_dirtyState & DirtyStateFlag_VertexBuffer) && m_pending.technique.valid())
+	if ((m_dirtyState & DirtyStateFlag_VertexBuffer) && m_pending.renderPipeline.valid())
 	{
-		const TechniqueVK& technique = m_device->m_resources.techniques[m_pending.technique];
-		for (u32 i = 0; i < technique.vertexStreamCount; ++i)
+		const RenderPipelineVK& rp = m_device->m_resources.renderPipelines[m_pending.renderPipeline];
+		for (u32 i = 0; i < rp.vertexStreamCount; ++i)
 		{
 			RUSH_ASSERT(m_pending.vertexBuffer[i].valid());
 
 			BufferVK& buffer = m_device->m_resources.buffers[m_pending.vertexBuffer[i]];
 			validateBufferUse(buffer, true);
+
+			const u32 expectedStride = rp.desc.vertexFormat.streamStride(i);
+			RUSH_ASSERT_MSG(buffer.desc.stride == 0 || buffer.desc.stride == expectedStride,
+				"Vertex buffer stride (%d) does not match pipeline vertex format stream stride (%d) for stream %d",
+				buffer.desc.stride, expectedStride, i);
 
 			VkDeviceSize bufferOffset = buffer.info.offset + m_pending.vertexBufferOffsets[i];
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
@@ -3091,7 +2885,7 @@ void GfxContext::applyState()
 		m_dirtyState &= ~DirtyStateFlag_VertexBuffer;
 	}
 
-	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer) && m_pending.technique.valid())
+	if (m_pending.indexBuffer.valid() && (m_dirtyState & DirtyStateFlag_IndexBuffer) && m_pending.renderPipeline.valid())
 	{
 		BufferVK& buffer = m_device->m_resources.buffers[m_pending.indexBuffer];
 		validateBufferUse(buffer, true);
@@ -3769,35 +3563,6 @@ static VkFormat convertFormat(const GfxVertexFormatDesc::Element& vertexElement)
 	}
 }
 
-GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
-{
-	VertexFormatVK format;
-
-	format.desc = desc;
-	format.attributes.resize(desc.elementCount());
-
-	for (u32 i = 0; i < (u32)desc.elementCount(); ++i)
-	{
-		const auto& element = desc.element(i);
-		RUSH_ASSERT(element.stream < GfxContext::MaxVertexStreams);
-
-		if (element.semantic == GfxVertexFormatDesc::Semantic::InstanceData)
-		{
-			RUSH_ASSERT_MSG(format.instanceDataStream == 0xFFFFFFFF, "Only one instance data element is supported.");
-			format.instanceDataStream         = element.stream;
-			format.instanceDataAttributeIndex = i;
-		}
-
-		format.attributes[i].binding  = element.stream;
-		format.attributes[i].location = i;
-		format.attributes[i].format   = convertFormat(element);
-		format.attributes[i].offset   = element.offset;
-		format.vertexStreamCount      = max<u32>(format.vertexStreamCount, element.stream + 1);
-	}
-
-	return retainResource(g_device->m_resources.vertexFormats, format);
-}
-
 
 static VkShaderModule createShaderModule(VkDevice device, const GfxShaderSource& code)
 {
@@ -4213,209 +3978,454 @@ void DescriptorSetVK::destroy()
 	}
 }
 
-// technique
+// pipeline creation helpers
 
-GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
+static VkSpecializationInfo* copySpecializationInfo(
+    u32 constantCount, const GfxSpecializationConstant* constants,
+    const void* data, u32 dataSize)
 {
-	TechniqueVK res;
-
-	if (g_device->m_supportedExtensions.AMD_wave_limits)
+	if (!data)
 	{
-		res.waveLimits = new VkPipelineShaderStageCreateInfoWaveLimitAMD[u32(GfxStage::count)];
-		for (u32 i = 0; i < u32(GfxStage::count); ++i)
-		{
-			res.waveLimits[i].sType      = VK_STRUCTURE_TYPE_WAVE_LIMIT_AMD;
-			res.waveLimits[i].wavesPerCu = 1.0;
-		}
-		res.waveLimits[u32(GfxStage::Pixel)].wavesPerCu   = desc.psWaveLimit;
-		res.waveLimits[u32(GfxStage::Vertex)].wavesPerCu  = desc.vsWaveLimit;
-		res.waveLimits[u32(GfxStage::Compute)].wavesPerCu = desc.csWaveLimit;
+		return nullptr;
 	}
 
-	if (desc.specializationData)
+	const size_t entriesSize = sizeof(VkSpecializationMapEntry) * constantCount;
+	auto* entries = static_cast<VkSpecializationMapEntry*>(allocateBytes(entriesSize));
+	for (u32 i = 0; i < constantCount; ++i)
 	{
-		// todo: batch all allocations into one
-
-		size_t specializationEntriesSize = sizeof(VkSpecializationMapEntry) * desc.specializationConstantCount;
-		VkSpecializationMapEntry* specializationEntriesCopy = (VkSpecializationMapEntry*)allocateBytes(specializationEntriesSize);
-		for (u32 i = 0; i < desc.specializationConstantCount; ++i)
-		{
-			specializationEntriesCopy[i].constantID = desc.specializationConstants[i].id;
-			specializationEntriesCopy[i].offset = desc.specializationConstants[i].offset;
-			specializationEntriesCopy[i].size = size_t(desc.specializationConstants[i].size);
-		}
-
-		void* specializationDataCopy = allocateBytes(desc.specializationDataSize);
-		memcpy(specializationDataCopy, desc.specializationData, desc.specializationDataSize);
-
-		res.specializationInfo = (VkSpecializationInfo*)allocateBytes(sizeof(VkSpecializationInfo));
-
-		res.specializationInfo->mapEntryCount = desc.specializationConstantCount;
-		res.specializationInfo->pMapEntries   = specializationEntriesCopy;
-		res.specializationInfo->dataSize      = desc.specializationDataSize;
-		res.specializationInfo->pData         = specializationDataCopy;
+		entries[i].constantID = constants[i].id;
+		entries[i].offset     = constants[i].offset;
+		entries[i].size       = size_t(constants[i].size);
 	}
 
-	if (desc.cs.valid())
+	void* dataCopy = allocateBytes(dataSize);
+	memcpy(dataCopy, data, dataSize);
+
+	auto* info = static_cast<VkSpecializationInfo*>(allocateBytes(sizeof(VkSpecializationInfo)));
+	info->mapEntryCount = constantCount;
+	info->pMapEntries   = entries;
+	info->dataSize      = dataSize;
+	info->pData         = dataCopy;
+
+	return info;
+}
+
+static void destroySpecializationInfo(VkSpecializationInfo* info)
+{
+	if (info)
 	{
-		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-		stageInfo.stage                           = VK_SHADER_STAGE_COMPUTE_BIT;
-		stageInfo.module                          = g_device->m_resources.shaders[desc.cs].module;
-		stageInfo.pName                           = g_device->m_resources.shaders[desc.cs].entry.c_str();
-		stageInfo.pSpecializationInfo             = res.specializationInfo;
-
-		if (g_device->m_supportedExtensions.AMD_wave_limits && desc.csWaveLimit != 1.0f)
-		{
-			res.waveLimits[u32(GfxStage::Compute)].pNext = stageInfo.pNext;
-			stageInfo.pNext                              = &res.waveLimits[u32(GfxStage::Compute)];
-		}
-
-		res.shaderStages.push_back(stageInfo);
-		res.cs.retain(desc.cs);
+		deallocateBytes(const_cast<void*>(info->pData));
+		deallocateBytes(const_cast<VkSpecializationMapEntry*>(info->pMapEntries));
+		deallocateBytes(info);
 	}
-	else
+}
+
+static VkPipelineLayout createPipelineLayoutForBindings(
+    const GfxShaderBindingDesc& bindings,
+    u32 resourceStageFlags,
+    DescriptorSetLayoutArray& outSetLayouts)
+{
+	const GfxDescriptorSetDesc& descSet = bindings.descriptorSets[0];
+	RUSH_ASSERT(descSet.rwTypedBuffers + descSet.rwBuffers <= GfxContext::MaxStorageBuffers);
+	RUSH_ASSERT(descSet.constantBuffers <= GfxContext::MaxConstantBuffers);
+
+	outSetLayouts = g_device->createDescriptorSetLayouts(bindings, resourceStageFlags);
+
+	VkPipelineLayoutCreateInfo layoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+	layoutCreateInfo.setLayoutCount             = u32(outSetLayouts.size());
+	layoutCreateInfo.pSetLayouts                = outSetLayouts.data;
+
+	VkPushConstantRange pushConstantRange = {};
+	if (bindings.pushConstantSize)
 	{
-		RUSH_ASSERT(desc.vs.valid());
+		pushConstantRange.offset     = 0;
+		pushConstantRange.size       = bindings.pushConstantSize;
+		pushConstantRange.stageFlags = convertStageFlags(bindings.pushConstantStageFlags);
+		layoutCreateInfo.pPushConstantRanges    = &pushConstantRange;
+		layoutCreateInfo.pushConstantRangeCount = 1;
+	}
 
-		res.vf.retain(desc.vf);
+	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+	V(vkCreatePipelineLayout(g_vulkanDevice, &layoutCreateInfo, g_allocationCallbacks, &pipelineLayout));
 
-		if (res.vf.valid())
+	return pipelineLayout;
+}
+
+// render pipeline
+
+GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& desc)
+{
+	RUSH_ASSERT(desc.vs.valid() || desc.ms.valid());
+
+	RenderPipelineVK res;
+	res.desc = desc;
+
+	res.vs.retain(desc.vs);
+	res.gs.retain(desc.gs);
+	res.ps.retain(desc.ps);
+	res.ms.retain(desc.ms);
+
+	const GfxVertexFormatDesc& vertexFormat = desc.vertexFormat;
+	for (u32 i = 0; i < u32(vertexFormat.elementCount()); ++i)
+	{
+		const auto& element = vertexFormat.element(i);
+		if (element.semantic == GfxVertexFormatDesc::Semantic::InstanceData)
 		{
-			const VertexFormatVK& vertexFormat = g_device->m_resources.vertexFormats[res.vf.get()];
-			res.instanceDataStream             = vertexFormat.instanceDataStream;
-			res.vertexStreamCount              = vertexFormat.vertexStreamCount;
+			res.instanceDataStream = element.stream;
 		}
-
-		if (desc.vs.valid())
-		{
-			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-			stageInfo.stage                           = VK_SHADER_STAGE_VERTEX_BIT;
-			stageInfo.module                          = g_device->m_resources.shaders[desc.vs].module;
-			stageInfo.pName                           = g_device->m_resources.shaders[desc.vs].entry.c_str();
-			stageInfo.pSpecializationInfo             = res.specializationInfo;
-
-			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.vsWaveLimit != 1.0f)
-			{
-				res.waveLimits[u32(GfxStage::Vertex)].pNext = stageInfo.pNext;
-				stageInfo.pNext                             = &res.waveLimits[u32(GfxStage::Vertex)];
-			}
-
-			res.shaderStages.push_back(stageInfo);
-			res.vs.retain(desc.vs);
-		}
-
-		if (desc.gs.valid())
-		{
-			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-			stageInfo.stage                           = VK_SHADER_STAGE_GEOMETRY_BIT;
-			stageInfo.module                          = g_device->m_resources.shaders[desc.gs].module;
-			stageInfo.pName                           = g_device->m_resources.shaders[desc.gs].entry.c_str();
-			stageInfo.pSpecializationInfo             = res.specializationInfo;
-
-			res.shaderStages.push_back(stageInfo);
-			res.gs.retain(desc.gs);
-		}
-
-		if (desc.ps.valid())
-		{
-			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-			stageInfo.stage                           = VK_SHADER_STAGE_FRAGMENT_BIT;
-			stageInfo.module                          = g_device->m_resources.shaders[desc.ps].module;
-			stageInfo.pName                           = g_device->m_resources.shaders[desc.ps].entry.c_str();
-			stageInfo.pSpecializationInfo             = res.specializationInfo;
-
-			if (g_device->m_supportedExtensions.AMD_wave_limits && desc.psWaveLimit != 1.0f)
-			{
-				res.waveLimits[u32(GfxStage::Pixel)].pNext = stageInfo.pNext;
-				stageInfo.pNext                            = &res.waveLimits[u32(GfxStage::Pixel)];
-			}
-
-			res.shaderStages.push_back(stageInfo);
-			res.ps.retain(desc.ps);
-		}
-
-		if (desc.ms.valid())
-		{
-			RUSH_ASSERT_MSG(!desc.vs.valid(), "Vertex shader can't be used together with mesh shader.");
-			RUSH_ASSERT_MSG(!desc.gs.valid(), "Geometry shader can't be used together with mesh shader.");
-
-			VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-			stageInfo.stage                           = VK_SHADER_STAGE_MESH_BIT_NV;
-			stageInfo.module                          = g_device->m_resources.shaders[desc.ms].module;
-			stageInfo.pName                           = g_device->m_resources.shaders[desc.ms].entry.c_str();
-			stageInfo.pSpecializationInfo             = res.specializationInfo;
-
-			res.shaderStages.push_back(stageInfo);
-			res.ms.retain(desc.ms);
-		}
+		res.vertexStreamCount = max<u32>(res.vertexStreamCount, element.stream + 1);
 	}
 
 	res.bindings = desc.bindings;
 
+	// Specialization
 
-	res.pushConstantStageFlags  = convertStageFlags(desc.bindings.pushConstantStageFlags);
-	res.pushConstantsSize       = desc.bindings.pushConstantSize;
+	VkSpecializationInfo* specializationInfo = copySpecializationInfo(
+	    desc.specializationConstantCount, desc.specializationConstants,
+	    desc.specializationData, desc.specializationDataSize);
 
-	const GfxDescriptorSetDesc& descSet = desc.bindings.descriptorSets[0];
-	RUSH_ASSERT(descSet.rwTypedBuffers + descSet.rwBuffers <= GfxContext::MaxStorageBuffers);
-	RUSH_ASSERT(descSet.constantBuffers <= GfxContext::MaxConstantBuffers);
+	// Shader stages
+
+	DynamicArray<VkPipelineShaderStageCreateInfo> shaderStages;
 
 	u32 resourceStageFlags = 0;
-	if (desc.cs.valid())
-		resourceStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+
 	if (desc.vs.valid())
-		resourceStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
-	if (desc.gs.valid())
-		resourceStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
-	if (desc.ps.valid())
-		resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
-	if (desc.ms.valid())
-		resourceStageFlags |= VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
-
-	res.setLayouts = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
-
-	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-	pipelineLayoutCreateInfo.setLayoutCount             = u32(res.setLayouts.size());
-	pipelineLayoutCreateInfo.pSetLayouts                = res.setLayouts.data;
-
-	VkPushConstantRange pushConstantRange;
-	if (res.pushConstantsSize)
 	{
-		pushConstantRange.offset                        = 0;
-		pushConstantRange.size                          = res.pushConstantsSize;
-		pushConstantRange.stageFlags                    = res.pushConstantStageFlags;
-		pipelineLayoutCreateInfo.pPushConstantRanges    = &pushConstantRange;
-		pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stageInfo.stage                           = VK_SHADER_STAGE_VERTEX_BIT;
+		stageInfo.module                          = g_device->m_resources.shaders[desc.vs].module;
+		stageInfo.pName                           = g_device->m_resources.shaders[desc.vs].entry.c_str();
+		stageInfo.pSpecializationInfo             = specializationInfo;
+
+		shaderStages.push_back(stageInfo);
+		resourceStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
 	}
 
-	V(vkCreatePipelineLayout(g_vulkanDevice, &pipelineLayoutCreateInfo, g_allocationCallbacks, &res.pipelineLayout));
+	if (desc.gs.valid())
+	{
+		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stageInfo.stage                           = VK_SHADER_STAGE_GEOMETRY_BIT;
+		stageInfo.module                          = g_device->m_resources.shaders[desc.gs].module;
+		stageInfo.pName                           = g_device->m_resources.shaders[desc.gs].entry.c_str();
+		stageInfo.pSpecializationInfo             = specializationInfo;
 
-	// Done
+		shaderStages.push_back(stageInfo);
+		resourceStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+	}
 
-	return retainResource(g_device->m_resources.techniques, res);
+	if (desc.ps.valid())
+	{
+		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stageInfo.stage                           = VK_SHADER_STAGE_FRAGMENT_BIT;
+		stageInfo.module                          = g_device->m_resources.shaders[desc.ps].module;
+		stageInfo.pName                           = g_device->m_resources.shaders[desc.ps].entry.c_str();
+		stageInfo.pSpecializationInfo             = specializationInfo;
+
+		shaderStages.push_back(stageInfo);
+		resourceStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+
+	if (desc.ms.valid())
+	{
+		RUSH_ASSERT_MSG(!desc.vs.valid(), "Vertex shader can't be used together with mesh shader.");
+		RUSH_ASSERT_MSG(!desc.gs.valid(), "Geometry shader can't be used together with mesh shader.");
+
+		VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+		stageInfo.stage                           = VK_SHADER_STAGE_MESH_BIT_NV;
+		stageInfo.module                          = g_device->m_resources.shaders[desc.ms].module;
+		stageInfo.pName                           = g_device->m_resources.shaders[desc.ms].entry.c_str();
+		stageInfo.pSpecializationInfo             = specializationInfo;
+
+		shaderStages.push_back(stageInfo);
+		resourceStageFlags |= VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
+	}
+
+	// Pipeline layout
+
+	res.setLayouts = {};
+	res.pipelineLayout = createPipelineLayoutForBindings(desc.bindings, resourceStageFlags, res.setLayouts);
+
+	// Build VkGraphicsPipelineCreateInfo
+
+	VkGraphicsPipelineCreateInfo createInfo = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+	createInfo.stageCount = u32(shaderStages.size());
+	createInfo.pStages    = shaderStages.data();
+	createInfo.layout     = res.pipelineLayout;
+
+	// Vertex input
+
+	constexpr u32 maxVertexAttributes = 32;
+	VkVertexInputAttributeDescription vertexAttributes[maxVertexAttributes];
+	u32 vertexAttributeCount = 0;
+
+	// Build default attribute descriptions from vertex format
+	for (u32 i = 0; i < u32(vertexFormat.elementCount()); ++i)
+	{
+		const auto& element = vertexFormat.element(i);
+		RUSH_ASSERT(vertexAttributeCount < maxVertexAttributes);
+		vertexAttributes[vertexAttributeCount].binding  = element.stream;
+		vertexAttributes[vertexAttributeCount].location = i;
+		vertexAttributes[vertexAttributeCount].format   = convertFormat(element);
+		vertexAttributes[vertexAttributeCount].offset   = element.offset;
+		vertexAttributeCount++;
+	}
+
+	VkPipelineVertexInputStateCreateInfo vi = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+	createInfo.pVertexInputState            = &vi;
+
+	if (vertexAttributeCount > 0 && desc.vs.valid())
+	{
+		const ShaderVK& vertexShader = g_device->m_resources.shaders[res.vs.get()];
+
+		if (vertexShader.inputMappings.empty())
+		{
+			vi.vertexAttributeDescriptionCount = vertexAttributeCount;
+			vi.pVertexAttributeDescriptions    = vertexAttributes;
+		}
+		else
+		{
+			VkVertexInputAttributeDescription remappedAttributes[maxVertexAttributes];
+			u32 remappedCount = 0;
+
+			for (const auto& inputMapping : vertexShader.inputMappings)
+			{
+				u32  elementIndex = 0;
+				bool inputFound   = false;
+				for (const auto& element : vertexFormat)
+				{
+					if (element.semantic == inputMapping.semantic && element.index == inputMapping.semanticIndex)
+					{
+						RUSH_ASSERT(remappedCount < maxVertexAttributes);
+
+						VkVertexInputAttributeDescription& attrib = remappedAttributes[remappedCount];
+						attrib                                    = vertexAttributes[elementIndex];
+						attrib.location                           = inputMapping.location;
+						inputFound                                = true;
+						remappedCount++;
+						break;
+					}
+					elementIndex++;
+				}
+				if (!inputFound)
+				{
+					RUSH_LOG_ERROR("Vertex shader input '%s%d' not found in vertex format declaration.",
+					    toString(inputMapping.semantic), inputMapping.semanticIndex);
+				}
+			}
+
+			vi.vertexAttributeDescriptionCount = remappedCount;
+			vi.pVertexAttributeDescriptions    = remappedAttributes;
+		}
+	}
+
+	VkVertexInputBindingDescription vd[GfxVertexFormatDesc::MaxStreams] = {};
+	vi.vertexBindingDescriptionCount = 0;
+	vi.pVertexBindingDescriptions    = vd;
+
+	for (u32 i = 0; i < res.vertexStreamCount; ++i)
+	{
+		vd[i].binding   = i;
+		vd[i].stride    = vertexFormat.streamStride(i);
+		vd[i].inputRate = res.instanceDataStream == i ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
+		vi.vertexBindingDescriptionCount++;
+	}
+
+	// Input assembly
+
+	VkPipelineInputAssemblyStateCreateInfo ia = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+	createInfo.pInputAssemblyState            = &ia;
+	ia.topology                               = convertPrimitiveType(desc.primitive);
+	ia.primitiveRestartEnable                 = false;
+
+	// Viewport (dynamic)
+
+	VkPipelineViewportStateCreateInfo vp = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+	createInfo.pViewportState            = &vp;
+	vp.viewportCount                     = 1;
+	vp.pViewports                        = nullptr;
+	vp.scissorCount                      = 1;
+	vp.pScissors                         = nullptr;
+
+	// Rasterizer
+
+	const GfxRasterizerDesc& rasterizerDesc = desc.rasterizer;
+
+	VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+	createInfo.pRasterizationState            = &rs;
+	rs.depthClampEnable                       = false;
+	rs.rasterizerDiscardEnable                = false;
+	rs.polygonMode = rasterizerDesc.fillMode == GfxFillMode::Solid ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
+	rs.cullMode    = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE
+	                                                              : VkCullModeFlagBits(rasterizerDesc.cullFace);
+	rs.frontFace   = rasterizerDesc.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+	rs.depthBiasEnable         = rasterizerDesc.depthBias != 0;
+	rs.depthBiasConstantFactor = rasterizerDesc.depthBias;
+	rs.depthBiasClamp          = 0.0f;
+	rs.depthBiasSlopeFactor    = rasterizerDesc.depthBiasSlopeScale;
+	rs.lineWidth               = 1.0f;
+
+	// Multisample
+
+	const u32 sampleCount = desc.renderTarget.sampleCount > 0 ? desc.renderTarget.sampleCount : 1;
+
+	VkPipelineMultisampleStateCreateInfo msState = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+	createInfo.pMultisampleState = &msState;
+	msState.rasterizationSamples = convertSampleCount(sampleCount);
+	msState.sampleShadingEnable  = false;
+	msState.minSampleShading     = 0.0f;
+	msState.pSampleMask          = nullptr;
+	msState.alphaToCoverageEnable = false;
+	msState.alphaToOneEnable     = false;
+
+	// Depth stencil
+
+	const GfxDepthStencilDesc& depthStencilDesc = desc.depthStencil;
+
+	VkPipelineDepthStencilStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+	createInfo.pDepthStencilState            = &ds;
+	ds.depthTestEnable                       = depthStencilDesc.enable;
+	ds.depthWriteEnable                      = depthStencilDesc.writeEnable;
+	ds.depthCompareOp                        = convertCompareFunc(depthStencilDesc.compareFunc);
+	ds.depthBoundsTestEnable                 = false;
+	ds.stencilTestEnable                     = false;
+	ds.back.failOp                           = VK_STENCIL_OP_KEEP;
+	ds.back.passOp                           = VK_STENCIL_OP_KEEP;
+	ds.back.compareOp                        = VK_COMPARE_OP_ALWAYS;
+	ds.front                                 = ds.back;
+	ds.minDepthBounds                        = 0.0f;
+	ds.maxDepthBounds                        = 1.0f;
+
+	// Color blend
+
+	VkPipelineColorBlendStateCreateInfo cb = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+	createInfo.pColorBlendState            = &cb;
+	VkPipelineColorBlendAttachmentState colorAttachments[GfxPassDesc::MaxTargets] = {};
+
+	const u32 colorTargetCount = desc.renderTarget.getColorTargetCount();
+	for (u32 i = 0; i < colorTargetCount; ++i)
+	{
+		const GfxBlendStateDesc& blendDesc = desc.blend[i];
+		colorAttachments[i].blendEnable         = blendDesc.enable;
+		colorAttachments[i].colorBlendOp        = convertBlendOp(blendDesc.op);
+		colorAttachments[i].srcColorBlendFactor = convertBlendParam(blendDesc.src);
+		colorAttachments[i].dstColorBlendFactor = convertBlendParam(blendDesc.dst);
+		if (blendDesc.alphaSeparate)
+		{
+			colorAttachments[i].alphaBlendOp        = convertBlendOp(blendDesc.alphaOp);
+			colorAttachments[i].srcAlphaBlendFactor = convertBlendParam(blendDesc.alphaSrc);
+			colorAttachments[i].dstAlphaBlendFactor = convertBlendParam(blendDesc.alphaDst);
+		}
+		else
+		{
+			colorAttachments[i].alphaBlendOp        = convertBlendOp(blendDesc.op);
+			colorAttachments[i].srcAlphaBlendFactor = convertBlendParam(blendDesc.src);
+			colorAttachments[i].dstAlphaBlendFactor = convertBlendParam(blendDesc.dst);
+		}
+		colorAttachments[i].colorWriteMask = 0xF;
+	}
+
+	cb.attachmentCount = colorTargetCount;
+	cb.pAttachments    = colorAttachments;
+
+	// Dynamic state
+
+	VkPipelineDynamicStateCreateInfo dyn = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+	createInfo.pDynamicState             = &dyn;
+
+	StaticArray<VkDynamicState, 3> dynamicStates;
+	dynamicStates.pushBack(VK_DYNAMIC_STATE_VIEWPORT);
+	dynamicStates.pushBack(VK_DYNAMIC_STATE_SCISSOR);
+	if (g_device->m_caps.sampleLocations)
+	{
+		dynamicStates.pushBack(VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT);
+	}
+	dyn.dynamicStateCount = u32(dynamicStates.currentSize);
+	dyn.pDynamicStates    = dynamicStates.data;
+
+	// Render pass
+
+	VkRenderPass renderPass = createRenderPassFromConfig(desc.renderTarget);
+	createInfo.renderPass = renderPass;
+	createInfo.subpass    = 0;
+
+	// Create pipeline
+
+	V(vkCreateGraphicsPipelines(g_vulkanDevice, g_device->m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &res.pipeline));
+	RUSH_ASSERT(res.pipeline);
+
+	// Cleanup temporaries
+
+	destroySpecializationInfo(specializationInfo);
+
+	return retainResource(g_device->m_resources.renderPipelines, res);
 }
 
-void TechniqueVK::destroy()
+void RenderPipelineVK::destroy()
 {
 	RUSH_ASSERT(m_refs == 0);
 
-	vf.reset();
 	vs.reset();
 	gs.reset();
 	ps.reset();
+	ms.reset();
+
+	enqueueDestroy(pipeline);
+	enqueueDestroy(pipelineLayout);
+}
+
+// compute pipeline
+
+GfxOwn<GfxComputePipeline> Gfx_CreateComputePipeline(const GfxComputePipelineDesc& desc)
+{
+	RUSH_ASSERT(desc.cs.valid());
+
+	ComputePipelineVK res;
+	res.desc = desc;
+	res.cs.retain(desc.cs);
+	res.workGroupSize = desc.workGroupSize;
+	res.bindings = desc.bindings;
+
+	// Specialization
+
+	VkSpecializationInfo* specializationInfo = copySpecializationInfo(
+	    desc.specializationConstantCount, desc.specializationConstants,
+	    desc.specializationData, desc.specializationDataSize);
+
+	VkPipelineShaderStageCreateInfo stageInfo = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+	stageInfo.stage                           = VK_SHADER_STAGE_COMPUTE_BIT;
+	stageInfo.module                          = g_device->m_resources.shaders[desc.cs].module;
+	stageInfo.pName                           = g_device->m_resources.shaders[desc.cs].entry.c_str();
+	stageInfo.pSpecializationInfo             = specializationInfo;
+
+	// Pipeline layout
+
+	const u32 resourceStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	res.setLayouts = {};
+	res.pipelineLayout = createPipelineLayoutForBindings(desc.bindings, resourceStageFlags, res.setLayouts);
+
+	// Create compute pipeline
+
+	VkComputePipelineCreateInfo createInfo = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+	createInfo.stage  = stageInfo;
+	createInfo.layout = res.pipelineLayout;
+
+	V(vkCreateComputePipelines(g_vulkanDevice, g_device->m_pipelineCache, 1, &createInfo, g_allocationCallbacks, &res.pipeline));
+	RUSH_ASSERT(res.pipeline);
+
+	destroySpecializationInfo(specializationInfo);
+
+	return retainResource(g_device->m_resources.computePipelines, res);
+}
+
+void ComputePipelineVK::destroy()
+{
+	RUSH_ASSERT(m_refs == 0);
+
 	cs.reset();
 
-	if (specializationInfo)
-	{
-		deallocateBytes(const_cast<void*>(specializationInfo->pData));
-		deallocateBytes(const_cast<VkSpecializationMapEntry*>(specializationInfo->pMapEntries));
-		deallocateBytes(specializationInfo);
-	}
-
-	delete[] waveLimits;
-
-	// TODO: queue-up destruction
-	vkDestroyPipelineLayout(g_vulkanDevice, pipelineLayout, g_allocationCallbacks);
+	enqueueDestroy(pipeline);
+	enqueueDestroy(pipelineLayout);
 }
 
 
@@ -4773,16 +4783,6 @@ void TextureVK::destroy()
 }
 
 
-// blend state
-GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
-{
-	BlendStateVK res;
-	res.desc = desc;
-
-	return retainResource(g_device->m_resources.blendStates, res);
-}
-
-
 // sampler state
 GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 {
@@ -4816,26 +4816,6 @@ void SamplerVK::destroy()
 {
 	RUSH_ASSERT(m_refs == 0);
 	enqueueDestroy(native);
-}
-
-
-// depth stencil state
-GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
-{
-	DepthStencilStateVK res;
-	res.desc = desc;
-
-	return retainResource(g_device->m_resources.depthStencilStates, res);
-}
-
-
-// rasterizer state
-GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
-{
-	RasterizerStateVK res;
-	res.desc = desc;
-
-	return retainResource(g_device->m_resources.rasterizerStates, res);
 }
 
 
@@ -5427,25 +5407,34 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 	vkCmdSetScissor(rc->m_commandBuffer, 0, 1, &scissor);
 }
 
-void Gfx_SetTechnique(GfxContext* ctx, GfxTechniqueArg h)
+void Gfx_SetRenderPipeline(GfxContext* rc, GfxRenderPipelineArg h)
 {
-	if (ctx->m_pending.technique != h)
+	if (rc->m_pending.renderPipeline == h)
 	{
-		ctx->m_pending.rayTracingPipeline = {};
-		ctx->m_pending.technique = h;
-		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
-		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
-		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
+		return;
 	}
+	rc->m_pending.rayTracingPipeline = {};
+	rc->m_pending.computePipeline = {};
+	rc->m_pending.renderPipeline = h;
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_RenderPipeline
+	                  |  GfxContext::DirtyStateFlag_VertexBuffer
+	                  |  GfxContext::DirtyStateFlag_IndexBuffer
+	                  |  GfxContext::DirtyStateFlag_Descriptors
+	                  |  GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
-void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
+void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h)
 {
-	if (rc->m_pending.primitiveType != type)
+	if (rc->m_pending.computePipeline == h)
 	{
-		rc->m_pending.primitiveType = type;
-		rc->m_dirtyState |= GfxContext::DirtyStateFlag_PrimitiveType;
+		return;
 	}
+	rc->m_pending.rayTracingPipeline = {};
+	rc->m_pending.renderPipeline = {};
+	rc->m_pending.computePipeline = h;
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_ComputePipeline
+	                  |  GfxContext::DirtyStateFlag_Descriptors
+	                  |  GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
 void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h)
@@ -5461,29 +5450,21 @@ void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferA
 	}
 }
 
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h)
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
 
-	if (rc->m_pending.vertexBuffer[idx] != h || rc->m_pending.vertexBufferOffsets[idx] != offset ||
-	    rc->m_pending.vertexBufferStride[idx] != stride)
+	if (rc->m_pending.vertexBuffer[idx] != h || rc->m_pending.vertexBufferOffsets[idx] != offset)
 	{
 		rc->m_pending.vertexBuffer[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 
 		if (h.valid())
 		{
-			if (stride == ~0u)
-			{
-				stride = g_device->m_resources.buffers[h].desc.stride;
-			}
-
-			rc->m_pending.vertexBufferStride[idx] = stride;
 			rc->m_pending.vertexBufferOffsets[idx] = offset;
 		}
 		else
 		{
-			rc->m_pending.vertexBufferStride[idx] = 0;
 			rc->m_pending.vertexBufferOffsets[idx] = 0;
 		}
 	}
@@ -5544,33 +5525,6 @@ void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h)
 	}
 }
 
-void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg nextState)
-{
-	if (rc->m_pending.blendState != nextState)
-	{
-		rc->m_pending.blendState = nextState;
-		rc->m_dirtyState |= GfxContext::DirtyStateFlag_BlendState;
-	}
-}
-
-void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg nextState)
-{
-	if (rc->m_pending.depthStencilState != nextState)
-	{
-		rc->m_pending.depthStencilState = nextState;
-		rc->m_dirtyState |= GfxContext::DirtyStateFlag_DepthStencilState;
-	}
-}
-
-void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg nextState)
-{
-	if (rc->m_pending.rasterizerState != nextState)
-	{
-		rc->m_pending.rasterizerState = nextState;
-		rc->m_dirtyState |= GfxContext::DirtyStateFlag_RasterizerState;
-	}
-}
-
 void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset)
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
@@ -5612,7 +5566,7 @@ void Gfx_AddImageBarrier(
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline;
+	rc->m_dirtyState = 0xFFFFFFFF;
 
 	if (!desc.depth.valid() && !desc.color[0].valid())
 	{
@@ -5643,6 +5597,13 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 }
 
 void Gfx_EndPass(GfxContext* rc) { rc->endRenderPass(); }
+
+const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc)
+{
+	return rc->m_isRenderPassActive ? &rc->m_currentRenderPassDesc : nullptr;
+}
+
+
 
 void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) { rc->resolveImage(src, dst); }
 
@@ -5709,10 +5670,11 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* p
 
 	if (pushConstants)
 	{
-		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_resources.techniques[rc->m_pending.technique];
-		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
-		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
+		RUSH_ASSERT(rc->m_pending.computePipeline.valid());
+		const ComputePipelineVK& cp = g_device->m_resources.computePipelines[rc->m_pending.computePipeline];
+		RUSH_ASSERT(cp.desc.bindings.pushConstantSize == pushConstantsSize);
+		vkCmdPushConstants(rc->m_commandBuffer, cp.pipelineLayout,
+		    convertStageFlags(cp.bindings.pushConstantStageFlags), 0,
 		    pushConstantsSize, pushConstants);
 	}
 
@@ -5728,10 +5690,11 @@ void Gfx_DispatchIndirect(
 
 	if (pushConstants)
 	{
-		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_resources.techniques[rc->m_pending.technique];
-		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
-		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
+		RUSH_ASSERT(rc->m_pending.computePipeline.valid());
+		const ComputePipelineVK& cp = g_device->m_resources.computePipelines[rc->m_pending.computePipeline];
+		RUSH_ASSERT(cp.desc.bindings.pushConstantSize == pushConstantsSize);
+		vkCmdPushConstants(rc->m_commandBuffer, cp.pipelineLayout,
+		    convertStageFlags(cp.bindings.pushConstantStageFlags), 0,
 		    pushConstantsSize, pushConstants);
 	}
 
@@ -5765,7 +5728,11 @@ void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
 	g_device->m_stats.drawCalls++;
 	g_device->m_stats.vertices += vertexCount;
 
-	g_device->m_stats.triangles += computeTriangleCount(rc->m_pending.primitiveType, vertexCount);
+	if (rc->m_pending.renderPipeline.valid())
+	{
+		const RenderPipelineVK& rp = g_device->m_resources.renderPipelines[rc->m_pending.renderPipeline];
+		g_device->m_stats.triangles += computeTriangleCount(rp.desc.primitive, vertexCount);
+	}
 }
 
 static void drawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
@@ -5776,10 +5743,11 @@ static void drawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 base
 
 	if (pushConstants)
 	{
-		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_resources.techniques[rc->m_pending.technique];
-		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
-		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
+		RUSH_ASSERT(rc->m_pending.renderPipeline.valid());
+		const RenderPipelineVK& rp = g_device->m_resources.renderPipelines[rc->m_pending.renderPipeline];
+		RUSH_ASSERT(rp.desc.bindings.pushConstantSize == pushConstantsSize);
+		vkCmdPushConstants(rc->m_commandBuffer, rp.pipelineLayout,
+		    convertStageFlags(rp.bindings.pushConstantStageFlags), 0,
 		    pushConstantsSize, pushConstants);
 	}
 
@@ -5790,7 +5758,11 @@ static void drawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 base
 	g_device->m_stats.drawCalls++;
 	g_device->m_stats.vertices += indexCount * instanceCount;
 
-	g_device->m_stats.triangles += computeTriangleCount(rc->m_pending.primitiveType, indexCount);
+	if (rc->m_pending.renderPipeline.valid())
+	{
+		const RenderPipelineVK& rp = g_device->m_resources.renderPipelines[rc->m_pending.renderPipeline];
+		g_device->m_stats.triangles += computeTriangleCount(rp.desc.primitive, indexCount);
+	}
 }
 
 void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
@@ -5835,10 +5807,11 @@ void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* push
 
 	if (pushConstants)
 	{
-		RUSH_ASSERT(rc->m_pending.technique.valid());
-		TechniqueVK& technique = g_device->m_resources.techniques[rc->m_pending.technique];
-		RUSH_ASSERT(technique.pushConstantsSize == pushConstantsSize);
-		vkCmdPushConstants(rc->m_commandBuffer, technique.pipelineLayout, technique.pushConstantStageFlags, 0,
+		RUSH_ASSERT(rc->m_pending.renderPipeline.valid());
+		const RenderPipelineVK& rp = g_device->m_resources.renderPipelines[rc->m_pending.renderPipeline];
+		RUSH_ASSERT(rp.desc.bindings.pushConstantSize == pushConstantsSize);
+		vkCmdPushConstants(rc->m_commandBuffer, rp.pipelineLayout,
+		    convertStageFlags(rp.bindings.pushConstantStageFlags), 0,
 		    pushConstantsSize, pushConstants);
 	}
 
@@ -5950,6 +5923,7 @@ void DestructionQueueVK::flush(GfxDevice* device)
 
 		// Vulkan objects
 		void operator()(VkPipeline x) { vkDestroyPipeline(vulkanDevice, x, g_allocationCallbacks); };
+		void operator()(VkPipelineLayout x) { vkDestroyPipelineLayout(vulkanDevice, x, g_allocationCallbacks); };
 		void operator()(VkSampler x) { vkDestroySampler(vulkanDevice, x, g_allocationCallbacks); };
 		void operator()(VkDeviceMemory x) { vkFreeMemory(vulkanDevice, x, g_allocationCallbacks); };
 		void operator()(VkBuffer x) { vkDestroyBuffer(vulkanDevice, x, g_allocationCallbacks); };
@@ -6274,11 +6248,11 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 	{
 		result.buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
-		result.nativeGeometries.resize(desc.geometyCount);
-		result.rangeInfos.resize(desc.geometyCount);
-		result.primitiveCounts.resize(desc.geometyCount);
+		result.nativeGeometries.resize(desc.geometryCount);
+		result.rangeInfos.resize(desc.geometryCount);
+		result.primitiveCounts.resize(desc.geometryCount);
 
-		for (u32 i = 0; i < desc.geometyCount; ++i)
+		for (u32 i = 0; i < desc.geometryCount; ++i)
 		{
 			const GfxRayTracingGeometryDesc& geometryDesc = desc.geometries[i];
 
@@ -6328,8 +6302,8 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 			result.primitiveCounts[i] = rangeInfo.primitiveCount;
 		}
 
-		RUSH_ASSERT(desc.geometyCount == result.nativeGeometries.size());
-		RUSH_ASSERT(desc.geometyCount == result.rangeInfos.size());
+		RUSH_ASSERT(desc.geometryCount == result.nativeGeometries.size());
+		RUSH_ASSERT(desc.geometryCount == result.rangeInfos.size());
 	}
 	else if (desc.type == GfxAccelerationStructureType::TopLevel)
 	{
@@ -6481,9 +6455,10 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle,
 {
 	if (ctx->m_pending.rayTracingPipeline != pipelineHandle)
 	{
-		ctx->m_pending.technique = {};
+		ctx->m_pending.renderPipeline = {};
+		ctx->m_pending.computePipeline = {};
 		ctx->m_pending.rayTracingPipeline = pipelineHandle;
-		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
+		ctx->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline;
 	}
 
 	ctx->applyState();
@@ -6567,8 +6542,8 @@ static QueryPoolVK createQueryPool(const GfxQueryPoolDesc& desc)
 	info.queryType             = VK_QUERY_TYPE_MAX_ENUM;
 	switch (desc.type)
 	{
-	case GfxQuueryType::Occlusion: info.queryType = VK_QUERY_TYPE_OCCLUSION; break;
-	case GfxQuueryType::Timestamp: info.queryType = VK_QUERY_TYPE_TIMESTAMP; break;
+	case GfxQueryType::Occlusion: info.queryType = VK_QUERY_TYPE_OCCLUSION; break;
+	case GfxQueryType::Timestamp: info.queryType = VK_QUERY_TYPE_TIMESTAMP; break;
 	default: RUSH_LOG_ERROR("Unexpected query type"); break;
 	}
 

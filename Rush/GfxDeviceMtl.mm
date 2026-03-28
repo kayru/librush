@@ -112,6 +112,11 @@ void releaseResource(
 	Gfx_Release(g_device);
 }
 
+static MTLPixelFormat convertPixelFormat(GfxFormat format);
+static GfxFormat      convertPixelFormat(MTLPixelFormat format);
+static MTLBlendOperation convertBlendOp(GfxBlendOp blendOp);
+static MTLBlendFactor convertBlendParam(GfxBlendParam blendParam);
+
 static MTLCompareFunction convertCompareFunc(GfxCompareFunc compareFunc)
 {
 	switch (compareFunc)
@@ -235,8 +240,6 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 
 	// default resources
 
-	m_resources.blendStates[InvalidResourceHandle()].desc = GfxBlendStateDesc::makeOpaque();
-
 	createDefaultDepthBuffer(cfg.backBufferWidth, cfg.backBufferHeight);
 
 	// init caps
@@ -290,6 +293,11 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	}
 
 	m_caps.apiName = "Metal";
+
+	if (!m_headless)
+	{
+		m_caps.backBufferDesc.colorFormats[0] = convertPixelFormat([m_metalLayer pixelFormat]);
+	}
 }
 
 GfxDevice::~GfxDevice()
@@ -671,11 +679,6 @@ void Gfx_ResetStats()
 
 // vertex format
 
-void VertexFormatMTL::destroy()
-{
-	[native release];
-}
-
 static MTLVertexFormat convertVertexFormat(const GfxVertexFormatDesc::Element& vertexElement)
 {
 	switch (vertexElement.type)
@@ -700,21 +703,22 @@ static MTLVertexFormat convertVertexFormat(const GfxVertexFormatDesc::Element& v
 	}
 }
 
-GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
+static MTLVertexDescriptor* createMTLVertexDescriptor(const GfxVertexFormatDesc& desc)
 {
-	VertexFormatMTL format;
-	format.uniqueId = g_device->generateId();
-	format.desc = desc;
+	if (desc.elementCount() == 0)
+	{
+		return nil;
+	}
 
-	format.native = [MTLVertexDescriptor new];
+	MTLVertexDescriptor* native = [MTLVertexDescriptor new];
 
 	u32 usedStreamMask = 0;
-	for (u32 i = 0; i < (u32)desc.elementCount(); ++i)
+	for (u32 i = 0; i < u32(desc.elementCount()); ++i)
 	{
 		const auto& element = desc.element(i);
-		format.native.attributes[i].format = convertVertexFormat(element);
-		format.native.attributes[i].bufferIndex = GfxContext::MaxConstantBuffers + element.stream;
-		format.native.attributes[i].offset = element.offset;
+		native.attributes[i].format = convertVertexFormat(element);
+		native.attributes[i].bufferIndex = GfxContext::MaxConstantBuffers + element.stream;
+		native.attributes[i].offset = element.offset;
 		usedStreamMask |= 1 << element.stream;
 	}
 
@@ -722,14 +726,13 @@ GfxOwn<GfxVertexFormat> Gfx_CreateVertexFormat(const GfxVertexFormatDesc& desc)
 	{
 		if (usedStreamMask & 1)
 		{
-			format.native.layouts[GfxContext::MaxConstantBuffers + streamIndex].stride = desc.streamStride(streamIndex);
-			format.native.layouts[GfxContext::MaxConstantBuffers + streamIndex].stepFunction = MTLVertexStepFunctionPerVertex;
+			native.layouts[GfxContext::MaxConstantBuffers + streamIndex].stride = desc.streamStride(streamIndex);
+			native.layouts[GfxContext::MaxConstantBuffers + streamIndex].stepFunction = MTLVertexStepFunctionPerVertex;
 		}
-
 		usedStreamMask = usedStreamMask >> 1;
 	}
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.vertexFormats, format));
+	return native;
 }
 
 
@@ -816,11 +819,18 @@ GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 
 // technique
 
-void TechniqueMTL::destroy()
+void RenderPipelineMTL::destroy()
 {
 	defaultDescriptorSet.destroy();
 	vs.reset();
 	ps.reset();
+	[renderPipeline release];
+	[depthStencilState release];
+}
+
+void ComputePipelineMTL::destroy()
+{
+	defaultDescriptorSet.destroy();
 	[computePipeline release];
 }
 
@@ -835,63 +845,162 @@ void RayTracingPipelineMTL::destroy()
 	anyHit.destroy();
 }
 
-GfxOwn<GfxTechnique> Gfx_CreateTechnique(const GfxTechniqueDesc& desc)
+static void initBindingOffsets(const GfxShaderBindingDesc& bindings, u32& constantBufferOffset, u32& samplerOffset, u32& sampledImageOffset, u32& storageImageOffset, u32& storageBufferOffset, u32& descriptorSetCount, DescriptorSetMTL& defaultDescriptorSet)
 {
-	RUSH_ASSERT(desc.vs.valid() || desc.cs.valid());
-
-	TechniqueMTL result;
-
-	result.uniqueId = g_device->generateId();
-	result.desc = desc;
-
-	if (desc.cs.valid())
-	{
-		id <MTLFunction> computeShader = g_device->m_resources.shaders[desc.cs].function;
-		NSError* error = nil;
-		id<MTLComputePipelineState> pipeline = [g_metalDevice newComputePipelineStateWithFunction:computeShader error:&error];
-		RUSH_ASSERT(pipeline);
-		[error release];
-
-		result.computePipeline = pipeline;
-		result.workGroupSize = desc.workGroupSize;
-	}
-	else
-	{
-		result.vf.retain(desc.vf);
-		result.vs.retain(desc.vs);
-		result.ps.retain(desc.ps);
-	}
-
-	const auto& dsetDesc = desc.bindings.descriptorSets[0];
+	const auto& dsetDesc = bindings.descriptorSets[0];
 
 	u32 offset = 0;
 
-	result.constantBufferOffset = 0;
+	constantBufferOffset = 0;
 	offset += dsetDesc.constantBuffers;
 
-	result.samplerOffset = offset;
+	samplerOffset = offset;
 	offset += dsetDesc.samplers;
 
-	result.sampledImageOffset = offset;
+	sampledImageOffset = offset;
 	offset += dsetDesc.textures;
 
-	result.storageImageOffset = offset;
+	storageImageOffset = offset;
 	offset += dsetDesc.rwImages;
 
-	result.storageBufferOffset = offset;
+	storageBufferOffset = offset;
 	offset += dsetDesc.rwBuffers;
 
-	for(u32 i=0; i<GfxShaderBindingDesc::MaxDescriptorSets; ++i)
+	descriptorSetCount = 0;
+	for (u32 i = 0; i < GfxShaderBindingDesc::MaxDescriptorSets; ++i)
 	{
-		if(!desc.bindings.descriptorSets[i].isEmpty())
+		if (!bindings.descriptorSets[i].isEmpty())
 		{
-			result.descriptorSetCount = i+1;
+			descriptorSetCount = i + 1;
 		}
 	}
 
-	result.defaultDescriptorSet = createDescriptorSet(dsetDesc);
+	defaultDescriptorSet = createDescriptorSet(dsetDesc);
+}
 
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.techniques, result));
+GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& desc)
+{
+	RUSH_ASSERT(desc.vs.valid() || desc.ms.valid());
+
+	RenderPipelineMTL result;
+	result.uniqueId = g_device->generateId();
+	result.desc = desc;
+
+	result.vs.retain(desc.vs);
+	result.ps.retain(desc.ps);
+
+	initBindingOffsets(desc.bindings, result.constantBufferOffset, result.samplerOffset,
+		result.sampledImageOffset, result.storageImageOffset, result.storageBufferOffset,
+		result.descriptorSetCount, result.defaultDescriptorSet);
+
+	// Build MTLRenderPipelineDescriptor
+	MTLRenderPipelineDescriptor* pipelineDescriptor = [MTLRenderPipelineDescriptor new];
+
+	MTLVertexDescriptor* vertexDescriptor = createMTLVertexDescriptor(desc.vertexFormat);
+	if (vertexDescriptor)
+	{
+		pipelineDescriptor.vertexDescriptor = vertexDescriptor;
+		[vertexDescriptor release];
+	}
+
+	if (desc.vs.valid())
+	{
+		const auto& vertexShader = g_device->m_resources.shaders[desc.vs];
+		pipelineDescriptor.vertexFunction = vertexShader.function;
+	}
+
+	if (desc.ps.valid())
+	{
+		const auto& pixelShader = g_device->m_resources.shaders[desc.ps];
+		pipelineDescriptor.fragmentFunction = pixelShader.function;
+	}
+
+	pipelineDescriptor.inputPrimitiveTopology = convertPrimitiveTopology(desc.primitive);
+
+	if (desc.renderTarget.depthFormat != GfxFormat_Unknown)
+	{
+		pipelineDescriptor.depthAttachmentPixelFormat = convertPixelFormat(desc.renderTarget.depthFormat);
+	}
+	else
+	{
+		pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
+	}
+
+	const u32 rasterSamples = desc.renderTarget.sampleCount > 0 ? desc.renderTarget.sampleCount : 1;
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000
+	pipelineDescriptor.rasterSampleCount = rasterSamples;
+#else
+	pipelineDescriptor.sampleCount = rasterSamples;
+#endif
+
+	const u32 colorTargetCount = desc.renderTarget.getColorTargetCount();
+	for (u32 i = 0; i < colorTargetCount; ++i)
+	{
+		const auto& blendState = desc.blend[i];
+		pipelineDescriptor.colorAttachments[i].pixelFormat = convertPixelFormat(desc.renderTarget.colorFormats[i]);
+		pipelineDescriptor.colorAttachments[i].blendingEnabled = blendState.enable;
+		pipelineDescriptor.colorAttachments[i].rgbBlendOperation = convertBlendOp(blendState.op);
+		pipelineDescriptor.colorAttachments[i].sourceRGBBlendFactor = convertBlendParam(blendState.src);
+		pipelineDescriptor.colorAttachments[i].destinationRGBBlendFactor = convertBlendParam(blendState.dst);
+		if (blendState.alphaSeparate)
+		{
+			pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.alphaOp);
+			pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.alphaSrc);
+			pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.alphaDst);
+		}
+		else
+		{
+			pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.op);
+			pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.src);
+			pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.dst);
+		}
+	}
+
+	NSError* error = nullptr;
+	result.renderPipeline = [g_metalDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&error];
+	[pipelineDescriptor release];
+	if (!result.renderPipeline)
+	{
+		Log::error("Failed to create render pipeline state: %s",
+			error ? [error.localizedDescription cStringUsingEncoding:NSASCIIStringEncoding] : "unknown error");
+		return {};
+	}
+
+	// Create depth-stencil state
+	MTLDepthStencilDescriptor* dsDescriptor = [MTLDepthStencilDescriptor new];
+	dsDescriptor.depthCompareFunction = desc.depthStencil.enable ? convertCompareFunc(desc.depthStencil.compareFunc) : MTLCompareFunctionAlways;
+	dsDescriptor.depthWriteEnabled = desc.depthStencil.enable ? desc.depthStencil.writeEnable : false;
+	result.depthStencilState = [g_metalDevice newDepthStencilStateWithDescriptor:dsDescriptor];
+	[dsDescriptor release];
+
+	return GfxDevice::makeOwn(retainResource(g_device->m_resources.renderPipelines, result));
+}
+
+GfxOwn<GfxComputePipeline> Gfx_CreateComputePipeline(const GfxComputePipelineDesc& desc)
+{
+	RUSH_ASSERT(desc.cs.valid());
+
+	ComputePipelineMTL result;
+	result.uniqueId = g_device->generateId();
+	result.desc = desc;
+
+	id<MTLFunction> computeShader = g_device->m_resources.shaders[desc.cs].function;
+	NSError* error = nullptr;
+	result.computePipeline = [g_metalDevice newComputePipelineStateWithFunction:computeShader error:&error];
+	if (!result.computePipeline)
+	{
+		Log::error("Failed to create compute pipeline state: %s",
+			error ? [error.localizedDescription cStringUsingEncoding:NSASCIIStringEncoding] : "unknown error");
+		return {};
+	}
+
+	result.workGroupSize = desc.workGroupSize;
+
+	initBindingOffsets(desc.bindings, result.constantBufferOffset, result.samplerOffset,
+		result.sampledImageOffset, result.storageImageOffset, result.storageBufferOffset,
+		result.descriptorSetCount, result.defaultDescriptorSet);
+
+	return GfxDevice::makeOwn(retainResource(g_device->m_resources.computePipelines, result));
 }
 
 GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPipelineDesc& desc)
@@ -1001,7 +1110,8 @@ void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxB
 
 	if (rc->m_pendingRayTracingPipeline != pipelineHandle)
 	{
-		rc->m_pendingTechnique.reset();
+		rc->m_pendingRenderPipeline.reset();
+		rc->m_pendingComputePipeline.reset();
 		rc->m_pendingRayTracingPipeline.retain(pipelineHandle);
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline
 			| GfxContext::DirtyStateFlag_Descriptors
@@ -1017,73 +1127,61 @@ void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxB
 
 // texture
 
+// clang-format off
+#define RUSH_MTL_PIXEL_FORMAT_LIST(X) \
+	X(GfxFormat_D24_Unorm_S8_Uint, MTLPixelFormatDepth24Unorm_Stencil8) \
+	X(GfxFormat_D32_Float,         MTLPixelFormatDepth32Float) \
+	X(GfxFormat_D32_Float_S8_Uint, MTLPixelFormatDepth32Float_Stencil8) \
+	X(GfxFormat_R8_Unorm,          MTLPixelFormatR8Unorm) \
+	X(GfxFormat_R16_Float,         MTLPixelFormatR16Float) \
+	X(GfxFormat_R16_Uint,          MTLPixelFormatR16Uint) \
+	X(GfxFormat_R32_Float,         MTLPixelFormatR32Float) \
+	X(GfxFormat_R32_Uint,          MTLPixelFormatR32Uint) \
+	X(GfxFormat_RG16_Float,        MTLPixelFormatRG16Float) \
+	X(GfxFormat_RG32_Float,        MTLPixelFormatRG32Float) \
+	X(GfxFormat_RGBA16_Float,      MTLPixelFormatRGBA16Float) \
+	X(GfxFormat_RGBA16_Unorm,      MTLPixelFormatRGBA16Unorm) \
+	X(GfxFormat_RGBA32_Float,      MTLPixelFormatRGBA32Float) \
+	X(GfxFormat_RGBA8_Unorm,       MTLPixelFormatRGBA8Unorm) \
+	X(GfxFormat_RGBA8_sRGB,        MTLPixelFormatRGBA8Unorm_sRGB) \
+	X(GfxFormat_BGRA8_Unorm,       MTLPixelFormatBGRA8Unorm) \
+	X(GfxFormat_BGRA8_sRGB,        MTLPixelFormatBGRA8Unorm_sRGB) \
+	X(GfxFormat_BC1_Unorm,         MTLPixelFormatBC1_RGBA) \
+	X(GfxFormat_BC1_Unorm_sRGB,    MTLPixelFormatBC1_RGBA_sRGB) \
+	X(GfxFormat_BC2_Unorm,         MTLPixelFormatBC2_RGBA) \
+	X(GfxFormat_BC2_Unorm_sRGB,    MTLPixelFormatBC2_RGBA_sRGB) \
+	X(GfxFormat_BC3_Unorm,         MTLPixelFormatBC3_RGBA) \
+	X(GfxFormat_BC3_Unorm_sRGB,    MTLPixelFormatBC3_RGBA_sRGB) \
+	X(GfxFormat_BC5_Unorm,         MTLPixelFormatBC5_RGUnorm) \
+	X(GfxFormat_BC6H_SFloat,       MTLPixelFormatBC6H_RGBFloat) \
+	X(GfxFormat_BC6H_UFloat,       MTLPixelFormatBC6H_RGBUfloat) \
+	X(GfxFormat_BC7_Unorm,         MTLPixelFormatBC7_RGBAUnorm) \
+	X(GfxFormat_BC7_Unorm_sRGB,    MTLPixelFormatBC7_RGBAUnorm_sRGB)
+// clang-format on
+
 static MTLPixelFormat convertPixelFormat(GfxFormat format)
 {
-	switch(format)
+	switch (format)
 	{
+#define RUSH_MTL_CASE_TO_MTL(gfx, mtl) case gfx: return mtl;
+		RUSH_MTL_PIXEL_FORMAT_LIST(RUSH_MTL_CASE_TO_MTL)
+#undef RUSH_MTL_CASE_TO_MTL
+		case GfxFormat_D24_Unorm_X8: return MTLPixelFormatDepth24Unorm_Stencil8;
 		default:
-		case GfxFormat_RGB8_Unorm:
 			Log::error("Unsupported pixel format");
 			return MTLPixelFormatInvalid;
-		case GfxFormat_D24_Unorm_S8_Uint:
-			return MTLPixelFormatDepth24Unorm_Stencil8;
-		case GfxFormat_D24_Unorm_X8:
-			return MTLPixelFormatDepth24Unorm_Stencil8;
-		case GfxFormat_D32_Float:
-			return MTLPixelFormatDepth32Float;
-		case GfxFormat_D32_Float_S8_Uint:
-			return MTLPixelFormatDepth32Float_Stencil8;
-		case GfxFormat_R8_Unorm:
-			return MTLPixelFormatR8Unorm;
-		case GfxFormat_R16_Float:
-			return MTLPixelFormatR16Float;
-		case GfxFormat_R16_Uint:
-			return MTLPixelFormatR16Uint;
-		case GfxFormat_R32_Float:
-			return MTLPixelFormatR32Float;
-		case GfxFormat_R32_Uint:
-			return MTLPixelFormatR32Uint;
-		case GfxFormat_RG16_Float:
-			return MTLPixelFormatRG16Float;
-		case GfxFormat_RG32_Float:
-			return MTLPixelFormatRG32Float;
-		case GfxFormat_RGBA16_Float:
-			return MTLPixelFormatRGBA16Float;
-		case GfxFormat_RGBA16_Unorm:
-			return MTLPixelFormatRGBA16Unorm;
-		case GfxFormat_RGBA32_Float:
-			return MTLPixelFormatRGBA32Float;
-		case GfxFormat_RGBA8_Unorm:
-			return MTLPixelFormatRGBA8Unorm;
-		case GfxFormat_RGBA8_sRGB:
-			return MTLPixelFormatRGBA8Unorm_sRGB;
-		case GfxFormat_BGRA8_Unorm:
-			return MTLPixelFormatBGRA8Unorm;
-		case GfxFormat_BGRA8_sRGB:
-			return MTLPixelFormatBGRA8Unorm_sRGB;
-		case GfxFormat_BC1_Unorm:
-			return MTLPixelFormatBC1_RGBA;
-		case GfxFormat_BC1_Unorm_sRGB:
-			return MTLPixelFormatBC1_RGBA_sRGB;
-		case GfxFormat_BC2_Unorm:
-			return MTLPixelFormatBC2_RGBA;
-		case GfxFormat_BC2_Unorm_sRGB:
-			return MTLPixelFormatBC2_RGBA_sRGB;
-		case GfxFormat_BC3_Unorm:
-			return MTLPixelFormatBC3_RGBA;
-		case GfxFormat_BC3_Unorm_sRGB:
-			return MTLPixelFormatBC3_RGBA_sRGB;
-		case GfxFormat_BC5_Unorm:
-			return MTLPixelFormatBC5_RGUnorm;
-		case GfxFormat_BC6H_SFloat:
-			return MTLPixelFormatBC6H_RGBFloat;
-		case GfxFormat_BC6H_UFloat:
-			return MTLPixelFormatBC6H_RGBUfloat;
-		case GfxFormat_BC7_Unorm:
-			return MTLPixelFormatBC7_RGBAUnorm;
-		case GfxFormat_BC7_Unorm_sRGB:
-			return MTLPixelFormatBC7_RGBAUnorm_sRGB;
-	};
+	}
+}
+
+static GfxFormat convertPixelFormat(MTLPixelFormat format)
+{
+	switch (format)
+	{
+#define RUSH_MTL_CASE_TO_GFX(gfx, mtl) case mtl: return gfx;
+		RUSH_MTL_PIXEL_FORMAT_LIST(RUSH_MTL_CASE_TO_GFX)
+#undef RUSH_MTL_CASE_TO_GFX
+		default: return GfxFormat_Unknown;
+	}
 }
 
 TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels)
@@ -1208,21 +1306,6 @@ const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h)
 }
 
 
-// blend state
-
-void BlendStateMTL::destroy()
-{
-}
-
-GfxOwn<GfxBlendState> Gfx_CreateBlendState(const GfxBlendStateDesc& desc)
-{
-	BlendStateMTL result;
-	result.uniqueId = g_device->generateId();
-	result.desc = desc;
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.blendStates, result));
-}
-
-
 // sampler state
 
 void SamplerMTL::destroy()
@@ -1308,46 +1391,6 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 	[samplerDescriptor release];
 
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.samplers, result));
-}
-
-
-// depth stencil state
-
-void DepthStencilStateMTL::destroy()
-{
-	[native release];
-}
-
-GfxOwn<GfxDepthStencilState> Gfx_CreateDepthStencilState(const GfxDepthStencilDesc& desc)
-{
-	DepthStencilStateMTL result;
-	result.uniqueId = g_device->generateId();
-
-	MTLDepthStencilDescriptor* descriptor = [MTLDepthStencilDescriptor new];
-
-	descriptor.depthCompareFunction = desc.enable ? convertCompareFunc(desc.compareFunc) : MTLCompareFunctionAlways;
-	descriptor.depthWriteEnabled = desc.enable ? desc.writeEnable : false;
-
-	result.native = [g_metalDevice newDepthStencilStateWithDescriptor:descriptor];
-
-	[descriptor release];
-
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.depthStencilStates, result));
-}
-
-
-// rasterizer state
-
-void RasterizerStateMTL::destroy()
-{
-}
-
-GfxOwn<GfxRasterizerState> Gfx_CreateRasterizerState(const GfxRasterizerDesc& desc)
-{
-	RasterizerStateMTL result;
-	result.uniqueId = g_device->generateId();
-	result.desc = desc;
-	return GfxDevice::makeOwn(retainResource(g_device->m_resources.rasterizerStates, result));
 }
 
 
@@ -1492,7 +1535,7 @@ void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 	}
 
 	BufferMTL& buffer = g_device->m_resources.buffers[lock.handle];
-	if (buffer.native)
+	if (buffer.native && [buffer.native storageMode] == MTLStorageModeManaged)
 	{
 		[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
 	}
@@ -1603,7 +1646,10 @@ void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
 	}
 
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
-	[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
+	if ([buffer.native storageMode] == MTLStorageModeManaged)
+	{
+		[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
+	}
 }
 
 
@@ -1752,8 +1798,8 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 
 	if (desc.type == GfxAccelerationStructureType::BottomLevel)
 	{
-		result.geometries.resize(desc.geometyCount);
-		for (u32 i = 0; i < desc.geometyCount; ++i)
+		result.geometries.resize(desc.geometryCount);
+		for (u32 i = 0; i < desc.geometryCount; ++i)
 		{
 			result.geometries[i] = desc.geometries[i];
 		}
@@ -1917,16 +1963,10 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 
 GfxContext::GfxContext()
 {
-    MTLDepthStencilDescriptor* depthStencilDescriptor = [MTLDepthStencilDescriptor new];
-    depthStencilDescriptor.depthCompareFunction = MTLCompareFunctionAlways;
-    depthStencilDescriptor.depthWriteEnabled = NO;
-    m_depthStencilState = [g_metalDevice newDepthStencilStateWithDescriptor:depthStencilDescriptor];
-	[depthStencilDescriptor release];
 }
 
 GfxContext::~GfxContext()
 {
-	[m_depthStencilState release];
 	[m_indexBuffer release];
 	RUSH_ASSERT(m_commandEncoder == nil);
 	RUSH_ASSERT(m_computeCommandEncoder == nil);
@@ -1984,30 +2024,38 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 {
 	for (u64 j=0; j<ds.constantBuffers.size(); ++j)
 	{
-		[commandEncoder
-		 useResource:g_device->m_resources.buffers[ds.constantBuffers[j]].native
-		 usage:MTLResourceUsageRead];
+		id<MTLResource> res = g_device->m_resources.buffers[ds.constantBuffers[j]].native;
+		if (res)
+		{
+			[commandEncoder useResource:res usage:MTLResourceUsageRead];
+		}
 	}
 
 	for (u64 j=0; j<ds.textures.size(); ++j)
 	{
-		[commandEncoder
-		 useResource:g_device->m_resources.textures[ds.textures[j]].native
-		 usage:MTLResourceUsageRead];
+		id<MTLResource> res = g_device->m_resources.textures[ds.textures[j]].native;
+		if (res)
+		{
+			[commandEncoder useResource:res usage:MTLResourceUsageRead];
+		}
 	}
 
 	for (u64 j=0; j<ds.storageImages.size(); ++j)
 	{
-		[commandEncoder
-		 useResource:g_device->m_resources.textures[ds.storageImages[j]].native
-		 usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+		id<MTLResource> res = g_device->m_resources.textures[ds.storageImages[j]].native;
+		if (res)
+		{
+			[commandEncoder useResource:res usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+		}
 	}
 
 	for (u64 j=0; j<ds.storageBuffers.size(); ++j)
 	{
-		[commandEncoder
-		 useResource:g_device->m_resources.buffers[ds.storageBuffers[j]].native
-		 usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+		id<MTLResource> res = g_device->m_resources.buffers[ds.storageBuffers[j]].native;
+		if (res)
+		{
+			[commandEncoder useResource:res usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+		}
 	}
 
 	for (u64 j=0; j<ds.typedBufferTextures.size(); ++j)
@@ -2043,17 +2091,18 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 
 void GfxContext::applyState()
 {
-	// TODO: cache pipelines
 	if (m_dirtyState == 0)
 	{
 		return;
 	}
 
 	const bool useRayTracing = m_pendingRayTracingPipeline.valid();
-	const bool useTechnique = m_pendingTechnique.valid();
-	RUSH_ASSERT(useRayTracing || useTechnique);
+	const bool useRenderPipeline = m_pendingRenderPipeline.valid();
+	const bool useComputePipeline = m_pendingComputePipeline.valid();
+	RUSH_ASSERT(useRayTracing || useRenderPipeline || useComputePipeline);
 
-	TechniqueMTL* technique = nullptr;
+	RenderPipelineMTL* renderPipeline = nullptr;
+	ComputePipelineMTL* computePipeline = nullptr;
 	RayTracingPipelineMTL* rayTracingPipeline = nullptr;
 	const GfxShaderBindingDesc* bindingDesc = nullptr;
 	DescriptorSetMTL* defaultDescriptorSet = nullptr;
@@ -2066,12 +2115,19 @@ void GfxContext::applyState()
 		defaultDescriptorSet = &rayTracingPipeline->defaultDescriptorSet;
 		descriptorSetCount = rayTracingPipeline->descriptorSetCount;
 	}
+	else if (useComputePipeline)
+	{
+		computePipeline = &g_device->m_resources.computePipelines[m_pendingComputePipeline.get()];
+		bindingDesc = &computePipeline->desc.bindings;
+		defaultDescriptorSet = &computePipeline->defaultDescriptorSet;
+		descriptorSetCount = computePipeline->descriptorSetCount;
+	}
 	else
 	{
-		technique = &g_device->m_resources.techniques[m_pendingTechnique.get()];
-		bindingDesc = &technique->desc.bindings;
-		defaultDescriptorSet = &technique->defaultDescriptorSet;
-		descriptorSetCount = technique->descriptorSetCount;
+		renderPipeline = &g_device->m_resources.renderPipelines[m_pendingRenderPipeline.get()];
+		bindingDesc = &renderPipeline->desc.bindings;
+		defaultDescriptorSet = &renderPipeline->defaultDescriptorSet;
+		descriptorSetCount = renderPipeline->descriptorSetCount;
 	}
 
 	if ((m_dirtyState & DirtyStateFlag_Pipeline) && bindingDesc->useDefaultDescriptorSet)
@@ -2090,121 +2146,46 @@ void GfxContext::applyState()
 			}
 			[m_computeCommandEncoder setComputePipelineState:rayTracingPipeline->rayGenPipeline];
 		}
-		else if (technique->computePipeline)
+		else if (useComputePipeline)
 		{
 			if (!m_computeCommandEncoder)
 			{
 				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
 				[m_computeCommandEncoder retain];
 			}
-
-			[m_computeCommandEncoder setComputePipelineState:technique->computePipeline];
+			[m_computeCommandEncoder setComputePipelineState:computePipeline->computePipeline];
 		}
 		else
 		{
-			MTLRenderPipelineDescriptor* pipelineDescriptor = [MTLRenderPipelineDescriptor new];
+			[m_commandEncoder setRenderPipelineState:renderPipeline->renderPipeline];
+			[m_commandEncoder setDepthStencilState:renderPipeline->depthStencilState];
 
-			const auto& vertexFormat = g_device->m_resources.vertexFormats[technique->vf.get()];
-			const auto& vertexShader = g_device->m_resources.shaders[technique->vs.get()];
-			const auto& pixelShader = g_device->m_resources.shaders[technique->ps.get()];
-
-			pipelineDescriptor.inputPrimitiveTopology = m_primitiveTopology;
-			pipelineDescriptor.vertexDescriptor = vertexFormat.native;
-			pipelineDescriptor.vertexFunction = vertexShader.function;
-			pipelineDescriptor.fragmentFunction = pixelShader.function;
-
-			if (m_passDesc.depth.valid())
+			const auto& vertexFormat = renderPipeline->desc.vertexFormat;
+			u32 usedStreamMask = 0;
+			for (u32 i = 0; i < u32(vertexFormat.elementCount()); ++i)
 			{
-				pipelineDescriptor.depthAttachmentPixelFormat =
-					[g_device->m_resources.textures[m_passDesc.depth].native pixelFormat];
+				usedStreamMask |= 1 << vertexFormat.element(i).stream;
 			}
-			else
+			for (u32 stream = 0; usedStreamMask != 0; ++stream, usedStreamMask >>= 1)
 			{
-				pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatInvalid;
-			}
-
-			const auto& blendState = g_device->m_resources.blendStates[m_pendingBlendState.get()].desc;
-
-			const bool useBackBuffer = !m_passDesc.color[0].valid() && !m_passDesc.depth.valid();
-			u32 sampleCount = 1;
-			if (!useBackBuffer)
-			{
-				if (m_passDesc.color[0].valid())
+				if ((usedStreamMask & 1) && m_vertexBuffers[stream].valid())
 				{
-					sampleCount = g_device->m_resources.textures[m_passDesc.color[0]].desc.samples;
-				}
-				else if (m_passDesc.depth.valid())
-				{
-					sampleCount = g_device->m_resources.textures[m_passDesc.depth].desc.samples;
-				}
-			}
-			const u32 rasterSamples = sampleCount > 0 ? sampleCount : 1;
-#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000
-			pipelineDescriptor.rasterSampleCount = rasterSamples;
-#else
-			pipelineDescriptor.sampleCount = rasterSamples;
-#endif
-
-			for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
-			{
-				if ((!useBackBuffer || i!=0) && !m_passDesc.color[i].valid())
-				{
-					break;
-				}
-
-				auto colorTarget = m_passDesc.color[i].valid() ? g_device->m_resources.textures[m_passDesc.color[i]].native : g_device->m_backBufferTexture;
-
-				pipelineDescriptor.colorAttachments[i].pixelFormat = [colorTarget pixelFormat];
-				// TODO: per-RT blend states
-				pipelineDescriptor.colorAttachments[i].blendingEnabled = blendState.enable;
-				pipelineDescriptor.colorAttachments[i].rgbBlendOperation = convertBlendOp(blendState.op);
-				pipelineDescriptor.colorAttachments[i].sourceRGBBlendFactor = convertBlendParam(blendState.src);
-				pipelineDescriptor.colorAttachments[i].destinationRGBBlendFactor = convertBlendParam(blendState.dst);
-				if (blendState.alphaSeparate)
-				{
-					pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.alphaOp);
-					pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.alphaSrc);
-					pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.alphaDst);
-				}
-				else
-				{
-					pipelineDescriptor.colorAttachments[i].alphaBlendOperation = convertBlendOp(blendState.op);
-					pipelineDescriptor.colorAttachments[i].sourceAlphaBlendFactor = convertBlendParam(blendState.src);
-					pipelineDescriptor.colorAttachments[i].destinationAlphaBlendFactor = convertBlendParam(blendState.dst);
+					const auto& bufferDesc = g_device->m_resources.buffers[m_vertexBuffers[stream].get()].desc;
+					const u32 expectedStride = vertexFormat.streamStride(stream);
+					RUSH_ASSERT_MSG(bufferDesc.stride == 0 || bufferDesc.stride == expectedStride,
+						"Vertex buffer stride (%d) does not match pipeline vertex format stream stride (%d) for stream %d",
+						bufferDesc.stride, expectedStride, stream);
 				}
 			}
 
-			NSError* error = nullptr;
-			id<MTLRenderPipelineState> pipelineState = [g_metalDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&error];
-			if (error)
-			{
-				Log::error("Failed to create render pipeline state: %s",
-					[error.localizedDescription cStringUsingEncoding:NSASCIIStringEncoding]);
-			}
+			const auto& rasterDesc = renderPipeline->desc.rasterizer;
+			MTLCullMode cullMode = rasterDesc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
+			[m_commandEncoder setCullMode:cullMode];
+			[m_commandEncoder setFrontFacingWinding:rasterDesc.cullMode == GfxCullMode::CCW ? MTLWindingCounterClockwise : MTLWindingClockwise];
+			[m_commandEncoder setTriangleFillMode:rasterDesc.fillMode == GfxFillMode::Solid ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
+			[m_commandEncoder setDepthBias:rasterDesc.depthBias slopeScale:rasterDesc.depthBiasSlopeScale clamp:0.0f];
 
-			[m_commandEncoder setRenderPipelineState:pipelineState];
-			if (m_pendingDepthStencilState.valid())
-			{
-				const auto& state = g_device->m_resources.depthStencilStates[m_pendingDepthStencilState.get()];
-				[m_commandEncoder setDepthStencilState:state.native];
-			}
-			else
-			{
-				[m_commandEncoder setDepthStencilState:m_depthStencilState];
-			}
-
-			if (m_pendingRasterizerState.valid())
-			{
-				const auto& desc = g_device->m_resources.rasterizerStates[m_pendingRasterizerState.get()].desc;
-				MTLCullMode cullMode = desc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
-				[m_commandEncoder setCullMode:cullMode];
-				[m_commandEncoder setFrontFacingWinding:desc.cullMode == GfxCullMode::CCW ? MTLWindingCounterClockwise : MTLWindingClockwise];
-				[m_commandEncoder setTriangleFillMode:desc.fillMode == GfxFillMode::Solid ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
-				[m_commandEncoder setDepthBias:desc.depthBias slopeScale:desc.depthBiasSlopeScale clamp:1.0f];
-			}
-
-			[pipelineState release];
-			[pipelineDescriptor release];
+			m_primitiveType = convertPrimitiveType(renderPipeline->desc.primitive);
 		}
 	}
 
@@ -2413,6 +2394,8 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	rc->m_commandEncoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
 	[rc->m_commandEncoder retain];
 
+	rc->m_dirtyState = 0xFFFFFFFF;
+
 	id<MTLTexture> viewportTexture = passDescriptor.colorAttachments[0].texture;
 	if (!viewportTexture)
 	{
@@ -2438,6 +2421,13 @@ void Gfx_EndPass(GfxContext* rc)
 	[rc->m_commandEncoder release]; // TODO: when should this be released?
 	rc->m_commandEncoder = nil;
 }
+
+const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc)
+{
+	return rc->m_commandEncoder ? &rc->m_passDesc : nullptr;
+}
+
+
 
 void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 {
@@ -2536,21 +2526,33 @@ void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 	[rc->m_commandEncoder setScissorRect:metalRect];
 }
 
-void Gfx_SetTechnique(GfxContext* rc, GfxTechniqueArg h)
+void Gfx_SetRenderPipeline(GfxContext* rc, GfxRenderPipelineArg h)
 {
+	if (rc->m_pendingRenderPipeline.get() == h)
+	{
+		return;
+	}
 	rc->m_pendingRayTracingPipeline.reset();
-	rc->m_pendingTechnique.retain(h);
+	rc->m_pendingComputePipeline.reset();
+	rc->m_pendingRenderPipeline.retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline
 					 | GfxContext::DirtyStateFlag_VertexBuffer
 					 | GfxContext::DirtyStateFlag_Descriptors
 					 | GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
-void Gfx_SetPrimitive(GfxContext* rc, GfxPrimitive type)
+void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h)
 {
-	rc->m_primitiveType = convertPrimitiveType(type);
-	rc->m_primitiveTopology = convertPrimitiveTopology(type);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Technique;
+	if (rc->m_pendingComputePipeline.get() == h)
+	{
+		return;
+	}
+	rc->m_pendingRayTracingPipeline.reset();
+	rc->m_pendingRenderPipeline.reset();
+	rc->m_pendingComputePipeline.retain(h);
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Pipeline
+					 | GfxContext::DirtyStateFlag_Descriptors
+					 | GfxContext::DirtyStateFlag_DescriptorSet;
 }
 
 void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h)
@@ -2565,8 +2567,10 @@ void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferA
 	[rc->m_indexBuffer retain];
 }
 
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, u32 stride, GfxBufferArg h)
+void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h)
 {
+	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
+	rc->m_vertexBuffers[idx].retain(h);
 	// FIXME: binding only applies to active encoder; calls before BeginPass are dropped.
 	[rc->m_commandEncoder setVertexBuffer:g_device->m_resources.buffers[h].native offset:offset atIndex:(GfxContext::MaxConstantBuffers+idx)];
 }
@@ -2685,24 +2689,6 @@ void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h)
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
 }
 
-void Gfx_SetBlendState(GfxContext* rc, GfxBlendStateArg h)
-{
-	rc->m_pendingBlendState.retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_BlendState;
-}
-
-void Gfx_SetDepthStencilState(GfxContext* rc, GfxDepthStencilStateArg h)
-{
-	rc->m_pendingDepthStencilState.retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_DepthStencilState;
-}
-
-void Gfx_SetRasterizerState(GfxContext* rc, GfxRasterizerStateArg h)
-{
-	rc->m_pendingRasterizerState.retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_RasterizerState;
-}
-
 void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset)
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
@@ -2718,7 +2704,7 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
 
 	rc->applyState();
 
-	const auto& workGroupSize = g_device->m_resources.techniques[rc->m_pendingTechnique.get()].workGroupSize;
+	const auto& workGroupSize = g_device->m_resources.computePipelines[rc->m_pendingComputePipeline.get()].workGroupSize;
 
 	[rc->m_computeCommandEncoder
 		dispatchThreadgroups:MTLSizeMake(sizeX, sizeY, sizeZ)
@@ -2733,14 +2719,14 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* p
 
 	if (pushConstants)
 	{
-		RUSH_ASSERT(rc->m_pendingTechnique.valid());
-		const auto& technique = g_device->m_resources.techniques[rc->m_pendingTechnique.get()];
-		RUSH_ASSERT(technique.desc.bindings.pushConstantSize == pushConstantsSize);
-		setPushConstants(rc, pushConstants, pushConstantsSize, technique.desc.bindings.pushConstantStageFlags,
-			technique.descriptorSetCount);
+		RUSH_ASSERT(rc->m_pendingComputePipeline.valid());
+		const auto& pipeline = g_device->m_resources.computePipelines[rc->m_pendingComputePipeline.get()];
+		RUSH_ASSERT(pipeline.desc.bindings.pushConstantSize == pushConstantsSize);
+		setPushConstants(rc, pushConstants, pushConstantsSize, pipeline.desc.bindings.pushConstantStageFlags,
+			pipeline.descriptorSetCount);
 	}
 
-	const auto& workGroupSize = g_device->m_resources.techniques[rc->m_pendingTechnique.get()].workGroupSize;
+	const auto& workGroupSize = g_device->m_resources.computePipelines[rc->m_pendingComputePipeline.get()].workGroupSize;
 
 	[rc->m_computeCommandEncoder
 		dispatchThreadgroups:MTLSizeMake(sizeX, sizeY, sizeZ)
@@ -2787,11 +2773,11 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 
 	if (pushConstants)
 	{
-		RUSH_ASSERT(rc->m_pendingTechnique.valid());
-		const auto& technique = g_device->m_resources.techniques[rc->m_pendingTechnique.get()];
-		RUSH_ASSERT(technique.desc.bindings.pushConstantSize == pushConstantsSize);
-		setPushConstants(rc, pushConstants, pushConstantsSize, technique.desc.bindings.pushConstantStageFlags,
-			technique.descriptorSetCount);
+		RUSH_ASSERT(rc->m_pendingRenderPipeline.valid());
+		const auto& pipeline = g_device->m_resources.renderPipelines[rc->m_pendingRenderPipeline.get()];
+		RUSH_ASSERT(pipeline.desc.bindings.pushConstantSize == pushConstantsSize);
+		setPushConstants(rc, pushConstants, pushConstantsSize, pipeline.desc.bindings.pushConstantStageFlags,
+			pipeline.descriptorSetCount);
 	}
 
 	[rc->m_commandEncoder
