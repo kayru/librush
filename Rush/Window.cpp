@@ -185,6 +185,8 @@ const char* toString(Key key)
 	case Key_RightShift: return "Key_RightShift";
 	case Key_RightControl: return "Key_RightControl";
 	case Key_RightAlt: return "Key_RightAlt";
+	case Key_LeftSuper: return "Key_LeftSuper";
+	case Key_RightSuper: return "Key_RightSuper";
 	}
 }
 
