@@ -234,6 +234,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 		m_metalLayer = window->getMetalLayer();
 		m_metalLayer.device = m_metalDevice;
 		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+		m_metalLayer.framebufferOnly = NO;
 	}
 
 	m_progressEvent = [m_metalDevice newSharedEvent];
@@ -3043,6 +3044,11 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 
 	// Allocate a fresh argument buffer each update to avoid overwriting in-flight GPU data.
 	g_device->enqueueDestroy(ds.argBuffer);
+	if (ds.argBufferSize == 0)
+	{
+		ds.argBuffer = nil;
+		return;
+	}
 	ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
 
 	[ds.encoder setArgumentBuffer:ds.argBuffer offset:0];
