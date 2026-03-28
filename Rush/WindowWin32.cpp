@@ -332,9 +332,31 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	}
 	else if (message != WM_MOUSEWHEEL && message != WM_MOUSEHWHEEL)
 	{
-		int xPos    = GET_X_LPARAM(lparam);
-		int yPos    = GET_Y_LPARAM(lparam);
-		m_mouse.pos = Vec2((float)xPos, (float)yPos);
+		const int xPos = GET_X_LPARAM(lparam);
+		const int yPos = GET_Y_LPARAM(lparam);
+
+		if (m_mouseLocked)
+		{
+			RECT clientRect;
+			GetClientRect(m_hwnd, &clientRect);
+			const int centerX = (clientRect.left + clientRect.right) / 2;
+			const int centerY = (clientRect.top + clientRect.bottom) / 2;
+
+			const float dx = (float)(xPos - centerX);
+			const float dy = (float)(yPos - centerY);
+			m_mouse.pos += Vec2(dx, dy);
+
+			if (dx != 0.0f || dy != 0.0f)
+			{
+				POINT screenCenter = {centerX, centerY};
+				ClientToScreen(m_hwnd, &screenCenter);
+				SetCursorPos(screenCenter.x, screenCenter.y);
+			}
+		}
+		else
+		{
+			m_mouse.pos = Vec2((float)xPos, (float)yPos);
+		}
 	}
 
 	switch (message)
