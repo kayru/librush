@@ -426,7 +426,7 @@ void WindowMac::updateResolutionScale()
 		{
 			const NSRect bounds = [contentView bounds];
 			m_metalLayer.frame = bounds;
-			const Tuple2i pendingSize((int)bounds.size.width, (int)bounds.size.height);
+			const Tuple2i pendingSize{(int)bounds.size.width, (int)bounds.size.height};
 			if (pendingSize.x > 0 && pendingSize.y > 0 && m_size != pendingSize)
 			{
 				m_size = pendingSize;
