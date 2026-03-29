@@ -193,7 +193,10 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	}
 	else if (desc.maximized)
 	{
-		[window zoom:nil];
+		[window setFrame:[mainScreen visibleFrame] display:YES animate:NO];
+		NSSize contentSize = [[window contentView] frame].size;
+		updateResolutionScale();
+		processResize((float)contentSize.width, (float)contentSize.height);
 	}
 }
 
