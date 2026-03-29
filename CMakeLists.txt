@@ -36,6 +36,18 @@ set_property(CACHE RUSH_RENDER_API PROPERTY STRINGS
 	MTL
 )
 
+set(RUSH_PLATFORM_SOURCES_WIN32
+	Rush/PlatformWin32.cpp
+	Rush/WindowWin32.cpp
+	Rush/WindowWin32.h
+)
+
+set(RUSH_PLATFORM_SOURCES_LINUX
+	Rush/PlatformLinux.cpp
+	Rush/WindowXCB.cpp
+	Rush/WindowXCB.h
+)
+
 add_library(Rush STATIC
 	Rush/GfxBitmapFont.cpp
 	Rush/GfxBitmapFont.h
@@ -54,8 +66,6 @@ add_library(Rush STATIC
 	Rush/MathTypes.h
 	Rush/Platform.cpp
 	Rush/Platform.h
-	Rush/PlatformLinux.cpp
-	Rush/PlatformWin32.cpp
 	Rush/Rush.h
 	Rush/UtilArray.h
 	Rush/UtilBuffer.h
@@ -80,10 +90,16 @@ add_library(Rush STATIC
 	Rush/UtilTuple.h
 	Rush/Window.cpp
 	Rush/Window.h
-	Rush/WindowWin32.cpp
-	Rush/WindowWin32.h
-	Rush/WindowXCB.cpp
-	Rush/WindowXCB.h
+	${RUSH_PLATFORM_SOURCES_WIN32}
+	${RUSH_PLATFORM_SOURCES_LINUX}
+)
+
+# Platform files are in the source list for IDE visibility,
+# but only compiled on their respective platforms.
+set_source_files_properties(
+	${RUSH_PLATFORM_SOURCES_WIN32}
+	${RUSH_PLATFORM_SOURCES_LINUX}
+	PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
 set_property(TARGET Rush PROPERTY CXX_STANDARD 20)
@@ -101,6 +117,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		NOMINMAX
 		WIN32_LEAN_AND_MEAN
 	)
+	set_source_files_properties(${RUSH_PLATFORM_SOURCES_WIN32} PROPERTIES HEADER_FILE_ONLY FALSE)
 
 	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_WIN32_KHR)
 
@@ -113,6 +130,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	# find_package(XCB REQUIRED)
 	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
 	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
+	set_source_files_properties(${RUSH_PLATFORM_SOURCES_LINUX} PROPERTIES HEADER_FILE_ONLY FALSE)
 	target_link_libraries(Rush INTERFACE xcb xcb-keysyms pthread dl)
 
 	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_XCB_KHR)
