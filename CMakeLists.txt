@@ -48,6 +48,12 @@ set(RUSH_PLATFORM_SOURCES_LINUX
 	Rush/WindowXCB.h
 )
 
+set(RUSH_PLATFORM_SOURCES_APPLE
+	Rush/PlatformApple.mm
+	Rush/WindowApple.h
+	Rush/WindowApple.mm
+)
+
 add_library(Rush STATIC
 	Rush/GfxBitmapFont.cpp
 	Rush/GfxBitmapFont.h
@@ -92,6 +98,7 @@ add_library(Rush STATIC
 	Rush/Window.h
 	${RUSH_PLATFORM_SOURCES_WIN32}
 	${RUSH_PLATFORM_SOURCES_LINUX}
+	${RUSH_PLATFORM_SOURCES_APPLE}
 )
 
 # Platform files are in the source list for IDE visibility,
@@ -99,6 +106,7 @@ add_library(Rush STATIC
 set_source_files_properties(
 	${RUSH_PLATFORM_SOURCES_WIN32}
 	${RUSH_PLATFORM_SOURCES_LINUX}
+	${RUSH_PLATFORM_SOURCES_APPLE}
 	PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
@@ -135,16 +143,21 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 
 	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_XCB_KHR)
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+
+	target_compile_definitions(Rush PUBLIC
+		RUSH_PLATFORM_IOS
+	)
+	set_source_files_properties(${RUSH_PLATFORM_SOURCES_APPLE} PROPERTIES HEADER_FILE_ONLY FALSE)
+
+	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_IOS_MVK)
+
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 	target_compile_definitions(Rush PUBLIC
 		RUSH_PLATFORM_MAC
 	)
-	target_sources(Rush PRIVATE
-		Rush/PlatformMac.mm
-		Rush/WindowMac.h
-		Rush/WindowMac.mm
-	)
+	set_source_files_properties(${RUSH_PLATFORM_SOURCES_APPLE} PROPERTIES HEADER_FILE_ONLY FALSE)
 
 	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_MACOS_MVK)
 
@@ -182,11 +195,22 @@ if (${RUSH_RENDER_API} MATCHES "MTL")
 	)
 endif()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	find_library(Metal_LIBRARIES Metal)
+	find_library(UIKit_LIBRARIES UIKit)
+	find_library(QuartzCore_LIBRARIES QuartzCore)
+	find_library(Foundation_LIBRARIES Foundation)
+	target_link_libraries(Rush INTERFACE
+		${Metal_LIBRARIES}
+		${UIKit_LIBRARIES}
+		${QuartzCore_LIBRARIES}
+		${Foundation_LIBRARIES}
+	)
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	find_library(Metal_LIBRARIES Metal)
 	find_library(AppKit_LIBRARIES AppKit)
 	find_library(QuartzCore_LIBRARIES QuartzCore)
-	target_link_libraries(Rush INTERFACE 
+	target_link_libraries(Rush INTERFACE
 		${Metal_LIBRARIES}
 		${AppKit_LIBRARIES}
 		${QuartzCore_LIBRARIES}
@@ -211,3 +235,5 @@ if (MSVC)
 else()
 	target_compile_options(Rush PRIVATE -Wall -Werror)
 endif()
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Rush.cmake")

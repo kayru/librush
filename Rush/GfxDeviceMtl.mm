@@ -9,7 +9,7 @@
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
-#include "WindowMac.h"
+#include "WindowApple.h"
 
 static void waitForSharedEvent(id<MTLSharedEvent> event, uint64_t targetValue)
 {
@@ -46,13 +46,13 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
 static id<MTLDevice> g_metalDevice = nil;
-static constexpr u32 kPushConstantMaxSize = 4096;
+static constexpr u32 PushConstantMaxSize = 4096;
 
 static void setPushConstants(GfxContext* rc, const void* data, u32 size, GfxStageFlags stages, u32 bufferIndex)
 {
 	RUSH_ASSERT(data);
 	RUSH_ASSERT(size > 0);
-	RUSH_ASSERT(size <= kPushConstantMaxSize);
+	RUSH_ASSERT(size <= PushConstantMaxSize);
 
 	if (!!(stages & GfxStageFlags::Vertex))
 	{
@@ -210,15 +210,14 @@ static MTLIndexType convertRayTracingIndexType(GfxFormat format)
 
 GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 {
-	auto window = static_cast<WindowMac*>(_window);
-	m_headless = cfg.headless || (window == nullptr);
+	m_headless = cfg.headless || (_window == nullptr);
 
-	m_window = window;
+	m_window = _window;
 	if (m_window)
 	{
 		m_window->retain();
 		m_resizeEvents.mask = WindowEventMask_Resize;
-		m_resizeEvents.setOwner(window);
+		m_resizeEvents.setOwner(_window);
 	}
 
 	g_device = this;
@@ -231,7 +230,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 
 	if (!m_headless)
 	{
-		m_metalLayer = window->getMetalLayer();
+		m_metalLayer = static_cast<WindowApple*>(_window)->getMetalLayer();
 		m_metalLayer.device = m_metalDevice;
 		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 		m_metalLayer.framebufferOnly = NO;
@@ -928,7 +927,7 @@ GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& 
 	}
 
 	const u32 rasterSamples = desc.renderTarget.sampleCount > 0 ? desc.renderTarget.sampleCount : 1;
-#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000
+#if defined(RUSH_PLATFORM_IOS) || (defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 130000)
 	pipelineDescriptor.rasterSampleCount = rasterSamples;
 #else
 	pipelineDescriptor.sampleCount = rasterSamples;
@@ -1129,8 +1128,26 @@ void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxB
 // texture
 
 // clang-format off
-#define RUSH_MTL_PIXEL_FORMAT_LIST(X) \
+#if !defined(RUSH_PLATFORM_IOS)
+#define RUSH_MTL_PIXEL_FORMAT_LIST_DESKTOP(X) \
 	X(GfxFormat_D24_Unorm_S8_Uint, MTLPixelFormatDepth24Unorm_Stencil8) \
+	X(GfxFormat_BC1_Unorm,         MTLPixelFormatBC1_RGBA) \
+	X(GfxFormat_BC1_Unorm_sRGB,    MTLPixelFormatBC1_RGBA_sRGB) \
+	X(GfxFormat_BC2_Unorm,         MTLPixelFormatBC2_RGBA) \
+	X(GfxFormat_BC2_Unorm_sRGB,    MTLPixelFormatBC2_RGBA_sRGB) \
+	X(GfxFormat_BC3_Unorm,         MTLPixelFormatBC3_RGBA) \
+	X(GfxFormat_BC3_Unorm_sRGB,    MTLPixelFormatBC3_RGBA_sRGB) \
+	X(GfxFormat_BC5_Unorm,         MTLPixelFormatBC5_RGUnorm) \
+	X(GfxFormat_BC6H_SFloat,       MTLPixelFormatBC6H_RGBFloat) \
+	X(GfxFormat_BC6H_UFloat,       MTLPixelFormatBC6H_RGBUfloat) \
+	X(GfxFormat_BC7_Unorm,         MTLPixelFormatBC7_RGBAUnorm) \
+	X(GfxFormat_BC7_Unorm_sRGB,    MTLPixelFormatBC7_RGBAUnorm_sRGB)
+#else
+#define RUSH_MTL_PIXEL_FORMAT_LIST_DESKTOP(X)
+#endif
+
+#define RUSH_MTL_PIXEL_FORMAT_LIST(X) \
+	RUSH_MTL_PIXEL_FORMAT_LIST_DESKTOP(X) \
 	X(GfxFormat_D32_Float,         MTLPixelFormatDepth32Float) \
 	X(GfxFormat_D32_Float_S8_Uint, MTLPixelFormatDepth32Float_Stencil8) \
 	X(GfxFormat_R8_Unorm,          MTLPixelFormatR8Unorm) \
@@ -1146,18 +1163,7 @@ void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxB
 	X(GfxFormat_RGBA8_Unorm,       MTLPixelFormatRGBA8Unorm) \
 	X(GfxFormat_RGBA8_sRGB,        MTLPixelFormatRGBA8Unorm_sRGB) \
 	X(GfxFormat_BGRA8_Unorm,       MTLPixelFormatBGRA8Unorm) \
-	X(GfxFormat_BGRA8_sRGB,        MTLPixelFormatBGRA8Unorm_sRGB) \
-	X(GfxFormat_BC1_Unorm,         MTLPixelFormatBC1_RGBA) \
-	X(GfxFormat_BC1_Unorm_sRGB,    MTLPixelFormatBC1_RGBA_sRGB) \
-	X(GfxFormat_BC2_Unorm,         MTLPixelFormatBC2_RGBA) \
-	X(GfxFormat_BC2_Unorm_sRGB,    MTLPixelFormatBC2_RGBA_sRGB) \
-	X(GfxFormat_BC3_Unorm,         MTLPixelFormatBC3_RGBA) \
-	X(GfxFormat_BC3_Unorm_sRGB,    MTLPixelFormatBC3_RGBA_sRGB) \
-	X(GfxFormat_BC5_Unorm,         MTLPixelFormatBC5_RGUnorm) \
-	X(GfxFormat_BC6H_SFloat,       MTLPixelFormatBC6H_RGBFloat) \
-	X(GfxFormat_BC6H_UFloat,       MTLPixelFormatBC6H_RGBUfloat) \
-	X(GfxFormat_BC7_Unorm,         MTLPixelFormatBC7_RGBAUnorm) \
-	X(GfxFormat_BC7_Unorm_sRGB,    MTLPixelFormatBC7_RGBAUnorm_sRGB)
+	X(GfxFormat_BGRA8_sRGB,        MTLPixelFormatBGRA8Unorm_sRGB)
 // clang-format on
 
 static MTLPixelFormat convertPixelFormat(GfxFormat format)
@@ -1167,7 +1173,12 @@ static MTLPixelFormat convertPixelFormat(GfxFormat format)
 #define RUSH_MTL_CASE_TO_MTL(gfx, mtl) case gfx: return mtl;
 		RUSH_MTL_PIXEL_FORMAT_LIST(RUSH_MTL_CASE_TO_MTL)
 #undef RUSH_MTL_CASE_TO_MTL
+#if !defined(RUSH_PLATFORM_IOS)
 		case GfxFormat_D24_Unorm_X8: return MTLPixelFormatDepth24Unorm_Stencil8;
+#else
+		case GfxFormat_D24_Unorm_X8: return MTLPixelFormatDepth32Float;
+		case GfxFormat_D24_Unorm_S8_Uint: return MTLPixelFormatDepth32Float_Stencil8;
+#endif
 		default:
 			Log::error("Unsupported pixel format");
 			return MTLPixelFormatInvalid;
@@ -1402,12 +1413,18 @@ void BufferMTL::destroy()
 	if (g_device)
 	{
 		g_device->enqueueDestroy(native);
+		if (stagingBuffer)
+		{
+			g_device->enqueueDestroy(stagingBuffer);
+		}
 	}
 	else
 	{
 		[native release];
+		[stagingBuffer release];
 	}
 	native = nil;
+	stagingBuffer = nil;
 }
 
 void AccelerationStructureMTL::destroy()
@@ -1445,16 +1462,41 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 	{
 		options = MTLResourceStorageModeShared;
 	}
+#elif TARGET_OS_SIMULATOR
+	// iOS simulator requires private storage for buffer-backed textures (typed buffers).
+	const bool isTypedStorage = !!(desc.flags & GfxBufferFlags::Storage) && desc.format != GfxFormat_Unknown;
+	if (isTypedStorage)
+	{
+		options = MTLResourceStorageModePrivate;
+	}
 #endif
 
-	if (data)
+	if (data && !(options & MTLResourceStorageModePrivate))
 	{
 		res.native = [g_metalDevice newBufferWithBytes:data length:bufferSize options:options];
 	}
 	else
 	{
 		res.native = [g_metalDevice newBufferWithLength:bufferSize options:options];
+		if (data)
+		{
+			id<MTLBuffer> staging = [g_metalDevice newBufferWithBytes:data length:bufferSize options:MTLResourceStorageModeShared];
+			id<MTLCommandBuffer> cmd = [g_device->m_commandQueue commandBuffer];
+			id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+			[blit copyFromBuffer:staging sourceOffset:0 toBuffer:res.native destinationOffset:0 size:bufferSize];
+			[blit endEncoding];
+			[cmd commit];
+			[cmd waitUntilCompleted];
+			[staging release];
+		}
 	}
+
+#if TARGET_OS_SIMULATOR
+	if (isTypedStorage && desc.hostVisible)
+	{
+		res.stagingBuffer = [g_metalDevice newBufferWithLength:bufferSize options:MTLResourceStorageModeShared];
+	}
+#endif
 
 	if (desc.debugName)
 	{
@@ -1488,6 +1530,7 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 	}
 
 	BufferMTL& buffer = g_device->m_resources.buffers[vb];
+#if !defined(RUSH_PLATFORM_IOS)
 	if ([buffer.native storageMode] == MTLStorageModeManaged)
 	{
 		id<MTLCommandBuffer> syncCommandBuffer = [g_device->m_commandQueue commandBuffer];
@@ -1497,7 +1540,23 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 		[syncCommandBuffer commit];
 		[syncCommandBuffer waitUntilCompleted];
 	}
-	const u32 bufferSize = (u32)[buffer.native length];
+#endif
+
+	// Private buffers require staging through a shared buffer
+	if (buffer.stagingBuffer)
+	{
+		const u32 bufferSize = (u32)[buffer.native length];
+		id<MTLCommandBuffer> cmd = [g_device->m_commandQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
+		[blit copyFromBuffer:buffer.native sourceOffset:0 toBuffer:buffer.stagingBuffer destinationOffset:0 size:bufferSize];
+		[blit endEncoding];
+		[cmd commit];
+		[cmd waitUntilCompleted];
+	}
+
+	id<MTLBuffer> mapTarget = buffer.stagingBuffer ? buffer.stagingBuffer : buffer.native;
+
+	const u32 bufferSize = (u32)[mapTarget length];
 	if (offset > bufferSize)
 	{
 		Log::error("Gfx_MapBuffer: offset exceeds buffer length");
@@ -1514,7 +1573,7 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 		return {};
 	}
 
-	void* base = [buffer.native contents];
+	void* base = [mapTarget contents];
 	if (!base)
 	{
 		Log::error("Gfx_MapBuffer: buffer contents unavailable");
@@ -1535,11 +1594,13 @@ void Gfx_UnmapBuffer(GfxMappedBuffer& lock)
 		return;
 	}
 
+#if !defined(RUSH_PLATFORM_IOS)
 	BufferMTL& buffer = g_device->m_resources.buffers[lock.handle];
 	if (buffer.native && [buffer.native storageMode] == MTLStorageModeManaged)
 	{
 		[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
 	}
+#endif
 }
 
 void GfxDevice::DestructionQueue::flush()
@@ -1646,11 +1707,13 @@ void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
 		return;
 	}
 
+#if !defined(RUSH_PLATFORM_IOS)
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
 	if ([buffer.native storageMode] == MTLStorageModeManaged)
 	{
 		[buffer.native didModifyRange:NSMakeRange(0, [buffer.native length])];
 	}
+#endif
 }
 
 

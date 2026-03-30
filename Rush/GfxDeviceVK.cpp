@@ -16,7 +16,7 @@
 
 #if defined(RUSH_PLATFORM_MAC)
 #include <vulkan/vulkan_metal.h>
-#include "WindowMac.h"
+#include "WindowApple.h"
 #endif
 
 #include <stdlib.h>

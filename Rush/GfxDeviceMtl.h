@@ -7,7 +7,11 @@
 #include "UtilResourcePool.h"
 #include "Window.h"
 
+#if defined(RUSH_PLATFORM_IOS)
+#import <UIKit/UIKit.h>
+#else
 #import <Cocoa/Cocoa.h>
+#endif
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
@@ -31,6 +35,7 @@ struct BufferMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 	id<MTLBuffer> native = nil;
+	id<MTLBuffer> stagingBuffer = nil; // shared-mode buffer for readback of private buffers
 	GfxBufferDesc desc;
 	MTLIndexType indexType = MTLIndexTypeUInt32;
 

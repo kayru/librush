@@ -87,6 +87,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 	}
 }
 
+bool Platform_IsDebuggerPresent()
+{
+	return false;
+}
+
 }
 
 #endif

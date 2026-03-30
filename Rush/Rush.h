@@ -21,12 +21,18 @@
 #       define RUSH_PLATFORM_LINUX
 #   endif
 #   if defined(__APPLE__)
-#       if defined(__MACH__)
-#           define RUSH_PLATFORM_MAC
-#       else
+#       include <TargetConditionals.h>
+#       if TARGET_OS_IOS
 #           define RUSH_PLATFORM_IOS
+#           define RUSH_PLATFORM_SPECIFIC_MAIN
+#       elif TARGET_OS_OSX
+#           define RUSH_PLATFORM_MAC
 #       endif
 #   endif
+#endif
+
+#if defined(RUSH_PLATFORM_IOS) && !defined(RUSH_PLATFORM_SPECIFIC_MAIN)
+#   define RUSH_PLATFORM_SPECIFIC_MAIN
 #endif
 
 // Common macros

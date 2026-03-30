@@ -65,6 +65,7 @@ void Platform_Shutdown()
 	g_mainGfxContext = nullptr;
 }
 
+#if !defined(RUSH_PLATFORM_SPECIFIC_MAIN)
 int Platform_Main(const AppConfig& cfg)
 {
 	Platform_Startup(cfg);
@@ -84,12 +85,6 @@ int Platform_Main(const AppConfig& cfg)
 	Platform_Shutdown();
 	
 	return 0;
-}
-
-#if !defined(RUSH_PLATFORM_WINDOWS) && !defined(RUSH_PLATFORM_MAC)
-bool Platform_IsDebuggerPresent()
-{
-	return false;
 }
 #endif
 

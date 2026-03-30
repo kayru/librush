@@ -136,7 +136,7 @@ enum Key
 	Key_LeftSuper    = RUSH_KEY_LEFT_SUPER,
 	Key_RightSuper   = RUSH_KEY_RIGHT_SUPER,
 
-#ifdef RUSH_PLATFORM_MAC
+#if defined(RUSH_PLATFORM_MAC) || defined(RUSH_PLATFORM_IOS)
 	Key_LeftShortcut  = Key_LeftSuper,
 	Key_RightShortcut = Key_RightSuper,
 #else
@@ -210,6 +210,14 @@ public:
 	bool isMouseLocked() const { return m_mouseLocked; }
 	virtual bool  setFullscreen(bool state) { return false; }
 	virtual void  pollEvents() { }
+	virtual Box2 getSafeArea() const { return Box2(Vec2(0.0f), getSizeFloat()); }
+
+	struct TouchPoint
+	{
+		u64 id = 0;
+		Vec2 pos;
+	};
+	virtual ArrayView<const TouchPoint> getTouches() const { return {}; }
 
 
 	void close() { m_closed = true; }
