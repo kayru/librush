@@ -103,6 +103,7 @@ public:
 	void update(Camera* camera, float dt, const KeyboardState& ks, const MouseState& ms);
 
 	void setMoveSpeed(float speed) { m_moveSpeed = speed; }
+	float getMoveSpeed() const { return m_moveSpeed; }
 	void setTurnSpeed(float speed) { m_turnSpeed = speed; }
 
 	void setMode(Mode mode) { m_mode = mode; }
@@ -116,14 +117,15 @@ public:
 
 private:
 
-	Vec2 m_oldMousePos;
-	int  m_oldMouseWheel;
+	Vec2 m_oldMousePos = {};
+	int  m_oldMouseWheel = 0;
+	bool m_oldMouseLeft = false;
 
-	float m_moveSpeed;
-	float m_turnSpeed;
+	float m_moveSpeed = 20.0f;
+	float m_turnSpeed = 2.0f;
 
-	Mode m_mode;
-	u8   m_keys[KeyFunction_COUNT];
+	Mode m_mode = Mode_FirstPerson;
+	u8   m_keys[KeyFunction_COUNT] = {};
 
 	Vec3 m_upDirection = Vec3(0, 1, 0);
 };

@@ -163,10 +163,12 @@ void Camera::setClip(float near_dist, float far_dist)
 	m_clipFar  = far_dist;
 }
 
-CameraManipulator::CameraManipulator() : CameraManipulator(KeyboardState{}, MouseState{}) {}
+CameraManipulator::CameraManipulator()
+{
+	setDefaultKeys();
+}
 
 CameraManipulator::CameraManipulator(const KeyboardState& ks, const MouseState& ms)
-: m_oldMousePos(0, 0), m_oldMouseWheel(0), m_moveSpeed(20.0f), m_turnSpeed(2.0f), m_mode(Mode_FirstPerson)
 {
 	init(ks, ms);
 	setDefaultKeys();
@@ -196,21 +198,28 @@ void CameraManipulator::setDefaultKeys()
 
 void CameraManipulator::init(const KeyboardState& ks, const MouseState& ms)
 {
-	m_oldMousePos   = ms.pos;
+	m_oldMousePos = ms.pos;
 	m_oldMouseWheel = ms.wheelV;
+	m_oldMouseLeft = ms.buttons[0];
 }
 
 void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks, const MouseState& ms)
 {
 	RUSH_ASSERT(camera);
 
-	Vec2 mousePos   = ms.pos;
-	Vec2 mouseDelta = mousePos - m_oldMousePos;
-	m_oldMousePos   = mousePos;
+	Vec2 mouseDelta = ms.pos - m_oldMousePos;
+	const int wheelDelta = ms.wheelV - m_oldMouseWheel;
 
-	int mouseWheel  = ms.wheelV;
-	int wheelDelta  = mouseWheel - m_oldMouseWheel;
-	m_oldMouseWheel = mouseWheel;
+	// Suppress spurious delta on button-down transition (e.g. touch input where
+	// the cursor teleports to a new position on the first touch).
+	if (ms.buttons[0] && !m_oldMouseLeft)
+	{
+		mouseDelta = Vec2(0.0f);
+	}
+
+	m_oldMousePos = ms.pos;
+	m_oldMouseWheel = ms.wheelV;
+	m_oldMouseLeft = ms.buttons[0];
 
 	switch (m_mode)
 	{
