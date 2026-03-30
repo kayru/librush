@@ -152,7 +152,10 @@ ${_orientations_xml}\t</array>
 
 		# Copy compiled Metal shaders into app bundle
 		add_custom_command(TARGET ${name} POST_BUILD
-			COMMAND sh -c "cp -f $<TARGET_FILE_DIR:${name}>/../*.metallib $<TARGET_BUNDLE_CONTENT_DIR:${name}>/ 2>/dev/null || true"
+			COMMAND ${CMAKE_COMMAND}
+				-DSRC_DIR=$<TARGET_FILE_DIR:${name}>/..
+				-DDST_DIR=$<TARGET_BUNDLE_CONTENT_DIR:${name}>
+				-P ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CopyMetallibs.cmake
 		)
 	endif()
 endfunction()
