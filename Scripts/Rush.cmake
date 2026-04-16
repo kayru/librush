@@ -162,9 +162,9 @@ endfunction()
 
 # Shader compilation functions
 
-# rush_shader_hlsl(<shader> <profile> [DEPENDS <dep> ...])
+# rush_shader_hlsl(<shader> <profile> [DEPENDS <dep> ...] [SPIRV_CROSS_ARGS <arg> ...])
 function(rush_shader_hlsl shaderName profile)
-	cmake_parse_arguments(PARSE_ARGV 2 ARG "" "" "DEPENDS")
+	cmake_parse_arguments(PARSE_ARGV 2 ARG "" "" "DEPENDS;SPIRV_CROSS_ARGS")
 	if(NOT RUSH_DXC)
 		message(FATAL_ERROR "DXC was not found. Set VULKAN_SDK or VK_SDK_PATH so dxc is available.")
 	endif()
@@ -177,7 +177,7 @@ function(rush_shader_hlsl shaderName profile)
 			BYPRODUCTS ${CMAKE_CFG_INTDIR}/${shaderName}.metal ${CMAKE_CFG_INTDIR}/${shaderName}.air
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CFG_INTDIR}
 			COMMAND ${RUSH_DXC} -spirv -fspv-target-env=vulkan1.2 -fspv-preserve-bindings -T ${profile} -E main -Fo ${CMAKE_CFG_INTDIR}/${shaderName}.spv ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
-			COMMAND ${RUSH_SPIRV_CROSS} --msl --msl-version 230000 --msl-argument-buffers --msl-decoration-binding --msl-force-active-argument-buffer-resources ${CMAKE_CFG_INTDIR}/${shaderName}.spv > ${CMAKE_CFG_INTDIR}/${shaderName}.metal
+			COMMAND ${RUSH_SPIRV_CROSS} --msl --msl-version 230000 --msl-argument-buffers --msl-decoration-binding --msl-force-active-argument-buffer-resources ${ARG_SPIRV_CROSS_ARGS} ${CMAKE_CFG_INTDIR}/${shaderName}.spv > ${CMAKE_CFG_INTDIR}/${shaderName}.metal
 			COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metal -std=metal3.0 -c ${CMAKE_CFG_INTDIR}/${shaderName}.metal -o ${CMAKE_CFG_INTDIR}/${shaderName}.air
 			COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metallib ${CMAKE_CFG_INTDIR}/${shaderName}.air -o ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
 			MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
