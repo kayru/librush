@@ -1876,11 +1876,11 @@ GfxOwn<GfxAccelerationStructure> Gfx_CreateAccelerationStructure(const GfxAccele
 	{
 		MTLInstanceAccelerationStructureDescriptor* accelDesc = [MTLInstanceAccelerationStructureDescriptor descriptor];
 		accelDesc.instanceCount = desc.instanceCount;
-		accelDesc.instanceDescriptorStride = sizeof(MTLAccelerationStructureInstanceDescriptor);
+		accelDesc.instanceDescriptorStride = sizeof(MTLAccelerationStructureUserIDInstanceDescriptor);
 		accelDesc.instancedAccelerationStructures = [NSArray array];
 		if ([accelDesc respondsToSelector:@selector(setInstanceDescriptorType:)])
 		{
-			accelDesc.instanceDescriptorType = MTLAccelerationStructureInstanceDescriptorTypeDefault;
+			accelDesc.instanceDescriptorType = MTLAccelerationStructureInstanceDescriptorTypeUserID;
 		}
 		ensureAccelerationStructureResources(result, accelDesc);
 	}
@@ -1958,7 +1958,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 			return;
 		}
 
-		DynamicArray<MTLAccelerationStructureInstanceDescriptor> instances;
+		DynamicArray<MTLAccelerationStructureUserIDInstanceDescriptor> instances;
 		instances.resize(accel.instanceCount);
 
 		DynamicArray<u64> uniqueHandles;
@@ -1976,18 +1976,19 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 			continue;
 		}
 
-		MTLAccelerationStructureInstanceDescriptor& dst = instances[i];
+		MTLAccelerationStructureUserIDInstanceDescriptor& dst = instances[i];
 			memset(&dst, 0, sizeof(dst));
 			convertInstanceTransform(srcInstances[i].transform, dst.transformationMatrix);
 			dst.options = MTLAccelerationStructureInstanceOptionNone;
 			dst.mask = srcInstances[i].instanceMask;
 			dst.intersectionFunctionTableOffset = srcInstances[i].instanceContributionToHitGroupIndex;
 			dst.accelerationStructureIndex = accelIndex;
+			dst.userID = srcInstances[i].instanceID;
 		}
 
 		g_device->enqueueDestroy(accel.instanceBuffer);
 		accel.instanceBuffer = [g_metalDevice newBufferWithBytes:instances.data()
-			length:instances.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
+			length:instances.size() * sizeof(MTLAccelerationStructureUserIDInstanceDescriptor)
 			options:0];
 
 		// instancedAccelerationStructures is an NSArray, not MTLResource -- release directly
@@ -1998,11 +1999,11 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		MTLInstanceAccelerationStructureDescriptor* accelDesc = [MTLInstanceAccelerationStructureDescriptor descriptor];
 		accelDesc.instanceDescriptorBuffer = accel.instanceBuffer;
 		accelDesc.instanceCount = accel.instanceCount;
-		accelDesc.instanceDescriptorStride = sizeof(MTLAccelerationStructureInstanceDescriptor);
+		accelDesc.instanceDescriptorStride = sizeof(MTLAccelerationStructureUserIDInstanceDescriptor);
 		accelDesc.instancedAccelerationStructures = accel.instancedAccelerationStructures;
 		if ([accelDesc respondsToSelector:@selector(setInstanceDescriptorType:)])
 		{
-			accelDesc.instanceDescriptorType = MTLAccelerationStructureInstanceDescriptorTypeDefault;
+			accelDesc.instanceDescriptorType = MTLAccelerationStructureInstanceDescriptorTypeUserID;
 		}
 
 		ensureAccelerationStructureResources(accel, accelDesc);
