@@ -176,7 +176,7 @@ function(rush_shader_hlsl shaderName profile)
 			OUTPUT ${CMAKE_CFG_INTDIR}/${shaderName}.spv ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
 			BYPRODUCTS ${CMAKE_CFG_INTDIR}/${shaderName}.metal ${CMAKE_CFG_INTDIR}/${shaderName}.air
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CFG_INTDIR}
-			COMMAND ${RUSH_DXC} -spirv -fspv-target-env=vulkan1.2 -T ${profile} -E main -Fo ${CMAKE_CFG_INTDIR}/${shaderName}.spv ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
+			COMMAND ${RUSH_DXC} -spirv -fspv-target-env=vulkan1.2 -fspv-preserve-bindings -T ${profile} -E main -Fo ${CMAKE_CFG_INTDIR}/${shaderName}.spv ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
 			COMMAND ${RUSH_SPIRV_CROSS} --msl --msl-version 230000 --msl-argument-buffers --msl-decoration-binding --msl-force-active-argument-buffer-resources ${CMAKE_CFG_INTDIR}/${shaderName}.spv > ${CMAKE_CFG_INTDIR}/${shaderName}.metal
 			COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metal -std=metal3.0 -c ${CMAKE_CFG_INTDIR}/${shaderName}.metal -o ${CMAKE_CFG_INTDIR}/${shaderName}.air
 			COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metallib ${CMAKE_CFG_INTDIR}/${shaderName}.air -o ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
