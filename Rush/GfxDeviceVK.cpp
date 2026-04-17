@@ -5374,11 +5374,11 @@ void Gfx_SetViewport(GfxContext* rc, const GfxViewport& viewport)
 
 	if (g_device->m_useNegativeViewport)
 	{
-		vp.height = -vp.height;
 		if (g_device->m_supportedExtensions.KHR_maintenance1)
 		{
-			vp.y = rc->m_currentRenderRect.extent.height - vp.y;
+			vp.y = viewport.y + viewport.h;
 		}
+		vp.height = -vp.height;
 	}
 
 	vkCmdSetViewport(rc->m_commandBuffer, 0, 1, &vp);
