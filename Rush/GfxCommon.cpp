@@ -33,6 +33,7 @@ u32 getBitsPerPixel(GfxFormatStorage fmt)
 	case GfxFormatStorage_RGBA32: return 128;
 	case GfxFormatStorage_RGBA8: return 32;
 	case GfxFormatStorage_BGRA8: return 32;
+	case GfxFormatStorage_ASTC_4x4: return 8;
 
 	default: RUSH_BREAK; return 0;
 	}
@@ -75,6 +76,8 @@ const char* toString(GfxFormat fmt)
 	case GfxFormat_BC6H_SFloat: return "GfxFormat_BC6H_SFloat";
 	case GfxFormat_BC7_Unorm: return "GfxFormat_BC7_Unorm";
 	case GfxFormat_BC7_Unorm_sRGB: return "GfxFormat_BC7_Unorm_sRGB";
+	case GfxFormat_ASTC_4x4_Unorm: return "GfxFormat_ASTC_4x4_Unorm";
+	case GfxFormat_ASTC_4x4_sRGB: return "GfxFormat_ASTC_4x4_sRGB";
 	default: RUSH_BREAK; return "GfxFormat_Unknown";
 	}
 }
@@ -110,6 +113,7 @@ const char* toString(GfxFormatStorage storage)
 	case GfxFormatStorage_RGBA32: return "RGBA32";
 	case GfxFormatStorage_RGBA8: return "RGBA8";
 	case GfxFormatStorage_BGRA8: return "BGRA8";
+	case GfxFormatStorage_ASTC_4x4: return "ASTC_4x4";
 
 	default: RUSH_BREAK; return "Unknown";
 	}

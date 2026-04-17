@@ -361,6 +361,7 @@ enum GfxFormatStorage : u32
 	GfxFormatStorage_RGBA32   = 20 << 8,
 	GfxFormatStorage_RGBA8    = 21 << 8,
 	GfxFormatStorage_BGRA8    = 22 << 8,
+	GfxFormatStorage_ASTC_4x4 = 23 << 8,
 };
 
 enum GfxFormatComponent : u32
@@ -426,6 +427,10 @@ enum GfxFormat : u32
 	GfxFormat_BC6H_SFloat    = RUSH_GFX_FORMAT(BC6H, Float, RGB),
 	GfxFormat_BC7_Unorm      = RUSH_GFX_FORMAT(BC7, Unorm, RGBA),
 	GfxFormat_BC7_Unorm_sRGB = RUSH_GFX_FORMAT(BC7, sRGB, RGBA),
+
+	// ASTC formats
+	GfxFormat_ASTC_4x4_Unorm = RUSH_GFX_FORMAT(ASTC_4x4, Unorm, RGBA),
+	GfxFormat_ASTC_4x4_sRGB  = RUSH_GFX_FORMAT(ASTC_4x4, sRGB, RGBA),
 };
 
 enum class GfxUsageFlags : u8
@@ -618,7 +623,8 @@ inline bool isGfxFormatBlockCompressed(GfxFormat fmt)
 	case GfxFormatStorage_BC4:
 	case GfxFormatStorage_BC5:
 	case GfxFormatStorage_BC6H:
-	case GfxFormatStorage_BC7: return true;
+	case GfxFormatStorage_BC7:
+	case GfxFormatStorage_ASTC_4x4: return true;
 	}
 }
 

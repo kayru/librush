@@ -1148,6 +1148,8 @@ void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxB
 
 #define RUSH_MTL_PIXEL_FORMAT_LIST(X) \
 	RUSH_MTL_PIXEL_FORMAT_LIST_DESKTOP(X) \
+	X(GfxFormat_ASTC_4x4_Unorm,    MTLPixelFormatASTC_4x4_LDR) \
+	X(GfxFormat_ASTC_4x4_sRGB,     MTLPixelFormatASTC_4x4_sRGB) \
 	X(GfxFormat_D32_Float,         MTLPixelFormatDepth32Float) \
 	X(GfxFormat_D32_Float_S8_Uint, MTLPixelFormatDepth32Float_Stencil8) \
 	X(GfxFormat_R8_Unorm,          MTLPixelFormatR8Unorm) \

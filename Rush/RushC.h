@@ -427,6 +427,8 @@ typedef enum rush_gfx_format
 	RUSH_GFX_FORMAT_BC7_UNORM_SRGB,
 	RUSH_GFX_FORMAT_BC2_UNORM,
 	RUSH_GFX_FORMAT_BC2_UNORM_SRGB,
+	RUSH_GFX_FORMAT_ASTC_4x4_UNORM,
+	RUSH_GFX_FORMAT_ASTC_4x4_SRGB,
 } rush_gfx_format;
 
 typedef enum rush_gfx_resource_state
