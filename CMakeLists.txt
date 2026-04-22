@@ -91,6 +91,8 @@ add_library(Rush STATIC
 	Rush/UtilRandom.h
 	Rush/UtilResourcePool.h
 	Rush/UtilString.h
+	Rush/UtilThreadPool.cpp
+	Rush/UtilThreadPool.h
 	Rush/UtilTimer.cpp
 	Rush/UtilTimer.h
 	Rush/UtilTuple.h
