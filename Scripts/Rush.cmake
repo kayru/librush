@@ -220,8 +220,9 @@ function(rush_shader_glsl shaderName)
 	endif()
 endfunction()
 
-# rush_shader_metal(<shader>)
+# rush_shader_metal(<shader> [DEPENDS <dep> ...])
 function(rush_shader_metal shaderName)
+	cmake_parse_arguments(PARSE_ARGV 1 ARG "" "" "DEPENDS")
 	add_custom_command(
 		OUTPUT ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
 		BYPRODUCTS ${CMAKE_CFG_INTDIR}/${shaderName}.air
@@ -229,6 +230,7 @@ function(rush_shader_metal shaderName)
 		COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metal -std=metal3.0 -c ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName} -o ${CMAKE_CFG_INTDIR}/${shaderName}.air
 		COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metallib ${CMAKE_CFG_INTDIR}/${shaderName}.air -o ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
 		MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
+		DEPENDS ${ARG_DEPENDS}
 	)
 endfunction()
 
