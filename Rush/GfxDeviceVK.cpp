@@ -4916,8 +4916,9 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		res.info.range  = bufferCreateInfo.size;
 	}
 
+	// host-visible memory is also coherent so GPU->CPU readback needs no explicit invalidate
 	const VkFlags memoryProperties = desc.hostVisible
-		? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+		? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 		: VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 	if (data)
