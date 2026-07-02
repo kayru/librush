@@ -3209,7 +3209,8 @@ static void writeTimestamp(GfxContext* context, u32 slotIndex, VkPipelineStageFl
 
 void Gfx_BeginFrame()
 {
-	if (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval)
+	if (!g_device->m_cfg.headless
+	    && (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval))
 	{
 		g_device->createSwapChain();
 		g_device->m_resizeEvents.clear();
