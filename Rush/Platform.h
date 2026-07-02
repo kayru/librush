@@ -53,6 +53,10 @@ void Platform_Startup(const AppConfig& cfg);
 void Platform_Run(PlatformCallback_Update frameFn, void* userData);
 void Platform_Shutdown();
 
+// Request the main loop to exit. Needed for headless runs (no window to close).
+void Platform_RequestExit();
+bool Platform_IsExitRequested();
+
 class Application
 {
 public:

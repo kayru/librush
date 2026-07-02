@@ -10,11 +10,18 @@ Window*     g_mainWindow     = nullptr;
 GfxDevice*  g_mainGfxDevice  = nullptr;
 GfxContext* g_mainGfxContext = nullptr;
 
+static bool g_exitRequested = false;
+
+void Platform_RequestExit() { g_exitRequested = true; }
+bool Platform_IsExitRequested() { return g_exitRequested; }
+
 void Platform_Startup(const AppConfig& cfg)
 {
 	RUSH_ASSERT(g_mainWindow == nullptr);
 	RUSH_ASSERT(g_mainGfxDevice == nullptr);
 	RUSH_ASSERT(g_mainGfxContext == nullptr);
+
+	g_exitRequested = false;
 
 	GfxConfig gfxConfig;
 	if (cfg.gfxConfig)

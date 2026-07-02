@@ -140,7 +140,7 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 		{
 			@autoreleasepool
 			{
-				if ([dg applicationHasTerminated] || (g_mainWindow && g_mainWindow->isClosed()))
+				if (Platform_IsExitRequested() || [dg applicationHasTerminated] || (g_mainWindow && g_mainWindow->isClosed()))
 				{
 					break;
 				}
@@ -264,7 +264,7 @@ void Platform_Run(PlatformCallback_Update, void*)
 {
 	@autoreleasepool
 	{
-		if (g_mainWindow && g_mainWindow->isClosed())
+		if (Platform_IsExitRequested() || (g_mainWindow && g_mainWindow->isClosed()))
 		{
 			[m_displayLink invalidate];
 			m_displayLink = nil;

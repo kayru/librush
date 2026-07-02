@@ -68,7 +68,7 @@ const char* Platform_GetExecutableDirectory()
 
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
 {
-	while (!g_mainWindow || g_mainWindow->isClosed() == false)
+	while (!Platform_IsExitRequested() && (!g_mainWindow || g_mainWindow->isClosed() == false))
 	{
 		if (g_mainWindow)
 		{
