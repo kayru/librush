@@ -3,9 +3,8 @@
 # Provides:
 #   rush_add_app()           -- create an app target with iOS bundle support
 #   rush_shader_hlsl()       -- compile HLSL shaders (Metal or Vulkan)
-#   rush_shader_glsl()       -- compile GLSL shaders (Metal or Vulkan)
+#   rush_shader_glsl()       -- compile GLSL shaders (Metal or Vulkan; TARGET_ENV defaults to vulkan1.2)
 #   rush_shader_metal()      -- compile native Metal shaders
-#   rush_shader_rt()         -- compile ray tracing shaders (Vulkan)
 
 # Tool discovery
 
@@ -194,15 +193,19 @@ function(rush_shader_hlsl shaderName profile)
 	endif()
 endfunction()
 
-# rush_shader_glsl(<shader> [DEPENDS <dep> ...])
+# rush_shader_glsl(<shader> [TARGET_ENV <env>] [DEPENDS <dep> ...])
+# TARGET_ENV defaults to vulkan1.2; override only for special cases.
 function(rush_shader_glsl shaderName)
-	cmake_parse_arguments(PARSE_ARGV 1 ARG "" "" "DEPENDS")
+	cmake_parse_arguments(PARSE_ARGV 1 ARG "" "TARGET_ENV" "DEPENDS")
+	if(NOT ARG_TARGET_ENV)
+		set(ARG_TARGET_ENV vulkan1.2)
+	endif()
 	if(APPLE AND DEFINED RUSH_RENDER_API AND RUSH_RENDER_API STREQUAL "MTL")
 		add_custom_command(
 			OUTPUT ${CMAKE_CFG_INTDIR}/${shaderName}.bin ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
 			BYPRODUCTS ${CMAKE_CFG_INTDIR}/${shaderName}.metal ${CMAKE_CFG_INTDIR}/${shaderName}.air
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CFG_INTDIR}
-			COMMAND ${RUSH_GLSLC} -O -o ${CMAKE_CFG_INTDIR}/${shaderName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
+			COMMAND ${RUSH_GLSLC} -O --target-env=${ARG_TARGET_ENV} -o ${CMAKE_CFG_INTDIR}/${shaderName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
 			COMMAND ${RUSH_SPIRV_CROSS} --msl --msl-version 230000 --msl-argument-buffers --msl-decoration-binding --msl-force-active-argument-buffer-resources ${CMAKE_CFG_INTDIR}/${shaderName}.bin > ${CMAKE_CFG_INTDIR}/${shaderName}.metal
 			COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metal -std=metal3.0 -c ${CMAKE_CFG_INTDIR}/${shaderName}.metal -o ${CMAKE_CFG_INTDIR}/${shaderName}.air
 			COMMAND ${RUSH_XCRUN} -sdk ${RUSH_METAL_SDK} metallib ${CMAKE_CFG_INTDIR}/${shaderName}.air -o ${CMAKE_CFG_INTDIR}/${shaderName}.metallib
@@ -213,7 +216,7 @@ function(rush_shader_glsl shaderName)
 		add_custom_command(
 			OUTPUT ${CMAKE_CFG_INTDIR}/${shaderName}.bin
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CFG_INTDIR}
-			COMMAND ${RUSH_GLSLC} -O -o ${CMAKE_CFG_INTDIR}/${shaderName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
+			COMMAND ${RUSH_GLSLC} -O --target-env=${ARG_TARGET_ENV} -o ${CMAKE_CFG_INTDIR}/${shaderName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
 			MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
 			DEPENDS ${ARG_DEPENDS}
 		)
@@ -234,14 +237,3 @@ function(rush_shader_metal shaderName)
 	)
 endfunction()
 
-# rush_shader_rt(<shader> [DEPENDS <dep> ...])
-function(rush_shader_rt shaderName)
-	cmake_parse_arguments(PARSE_ARGV 1 ARG "" "" "DEPENDS")
-	add_custom_command(
-		OUTPUT ${CMAKE_CFG_INTDIR}/${shaderName}.bin
-		COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CFG_INTDIR}
-		COMMAND ${RUSH_GLSLC} --target-env=vulkan1.2 -o ${CMAKE_CFG_INTDIR}/${shaderName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
-		MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/${shaderName}
-		DEPENDS ${ARG_DEPENDS}
-	)
-endfunction()
