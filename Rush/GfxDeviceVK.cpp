@@ -2143,7 +2143,7 @@ GfxContext::GfxContext(GfxDevice* device, GfxContextType contextType)
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 	V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &m_completionSemaphore));
-	debugRegister(m_fence, "GfxContext::m_completionSemaphore");
+	debugRegister(m_completionSemaphore, "GfxContext::m_completionSemaphore");
 }
 
 GfxContext::~GfxContext()
@@ -2578,6 +2578,21 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 	vkCmdResolveImage(m_commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, 1, &region);
 }
 
+// A texture bound as both a sampled image and a storage image must stay in
+// VK_IMAGE_LAYOUT_GENERAL, since that is the only layout valid for both uses.
+// Read-modify-write compute passes rely on this aliasing.
+static bool isAlsoBoundAsStorageImage(GfxTexture texture, const GfxTexture* storageImages, u32 storageImageCount)
+{
+	for (u32 i = 0; i < storageImageCount; ++i)
+	{
+		if (storageImages[i] == texture)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDescriptorSet targetSet, const GfxDescriptorSetDesc& desc,
     bool useDynamicUniformBuffers, bool allowTransientBuffers, const GfxBuffer* constantBuffers,
     const GfxSampler* samplers, const GfxTexture* textures, const GfxTexture* storageImages,
@@ -2701,7 +2716,9 @@ static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDesc
 
 			imageInfo.sampler     = VK_NULL_HANDLE;
 			imageInfo.imageView   = texture.imageView;
-			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfo.imageLayout = isAlsoBoundAsStorageImage(textures[i], storageImages, desc.rwImages)
+			                            ? VK_IMAGE_LAYOUT_GENERAL
+			                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
 	}
 
@@ -2989,8 +3006,14 @@ void GfxContext::applyState()
 			TextureVK&              texture          = m_device->m_resources.textures[m_pending.textures[i]];
 			VkImageSubresourceRange subresourceRange = {
 			    texture.aspectFlags, 0, texture.desc.mips, 0, 1}; // TODO: track subresource states
-			texture.currentLayout = addImageBarrier(
-			    texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, &subresourceRange);
+			// Go straight to GENERAL when this texture is also a storage image in
+			// this set, otherwise the loop below would immediately transition again.
+			const VkImageLayout targetLayout =
+			    isAlsoBoundAsStorageImage(m_pending.textures[i], m_pending.storageImages, descSet.rwImages)
+			        ? VK_IMAGE_LAYOUT_GENERAL
+			        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			texture.currentLayout =
+			    addImageBarrier(texture.image, texture.currentLayout, targetLayout, &subresourceRange);
 		}
 
 		for (u32 i = 0; i < descSet.rwImages; ++i)
