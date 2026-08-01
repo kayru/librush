@@ -2496,7 +2496,14 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 			if (shouldClearColor)
 			{
-				clearValues[clearValueCount] = m_pendingClear.getClearColor();
+				// Each attachment has its own clear color; using a single shared
+				// value leaks attachment 0's color into every other target.
+				VkClearValue clearValue      = {};
+				clearValue.color.float32[0]  = desc.clearColors[i].r;
+				clearValue.color.float32[1]  = desc.clearColors[i].g;
+				clearValue.color.float32[2]  = desc.clearColors[i].b;
+				clearValue.color.float32[3]  = desc.clearColors[i].a;
+				clearValues[clearValueCount] = clearValue;
 				++clearValueCount;
 			}
 		}
