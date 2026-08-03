@@ -1660,6 +1660,33 @@ void GfxDevice::drainCompletedDestructionEpochs()
 	}
 }
 
+// Updating a buffer replaces its native MTLBuffer, so any binding that was
+// resolved from the old native object must be re-applied on the next draw.
+// Mirrors markDirtyIfBound in the Vulkan backend.
+static void markDirtyIfBound(GfxContext* rc, GfxBufferArg h)
+{
+	if (!rc)
+	{
+		return;
+	}
+
+	for (u32 i = 0; i < GfxContext::MaxConstantBuffers; ++i)
+	{
+		if (rc->m_constantBuffers[i].get() == h)
+		{
+			rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
+		}
+	}
+
+	for (u32 i = 0; i < GfxContext::MaxStorageBuffers; ++i)
+	{
+		if (rc->m_storageBuffers[i].get() == h)
+		{
+			rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
+		}
+	}
+}
+
 void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
 	if (!h.valid() || size==0)
@@ -1671,6 +1698,8 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 	g_device->enqueueDestroy(buffer.native);
 	buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
+
+	markDirtyIfBound(rc, h);
 }
 
 void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
@@ -1690,6 +1719,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 	{
 		g_device->enqueueDestroy(buffer.native);
 		buffer.native = [g_metalDevice newBufferWithLength:size options:0];
+		markDirtyIfBound(rc, h);
 	}
 
 	void* base = buffer.native ? [buffer.native contents] : nullptr;
