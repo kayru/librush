@@ -370,6 +370,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_Unknown: return VK_FORMAT_UNDEFINED;
 	case GfxFormat_R8_Unorm: return VK_FORMAT_R8_UNORM;
 	case GfxFormat_RG8_Unorm: return VK_FORMAT_R8G8_UNORM;
+	case GfxFormat_R16_Float: return VK_FORMAT_R16_SFLOAT;
 	case GfxFormat_R16_Uint: return VK_FORMAT_R16_UINT;
 	case GfxFormat_RG16_Float: return VK_FORMAT_R16G16_SFLOAT;
 	case GfxFormat_RGBA16_Float: return VK_FORMAT_R16G16B16A16_SFLOAT;
