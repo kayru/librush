@@ -311,6 +311,10 @@ void WindowWin32::setMouseLock(bool state)
 		RECT clipRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
 		ClipCursor(&clipRect);
 
+		// Locked-mode deltas are measured from the client center, so park the
+		// cursor there now; otherwise the first move reports its full offset
+		SetCursorPos((topLeft.x + bottomRight.x) / 2, (topLeft.y + bottomRight.y) / 2);
+
 		ShowCursor(FALSE);
 	}
 	else
