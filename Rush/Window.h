@@ -256,6 +256,10 @@ public:
 
 	void broadcast(const WindowEvent& e);
 
+	// Synthetic input (tests/automation): applies the event to the cached
+	// keyboard/mouse state exactly like the platform layer, then broadcasts.
+	void injectInputEvent(const WindowEvent& e);
+
 	// Reference counting
 
 	void retain();

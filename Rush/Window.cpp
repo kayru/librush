@@ -52,6 +52,50 @@ void Window::broadcast(const WindowEvent& e)
 	}
 }
 
+void Window::injectInputEvent(const WindowEvent& e)
+{
+	switch (e.type)
+	{
+	case WindowEventType_KeyDown:
+		if (e.code < Key_COUNT)
+		{
+			m_keyboard.keys[e.code] = true;
+		}
+		break;
+	case WindowEventType_KeyUp:
+		if (e.code < Key_COUNT)
+		{
+			m_keyboard.keys[e.code] = false;
+		}
+		break;
+	case WindowEventType_MouseDown:
+		if (e.button < RUSH_COUNTOF(m_mouse.buttons))
+		{
+			m_mouse.buttons[e.button] = true;
+		}
+		m_mouse.pos = e.pos;
+		m_mouse.doubleclick = e.doubleClick;
+		break;
+	case WindowEventType_MouseUp:
+		if (e.button < RUSH_COUNTOF(m_mouse.buttons))
+		{
+			m_mouse.buttons[e.button] = false;
+		}
+		m_mouse.pos = e.pos;
+		break;
+	case WindowEventType_MouseMove:
+		m_mouse.pos = e.pos;
+		break;
+	case WindowEventType_Scroll:
+		m_mouse.wheelH += int(e.scroll.x);
+		m_mouse.wheelV += int(e.scroll.y);
+		break;
+	default:
+		break;
+	}
+	broadcast(e);
+}
+
 void Window::retain() { m_refs++; }
 
 u32 Window::release()
