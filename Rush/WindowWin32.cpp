@@ -257,14 +257,20 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_MBUTTONDBLCLK:
 	case WM_NCMOUSELEAVE:
 	case WM_MOUSEWHEEL:
-	case WM_MOUSEHWHEEL: processMouseEvent(msg, wparam, lparam); return true;
+	case WM_MOUSEHWHEEL:
+		if (!m_osInputEnabled)
+		{
+			return false;
+		}
+		processMouseEvent(msg, wparam, lparam);
+		return true;
 
 	case WM_SYSKEYDOWN:
 	case WM_SYSKEYUP:
 	case WM_KEYDOWN:
 	case WM_KEYUP:
 	case WM_CHAR:
-	case WM_SYSCHAR: return processKeyEvent(msg, wparam, lparam);
+	case WM_SYSCHAR: return m_osInputEnabled && processKeyEvent(msg, wparam, lparam);
 
 	case WM_SIZE: processSizeEvent(wparam, lparam); return true;
 

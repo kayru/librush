@@ -260,6 +260,12 @@ public:
 	// keyboard/mouse state exactly like the platform layer, then broadcasts.
 	void injectInputEvent(const WindowEvent& e);
 
+	// When disabled, OS keyboard/mouse events are dropped and only
+	// injectInputEvent() drives input: automation stays deterministic while a
+	// person uses the machine. Resize/close/focus are unaffected.
+	void setOsInputEnabled(bool enabled) { m_osInputEnabled = enabled; }
+	bool isOsInputEnabled() const { return m_osInputEnabled; }
+
 	// Reference counting
 
 	void retain();
@@ -280,6 +286,7 @@ protected:
 	bool m_focused;
 	bool m_fullScreen;
 	bool m_mouseLocked = false;
+	bool m_osInputEnabled = true;
 
 	MouseState    m_mouse;
 	KeyboardState m_keyboard;

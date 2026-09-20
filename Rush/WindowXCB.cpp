@@ -280,6 +280,13 @@ void WindowXCB::pollEvents()
 		u32 mouseButtonRemap[4] = {0, 0, 2, 1};
 
 		const u8 eventCode = xcbEvent->response_type & 0x7f;
+		const bool isInputEvent = eventCode == XCB_MOTION_NOTIFY || eventCode == XCB_BUTTON_PRESS ||
+			eventCode == XCB_BUTTON_RELEASE || eventCode == XCB_KEY_PRESS || eventCode == XCB_KEY_RELEASE;
+		if (isInputEvent && !m_osInputEnabled)
+		{
+			free(xcbEvent);
+			continue;
+		}
 		switch (eventCode)
 		{
 			case XCB_EXPOSE:

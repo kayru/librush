@@ -532,6 +532,29 @@ bool WindowMac::setFullscreen(bool state)
 bool WindowMac::processEvent(NSEvent* event)
 {
 	NSEventType eventType = [event type];
+	if (!m_osInputEnabled)
+	{
+		switch (eventType)
+		{
+			case NSEventTypeLeftMouseDragged:
+			case NSEventTypeRightMouseDragged:
+			case NSEventTypeOtherMouseDragged:
+			case NSEventTypeMouseMoved:
+			case NSEventTypeLeftMouseDown:
+			case NSEventTypeLeftMouseUp:
+			case NSEventTypeRightMouseDown:
+			case NSEventTypeRightMouseUp:
+			case NSEventTypeOtherMouseDown:
+			case NSEventTypeOtherMouseUp:
+			case NSEventTypeScrollWheel:
+			case NSEventTypeKeyDown:
+			case NSEventTypeKeyUp:
+			case NSEventTypeFlagsChanged:
+				return false;
+			default:
+				break;
+		}
+	}
 	switch (eventType)
 	{
 		case NSEventTypeLeftMouseDragged:
