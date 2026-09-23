@@ -550,10 +550,19 @@ GfxProgressId Gfx_Present()
 
 void Gfx_SetPresentInterval(u32 interval)
 {
+#if !defined(RUSH_PLATFORM_IOS)
+	if (g_device && g_device->m_metalLayer)
+	{
+		// CAMetalLayer only offers on/off: 0 presents as soon as a drawable is
+		// ready, anything else waits for the display refresh
+		g_device->m_metalLayer.displaySyncEnabled = interval != 0;
+		return;
+	}
+#endif
 	static bool warningReported = false;
 	if (interval != 1 && !warningReported)
 	{
-		Log::warning("Present interval != 1 is not implemented");
+		Log::warning("Present interval != 1 is not supported here");
 		warningReported = true;
 	}
 }
