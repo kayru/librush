@@ -7,7 +7,7 @@
 #include "UtilLog.h"
 
 #include <xcb/xcb_keysyms.h>
-#include <X11/Xutil.h>
+#include <X11/keysym.h>
 #include <stdlib.h>
 
 namespace Rush
