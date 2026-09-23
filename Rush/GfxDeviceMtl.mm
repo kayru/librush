@@ -360,6 +360,7 @@ void GfxDevice::createDefaultDepthBuffer(u32 width, u32 height)
 void GfxDevice::beginFrame()
 {
 	drainCompletedDestructionEpochs();
+	m_stats.lastFrameGpuTime = m_completedFrameGpuTime.load(std::memory_order_relaxed);
 
 	if (!m_headless && !m_resizeEvents.empty())
 	{
@@ -472,7 +473,7 @@ GfxProgressId Gfx_Present()
 	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
 		if (buffer.GPUEndTime > buffer.GPUStartTime)
 		{
-			g_device->m_stats.lastFrameGpuTime = buffer.GPUEndTime - buffer.GPUStartTime;
+			g_device->m_completedFrameGpuTime.store(buffer.GPUEndTime - buffer.GPUStartTime, std::memory_order_relaxed);
 		}
 		if (buffer.status == MTLCommandBufferStatusError)
 		{

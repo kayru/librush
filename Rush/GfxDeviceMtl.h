@@ -7,6 +7,8 @@
 #include "UtilResourcePool.h"
 #include "Window.h"
 
+#include <atomic>
+
 #if defined(RUSH_PLATFORM_IOS)
 #import <UIKit/UIKit.h>
 #else
@@ -213,6 +215,9 @@ public:
 
 	GfxCapability m_caps;
 	GfxStats m_stats;
+	// Written by the command buffer completion handler (Metal thread), published
+	// into m_stats on the main thread at the start of the next frame
+	std::atomic<double> m_completedFrameGpuTime{0.0};
 
 	u32 m_uniqueResourceCounter = 1;
 
