@@ -122,6 +122,14 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 
 WindowXCB::~WindowXCB()
 {
+	if (m_pointerGrabbed)
+	{
+		xcb_ungrab_pointer(g_xcbConnection, XCB_CURRENT_TIME);
+	}
+	if (m_hiddenCursor)
+	{
+		xcb_free_cursor(g_xcbConnection, m_hiddenCursor);
+	}
 	xcb_destroy_window(g_xcbConnection, m_nativeHandle);
 	free(m_closeReply);
 
@@ -167,6 +175,79 @@ bool WindowXCB::setFullscreen(bool wantFullScreen)
 	RUSH_LOG_FATAL("%s is not implemented", __PRETTY_FUNCTION__); // TODO
 
 	return false;
+}
+
+Vec2 WindowXCB::lockCenter() const
+{
+	return Vec2(float(m_size.x / 2), float(m_size.y / 2));
+}
+
+void WindowXCB::warpPointer(Vec2 pos)
+{
+	const xcb_void_cookie_t cookie = xcb_warp_pointer(
+		g_xcbConnection, XCB_NONE, m_nativeHandle, 0, 0, 0, 0, s16(pos.x), s16(pos.y));
+	m_warpSequence = u16(cookie.sequence);
+	m_warpPending = true;
+}
+
+void WindowXCB::grabPointer()
+{
+	const u16 eventMask = XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE;
+	const xcb_grab_pointer_cookie_t cookie = xcb_grab_pointer(g_xcbConnection, 1, m_nativeHandle, eventMask,
+		XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, m_nativeHandle, m_hiddenCursor, XCB_CURRENT_TIME);
+	xcb_grab_pointer_reply_t* reply = xcb_grab_pointer_reply(g_xcbConnection, cookie, nullptr);
+	// Not fatal: the hidden window cursor and center warps still work while the
+	// pointer is over the window; the grab is retried on the next focus-in
+	m_pointerGrabbed = reply && reply->status == XCB_GRAB_STATUS_SUCCESS;
+	free(reply);
+}
+
+void WindowXCB::setMouseLock(bool state)
+{
+	if (m_mouseLocked == state)
+	{
+		return;
+	}
+	m_mouseLocked = state;
+
+	if (state)
+	{
+		if (!m_hiddenCursor)
+		{
+			// Blank 1x1 cursor: zero mask bit makes it fully transparent
+			const xcb_pixmap_t pixmap = xcb_generate_id(g_xcbConnection);
+			xcb_create_pixmap(g_xcbConnection, 1, pixmap, m_nativeHandle, 1, 1);
+			const xcb_gcontext_t gc = xcb_generate_id(g_xcbConnection);
+			const u32 foreground = 0;
+			xcb_create_gc(g_xcbConnection, gc, pixmap, XCB_GC_FOREGROUND, &foreground);
+			const xcb_rectangle_t rect = {0, 0, 1, 1};
+			xcb_poly_fill_rectangle(g_xcbConnection, pixmap, gc, 1, &rect);
+			xcb_free_gc(g_xcbConnection, gc);
+			m_hiddenCursor = xcb_generate_id(g_xcbConnection);
+			xcb_create_cursor(g_xcbConnection, m_hiddenCursor, pixmap, pixmap, 0, 0, 0, 0, 0, 0, 0, 0);
+			xcb_free_pixmap(g_xcbConnection, pixmap);
+		}
+
+		m_preLockMousePos = m_mouse.pos;
+		m_lockPointerPos = m_mouse.pos;
+		xcb_change_window_attributes(g_xcbConnection, m_nativeHandle, XCB_CW_CURSOR, &m_hiddenCursor);
+		grabPointer();
+		warpPointer(lockCenter());
+	}
+	else
+	{
+		if (m_pointerGrabbed)
+		{
+			xcb_ungrab_pointer(g_xcbConnection, XCB_CURRENT_TIME);
+			m_pointerGrabbed = false;
+		}
+		const u32 defaultCursor = XCB_CURSOR_NONE;
+		xcb_change_window_attributes(g_xcbConnection, m_nativeHandle, XCB_CW_CURSOR, &defaultCursor);
+		warpPointer(m_preLockMousePos);
+		m_warpPending = false; // unlocked motion is absolute
+		m_mouse.pos = m_preLockMousePos;
+	}
+	xcb_flush(g_xcbConnection);
 }
 
 Key translateKeyXCB(xcb_keycode_t code)
@@ -317,11 +398,46 @@ void WindowXCB::pollEvents()
 				}
 				break;
 			}
+			case XCB_FOCUS_IN:
+			case XCB_FOCUS_OUT:
+			{
+				const xcb_focus_in_event_t* event = (const xcb_focus_in_event_t*)xcbEvent;
+				if (event->mode == XCB_NOTIFY_MODE_GRAB || event->mode == XCB_NOTIFY_MODE_UNGRAB)
+				{
+					break;
+				}
+				m_focused = eventCode == XCB_FOCUS_IN;
+				if (m_focused && m_mouseLocked && !m_pointerGrabbed)
+				{
+					grabPointer();
+				}
+				break;
+			}
 			case XCB_MOTION_NOTIFY:
 			{
 				const xcb_motion_notify_event_t* event = (const xcb_motion_notify_event_t *)xcbEvent;
-				m_mouse.pos.x = event->event_x;
-				m_mouse.pos.y = event->event_y;
+				const Vec2 pointerPos = Vec2(event->event_x, event->event_y);
+				if (m_mouseLocked)
+				{
+					// Motion generated after the server processed the last warp is
+					// relative to the warp target, earlier motion to the previous position
+					if (m_warpPending && u16(event->sequence - m_warpSequence) < 0x8000)
+					{
+						m_warpPending = false;
+						m_lockPointerPos = lockCenter();
+					}
+					const Vec2 delta = pointerPos - m_lockPointerPos;
+					m_lockPointerPos = pointerPos;
+					if (delta.x == 0.0f && delta.y == 0.0f)
+					{
+						break;
+					}
+					m_mouse.pos += delta;
+				}
+				else
+				{
+					m_mouse.pos = pointerPos;
+				}
 				broadcast(WindowEvent::MouseMove(Vec2(m_mouse.pos)));
 				break;
 			}
@@ -332,8 +448,11 @@ void WindowXCB::pollEvents()
 				{
 					u32 idx = mouseButtonRemap[event->detail];
 					m_mouse.buttons[idx] = true;
-					m_mouse.pos.x = event->event_x;
-					m_mouse.pos.y = event->event_y;
+					if (!m_mouseLocked)
+					{
+						m_mouse.pos.x = event->event_x;
+						m_mouse.pos.y = event->event_y;
+					}
 					broadcast(WindowEvent::MouseDown(m_mouse.pos, idx, false));
 				}
 				else if(event->detail == 4) broadcast(WindowEvent::Scroll(0.0, 1.0));
@@ -350,8 +469,11 @@ void WindowXCB::pollEvents()
 				{
 					u32 idx = mouseButtonRemap[event->detail];
 					m_mouse.buttons[idx] = false;
-					m_mouse.pos.x = event->event_x;
-					m_mouse.pos.y = event->event_y;
+					if (!m_mouseLocked)
+					{
+						m_mouse.pos.x = event->event_x;
+						m_mouse.pos.y = event->event_y;
+					}
 					broadcast(WindowEvent::MouseUp(m_mouse.pos, idx));
 				}
 				break;
@@ -375,6 +497,17 @@ void WindowXCB::pollEvents()
 		}
 
 		free(xcbEvent);
+	}
+
+	// One warp per batch: re-center once the previous warp has taken effect
+	if (m_mouseLocked && !m_warpPending)
+	{
+		const Vec2 center = lockCenter();
+		if (m_lockPointerPos.x != center.x || m_lockPointerPos.y != center.y)
+		{
+			warpPointer(center);
+			xcb_flush(g_xcbConnection);
+		}
 	}
 }
 
