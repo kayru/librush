@@ -4291,7 +4291,7 @@ GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& 
 	rs.cullMode    = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE
 	                                                              : VkCullModeFlagBits(rasterizerDesc.cullFace);
 	rs.frontFace   = rasterizerDesc.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
-	rs.depthBiasEnable         = rasterizerDesc.depthBias != 0;
+	rs.depthBiasEnable         = rasterizerDesc.depthBias != 0 || rasterizerDesc.depthBiasSlopeScale != 0;
 	rs.depthBiasConstantFactor = rasterizerDesc.depthBias;
 	rs.depthBiasClamp          = 0.0f;
 	rs.depthBiasSlopeFactor    = rasterizerDesc.depthBiasSlopeScale;
