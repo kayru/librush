@@ -1,5 +1,6 @@
 #include "UtilFile.h"
 #include "MathCommon.h"
+#include <cstring>
 
 #ifdef _MSC_VER
 #pragma warning(push)

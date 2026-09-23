@@ -4,6 +4,7 @@
 #include "GfxDevice.h"
 #include "GfxEmbeddedShaders.h"
 #include "UtilLog.h"
+#include <cstring>
 
 namespace Rush
 {

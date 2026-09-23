@@ -8,6 +8,7 @@
 #include "UtilTuple.h"
 
 #include <compare>
+#include <cstring>
 #include <initializer_list>
 
 // clang-format off

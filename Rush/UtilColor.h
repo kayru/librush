@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MathTypes.h"
+#include <cstring>
 
 namespace Rush
 {
