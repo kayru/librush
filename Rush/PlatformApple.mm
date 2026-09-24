@@ -15,6 +15,7 @@ namespace Rush
 {
 
 extern Window*     g_mainWindow;
+void closeWindowOnTerminationSignal();
 extern GfxDevice*  g_mainGfxDevice;
 extern GfxContext* g_mainGfxContext;
 
@@ -144,6 +145,7 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 		{
 			@autoreleasepool
 			{
+				closeWindowOnTerminationSignal();
 				if (Platform_IsExitRequested() || [dg applicationHasTerminated] || (g_mainWindow && g_mainWindow->isClosed()))
 				{
 					break;

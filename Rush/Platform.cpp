@@ -3,6 +3,8 @@
 #include "UtilLog.h"
 #include "Window.h"
 
+#include <csignal>
+
 namespace Rush
 {
 
@@ -14,6 +16,50 @@ static bool g_exitRequested = false;
 
 void Platform_RequestExit() { g_exitRequested = true; }
 bool Platform_IsExitRequested() { return g_exitRequested; }
+
+static volatile std::sig_atomic_t g_terminationSignal = 0;
+
+static void terminationSignalHandler(int signal)
+{
+	g_terminationSignal = signal;
+	std::signal(signal, SIG_DFL);
+}
+
+static const struct
+{
+	int signal;
+	const char* name;
+} kTerminationSignals[] = {
+	{SIGINT, "SIGINT"},
+	{SIGTERM, "SIGTERM"},
+#if defined(SIGHUP)
+	{SIGHUP, "SIGHUP"},
+#endif
+#if defined(SIGBREAK)
+	{SIGBREAK, "SIGBREAK"},
+#endif
+};
+
+void closeWindowOnTerminationSignal()
+{
+	const int signal = g_terminationSignal;
+	if (signal == 0)
+	{
+		return;
+	}
+	g_terminationSignal = 0;
+	for (const auto& it : kTerminationSignals)
+	{
+		if (it.signal == signal)
+		{
+			RUSH_LOG("Closing: %s received", it.name);
+		}
+	}
+	if (g_mainWindow)
+	{
+		g_mainWindow->close();
+	}
+}
 
 void Platform_Startup(const AppConfig& cfg)
 {
@@ -49,6 +95,15 @@ void Platform_Startup(const AppConfig& cfg)
 	}
 
 	g_mainWindow = window;
+
+	g_terminationSignal = 0;
+	if (window)
+	{
+		for (const auto& it : kTerminationSignals)
+		{
+			std::signal(it.signal, terminationSignalHandler);
+		}
+	}
 
 	g_mainGfxDevice  = Gfx_CreateDevice(window, gfxConfig);
 	g_mainGfxContext = Gfx_AcquireContext();
