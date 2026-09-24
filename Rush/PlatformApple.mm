@@ -204,27 +204,50 @@ void Platform_Run(PlatformCallback_Update, void*)
 
 }
 
-@interface RushAppDelegate : UIResponder <UIApplicationDelegate>
+static CADisplayLink* g_displayLink = nil;
+static RushViewController* g_viewController = nil; // outlives scenes: iOS may reconnect one
+
+static void shutdownIOS()
 {
-	CADisplayLink* m_displayLink;
+	[g_displayLink invalidate];
+	g_displayLink = nil;
+
+	if (g_appConfig.onShutdown)
+	{
+		g_appConfig.onShutdown(g_appConfig.userData);
+	}
+
+	Platform_Shutdown();
 }
+
+@interface RushSceneDelegate : UIResponder <UIWindowSceneDelegate>
 @property (strong, nonatomic) UIWindow* window;
 @end
 
-@implementation RushAppDelegate
+@implementation RushSceneDelegate
 
-- (BOOL)application:(UIApplication*)application didFinishLaunchingWithOptions:(NSDictionary*)launchOptions
+- (void)scene:(UIScene*)scene willConnectToSession:(UISceneSession*)session options:(UISceneConnectionOptions*)connectionOptions
 {
-	CGRect screenBounds = [[UIScreen mainScreen] bounds];
+	UIWindowScene* windowScene = (UIWindowScene*)scene;
+	CGRect screenBounds = windowScene.coordinateSpace.bounds;
 
-	self.window = [[UIWindow alloc] initWithFrame:screenBounds];
+	self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
+
+	if (g_viewController)
+	{
+		self.window.rootViewController = g_viewController;
+		[self.window makeKeyAndVisible];
+		[g_viewController.view becomeFirstResponder];
+		return;
+	}
 
 	RushViewController* vc = [[RushViewController alloc] initWithNibName:nil bundle:nil];
 	RushMetalView* metalView = [[RushMetalView alloc] initWithFrame:screenBounds];
-	metalView.contentScaleFactor = [UIScreen mainScreen].nativeScale;
+	metalView.contentScaleFactor = windowScene.screen.nativeScale;
 	metalView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	metalView.multipleTouchEnabled = YES;
 	vc.view = metalView;
+	g_viewController = vc;
 
 	self.window.rootViewController = vc;
 	[self.window makeKeyAndVisible];
@@ -250,14 +273,12 @@ void Platform_Run(PlatformCallback_Update, void*)
 		g_appConfig.onStartup(g_appConfig.userData);
 	}
 
-	m_displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(renderFrame:)];
+	g_displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(renderFrame:)];
 	if (g_appConfig.vsync > 0)
 	{
-		m_displayLink.preferredFramesPerSecond = 60 / g_appConfig.vsync;
+		g_displayLink.preferredFramesPerSecond = 60 / g_appConfig.vsync;
 	}
-	[m_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
-
-	return YES;
+	[g_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
 }
 
 - (void)renderFrame:(CADisplayLink*)displayLink
@@ -266,15 +287,7 @@ void Platform_Run(PlatformCallback_Update, void*)
 	{
 		if (Platform_IsExitRequested() || (g_mainWindow && g_mainWindow->isClosed()))
 		{
-			[m_displayLink invalidate];
-			m_displayLink = nil;
-
-			if (g_appConfig.onShutdown)
-			{
-				g_appConfig.onShutdown(g_appConfig.userData);
-			}
-
-			Platform_Shutdown();
+			shutdownIOS();
 			Platform_TerminateProcess(0);
 			return;
 		}
@@ -289,17 +302,25 @@ void Platform_Run(PlatformCallback_Update, void*)
 	}
 }
 
+@end
+
+@interface RushAppDelegate : UIResponder <UIApplicationDelegate>
+@end
+
+@implementation RushAppDelegate
+
+- (UISceneConfiguration*)application:(UIApplication*)application
+	configurationForConnectingSceneSession:(UISceneSession*)connectingSceneSession
+	options:(UISceneConnectionOptions*)options
+{
+	UISceneConfiguration* config = [[[UISceneConfiguration alloc] initWithName:nil sessionRole:connectingSceneSession.role] autorelease];
+	config.delegateClass = [RushSceneDelegate class];
+	return config;
+}
+
 - (void)applicationWillTerminate:(UIApplication*)application
 {
-	[m_displayLink invalidate];
-	m_displayLink = nil;
-
-	if (g_appConfig.onShutdown)
-	{
-		g_appConfig.onShutdown(g_appConfig.userData);
-	}
-
-	Platform_Shutdown();
+	shutdownIOS();
 }
 
 @end
