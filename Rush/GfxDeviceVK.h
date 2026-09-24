@@ -293,7 +293,7 @@ public:
 
 	void flushUploadContext(GfxContext* dependentContext = nullptr, bool waitForCompletion = false);
 
-	void captureScreenshot();
+	void captureScreenshot(VkSemaphore signalSemaphore);
 
 	struct FrameBufferKey
 	{
@@ -440,6 +440,8 @@ public:
 	VkExtent2D            m_swapChainExtent             = VkExtent2D{0, 0};
 	VkPresentModeKHR      m_swapChainPresentMode        = VK_PRESENT_MODE_MAX_ENUM_KHR;
 	DynamicArray<VkImage> m_swapChainImages;
+	// Per swap chain image: signaled by the frame's last submit, waited by present
+	DynamicArray<VkSemaphore> m_renderCompleteSemaphores;
 	u32                   m_swapChainIndex = 0;
 	bool                  m_swapChainValid = false;
 
@@ -601,7 +603,8 @@ public:
 
 	void beginBuild();
 	void endBuild();
-	void submit(VkQueue queue, VkSemaphore timelineSemaphore = VK_NULL_HANDLE, u64 timelineValue = 0);
+	void submit(VkQueue queue, VkSemaphore timelineSemaphore = VK_NULL_HANDLE, u64 timelineValue = 0,
+	    VkSemaphore binarySemaphore = VK_NULL_HANDLE);
 	void split();
 	void addDependency(VkSemaphore waitSemaphore, VkPipelineStageFlags waitDstStageMask);
 

@@ -1236,6 +1236,11 @@ GfxDevice::~GfxDevice()
 
 	vkDestroySemaphore(m_vulkanDevice, m_progressSemaphore, g_allocationCallbacks);
 
+	for (VkSemaphore semaphore : m_renderCompleteSemaphores)
+	{
+		vkDestroySemaphore(m_vulkanDevice, semaphore, g_allocationCallbacks);
+	}
+
 	if (m_swapChain)
 	{
 		vkDestroySwapchainKHR(m_vulkanDevice, m_swapChain, g_allocationCallbacks);
@@ -1716,6 +1721,19 @@ void GfxDevice::createSwapChain()
 	}
 
 	m_swapChainImages.resize(swapChainImageCount);
+
+	// The queue is idle, so no present still waits on the old ones
+	for (VkSemaphore semaphore : m_renderCompleteSemaphores)
+	{
+		vkDestroySemaphore(m_vulkanDevice, semaphore, g_allocationCallbacks);
+	}
+	m_renderCompleteSemaphores.resize(swapChainImageCount);
+	for (VkSemaphore& semaphore : m_renderCompleteSemaphores)
+	{
+		VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+		V(vkCreateSemaphore(m_vulkanDevice, &semaphoreCreateInfo, g_allocationCallbacks, &semaphore));
+		debugRegister(semaphore, "RenderCompleteSemaphore");
+	}
 
 	for (auto& it : m_swapChainTextures)
 	{
@@ -2204,7 +2222,7 @@ void GfxContext::split()
 	beginBuild();
 }
 
-void GfxContext::submit(VkQueue queue, VkSemaphore timelineSemaphore, u64 timelineValue)
+void GfxContext::submit(VkQueue queue, VkSemaphore timelineSemaphore, u64 timelineValue, VkSemaphore binarySemaphore)
 {
 	if (!m_pendingBufferUploads.empty())
 	{
@@ -2226,6 +2244,10 @@ void GfxContext::submit(VkQueue queue, VkSemaphore timelineSemaphore, u64 timeli
 	{
 		signalSemaphores.push_back(timelineSemaphore);
 	}
+	if (binarySemaphore != VK_NULL_HANDLE)
+	{
+		signalSemaphores.push_back(binarySemaphore);
+	}
 
 	VkTimelineSemaphoreSubmitInfo timelineInfo = {VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
 
@@ -2238,6 +2260,10 @@ void GfxContext::submit(VkQueue queue, VkSemaphore timelineSemaphore, u64 timeli
 	if (timelineSemaphore != VK_NULL_HANDLE)
 	{
 		signalValues.push_back(timelineValue);
+	}
+	if (binarySemaphore != VK_NULL_HANDLE)
+	{
+		signalValues.push_back(0);
 	}
 
 	timelineInfo.waitSemaphoreValueCount   = (u32)waitValues.size();
@@ -2304,9 +2330,12 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 	case VK_IMAGE_LAYOUT_UNDEFINED:
 		// nothing
 		break;
-	case VK_IMAGE_LAYOUT_PREINITIALIZED: barrierDesc.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT; break;
+	case VK_IMAGE_LAYOUT_PREINITIALIZED:
+		barrierDesc.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
+		srcStageMask = VK_PIPELINE_STAGE_HOST_BIT;
+		break;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		barrierDesc.srcAccessMask |= VK_ACCESS_SHADER_READ_BIT;
+		// Reads need no availability, only an execution dependency
 		srcStageMask =
 		    VkPipelineStageFlagBits(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		break;
@@ -2314,20 +2343,26 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 		barrierDesc.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		break;
-	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: barrierDesc.srcAccessMask |= VK_ACCESS_TRANSFER_READ_BIT; break;
-	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: barrierDesc.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT; break;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		barrierDesc.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
+		srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		break;
 	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-		barrierDesc.srcAccessMask |=
-		    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		barrierDesc.srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		srcStageMask = VkPipelineStageFlagBits(
 		    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 		break;
 	case VK_IMAGE_LAYOUT_GENERAL:
+		// Storage images, written from compute or fragment shaders
 		barrierDesc.srcAccessMask |= VK_ACCESS_SHADER_WRITE_BIT;
-		srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		srcStageMask =
+		    VkPipelineStageFlagBits(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		break;
 	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-		barrierDesc.srcAccessMask |= VK_ACCESS_MEMORY_READ_BIT;
+		// Ordered after presentation by the acquire semaphore, waited at this stage
 		srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		break;
 	}
@@ -2342,7 +2377,8 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 		    VkPipelineStageFlagBits(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		break;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		barrierDesc.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		// Read too: render passes load attachments (VK_ATTACHMENT_LOAD_OP_LOAD) and blend
+		barrierDesc.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
@@ -2360,12 +2396,13 @@ VkImageLayout GfxContext::addImageBarrier(VkImage image,
 		    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 		break;
 	case VK_IMAGE_LAYOUT_GENERAL:
-		barrierDesc.dstAccessMask |= VK_ACCESS_SHADER_WRITE_BIT;
-		dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		barrierDesc.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		dstStageMask =
+		    VkPipelineStageFlagBits(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		break;
 	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-		barrierDesc.dstAccessMask |= VK_ACCESS_MEMORY_READ_BIT;
-		dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		// Present waits on a semaphore signaled after all commands; nothing in the queue reads it
+		dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 		break;
 	}
 
@@ -3266,7 +3303,7 @@ void Gfx_BeginFrame()
 	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
 }
 
-void GfxDevice::captureScreenshot()
+void GfxDevice::captureScreenshot(VkSemaphore signalSemaphore)
 {
 	if (m_pendingScreenshot.active)
 	{
@@ -3314,10 +3351,18 @@ void GfxDevice::captureScreenshot()
 
 	m_resources.buffers.remove(stagingHandle);
 
+	// Makes the copy visible to the host read after the fence wait
+	VkMemoryBarrier hostReadBarrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+	hostReadBarrier.srcAccessMask   = VK_ACCESS_TRANSFER_WRITE_BIT;
+	hostReadBarrier.dstAccessMask   = VK_ACCESS_HOST_READ_BIT;
+	vkCmdPipelineBarrier(context->m_commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
+	    1, &hostReadBarrier, 0, nullptr, 0, nullptr);
+
 	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	context->endBuild();
-	context->submit(m_graphicsQueue);
+	// Last submit before present: its layout transitions must complete first
+	context->submit(m_graphicsQueue, VK_NULL_HANDLE, 0, signalSemaphore);
 
 	m_pendingScreenshot.memory = memory;
 	m_pendingScreenshot.buffer = buffer;
@@ -3357,7 +3402,12 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 
 GfxProgressId Gfx_Present()
 {
-	if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
+	const bool presenting = !g_device->m_cfg.headless && g_device->m_swapChainValid;
+	const VkSemaphore renderComplete =
+	    presenting ? g_device->m_renderCompleteSemaphores[g_device->m_swapChainIndex] : VK_NULL_HANDLE;
+	const bool screenshot = presenting && g_device->m_pendingScreenshotCallback;
+
+	if (presenting)
 	{
 		GfxDevice::FrameData* currentFrame = g_device->m_currentFrame;
 		if (currentFrame->presentCompleteSemaphore && !currentFrame->presentCompleteSemaphoreWaited)
@@ -3369,7 +3419,9 @@ GfxProgressId Gfx_Present()
 	}
 
 	const u64 progressValue = g_device->m_nextProgressId++;
-	g_context->submit(g_device->m_graphicsQueue, g_device->m_progressSemaphore, progressValue);
+	// Present waits for the last submit of the frame, which is the screenshot copy when one is taken
+	g_context->submit(g_device->m_graphicsQueue, g_device->m_progressSemaphore, progressValue,
+	    screenshot ? VK_NULL_HANDLE : renderComplete);
 	sealDestructionEpoch(g_device, progressValue);
 
 	g_device->m_currentFrame->lastGraphicsFence    = g_context->m_fence;
@@ -3377,9 +3429,9 @@ GfxProgressId Gfx_Present()
 
 	if (g_device->m_pendingScreenshotCallback)
 	{
-		if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
+		if (screenshot)
 		{
-			g_device->captureScreenshot();
+			g_device->captureScreenshot(renderComplete);
 		}
 		else
 		{
@@ -3389,12 +3441,14 @@ GfxProgressId Gfx_Present()
 		}
 	}
 
-	if (!g_device->m_cfg.headless && g_device->m_swapChainValid)
+	if (presenting)
 	{
-		VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-		presentInfo.swapchainCount   = 1;
-		presentInfo.pSwapchains      = &g_device->m_swapChain;
-		presentInfo.pImageIndices    = &g_device->m_swapChainIndex;
+		VkPresentInfoKHR presentInfo   = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores    = &renderComplete;
+		presentInfo.swapchainCount     = 1;
+		presentInfo.pSwapchains        = &g_device->m_swapChain;
+		presentInfo.pImageIndices      = &g_device->m_swapChainIndex;
 
 		VkResult result = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
