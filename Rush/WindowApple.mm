@@ -1027,9 +1027,9 @@ Box2 WindowIOS::getSafeArea() const
 
 int WindowIOS::findTouchByNativeId(void* nativeId) const
 {
-	for (size_t i = 0; i < m_nativeTouchIds.size(); ++i)
+	for (size_t i = 0; i < m_nativeTouches.size(); ++i)
 	{
-		if (m_nativeTouchIds[i] == nativeId)
+		if (m_nativeTouches[i].nativeId == nativeId)
 		{
 			return (int)i;
 		}
@@ -1037,35 +1037,11 @@ int WindowIOS::findTouchByNativeId(void* nativeId) const
 	return -1;
 }
 
-int WindowIOS::findTouchById(u64 id) const
-{
-	for (size_t i = 0; i < m_touches.size(); ++i)
-	{
-		if (m_touches[i].id == id)
-		{
-			return (int)i;
-		}
-	}
-	return -1;
-}
-
-u64 WindowIOS::touchBegan(void* nativeId, const Vec2& pos)
+void WindowIOS::touchBegan(void* nativeId, const Vec2& pos)
 {
 	const u64 id = m_nextTouchId++;
-	const bool isFirst = m_touches.empty();
-
-	m_touches.push_back({id, pos});
-	m_nativeTouchIds.push_back(nativeId);
-
-	if (isFirst)
-	{
-		m_mouse.pos = pos;
-		m_mouse.buttons[0] = true;
-		broadcast(WindowEvent::MouseMove(pos));
-		broadcast(WindowEvent::MouseDown(pos, 0, false));
-	}
-
-	return id;
+	m_nativeTouches.push_back({nativeId, id});
+	processTouchEvent(WindowEvent::Touch(WindowEventType_TouchBegin, id, pos));
 }
 
 void WindowIOS::touchMoved(void* nativeId, const Vec2& pos)
@@ -1075,14 +1051,7 @@ void WindowIOS::touchMoved(void* nativeId, const Vec2& pos)
 	{
 		return;
 	}
-
-	m_touches[idx].pos = pos;
-
-	if (idx == 0)
-	{
-		m_mouse.pos = pos;
-		broadcast(WindowEvent::MouseMove(pos));
-	}
+	processTouchEvent(WindowEvent::Touch(WindowEventType_TouchMove, m_nativeTouches[idx].id, pos));
 }
 
 void WindowIOS::touchEnded(void* nativeId, const Vec2& pos)
@@ -1092,22 +1061,10 @@ void WindowIOS::touchEnded(void* nativeId, const Vec2& pos)
 	{
 		return;
 	}
-
-	if (idx == 0)
-	{
-		m_mouse.pos = pos;
-		m_mouse.buttons[0] = false;
-		broadcast(WindowEvent::MouseUp(pos, 0));
-	}
-
-	const int last = (int)m_touches.size() - 1;
-	if (idx != last)
-	{
-		m_touches[idx] = m_touches[last];
-		m_nativeTouchIds[idx] = m_nativeTouchIds[last];
-	}
-	m_touches.pop_back();
-	m_nativeTouchIds.pop_back();
+	const u64 id = m_nativeTouches[idx].id;
+	m_nativeTouches[idx] = m_nativeTouches.back();
+	m_nativeTouches.pop_back();
+	processTouchEvent(WindowEvent::Touch(WindowEventType_TouchEnd, id, pos));
 }
 
 void WindowIOS::updateResolutionScale()

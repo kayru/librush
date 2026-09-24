@@ -217,7 +217,7 @@ public:
 		u64 id = 0;
 		Vec2 pos;
 	};
-	virtual ArrayView<const TouchPoint> getTouches() const { return {}; }
+	ArrayView<const TouchPoint> getTouches() const { return m_touches; }
 
 
 	void close() { m_closed = true; }
@@ -256,6 +256,8 @@ public:
 
 	void broadcast(const WindowEvent& e);
 
+	void processTouchEvent(const WindowEvent& e);
+
 	// Synthetic input (tests/automation): applies the event to the cached
 	// keyboard/mouse state exactly like the platform layer, then broadcasts.
 	void injectInputEvent(const WindowEvent& e);
@@ -291,6 +293,9 @@ protected:
 	MouseState    m_mouse;
 	KeyboardState m_keyboard;
 
+	DynamicArray<TouchPoint> m_touches;
+	u64  m_mouseTouchId = 0;
+
 	DynamicArray<WindowEventListener*> m_listeners;
 
 private:
@@ -308,6 +313,9 @@ enum WindowEventType : u32
 	WindowEventType_MouseUp   = RUSH_WINDOW_EVENT_TYPE_MOUSE_UP,
 	WindowEventType_MouseMove = RUSH_WINDOW_EVENT_TYPE_MOUSE_MOVE,
 	WindowEventType_Scroll    = RUSH_WINDOW_EVENT_TYPE_SCROLL,
+	WindowEventType_TouchBegin = RUSH_WINDOW_EVENT_TYPE_TOUCH_BEGIN,
+	WindowEventType_TouchMove  = RUSH_WINDOW_EVENT_TYPE_TOUCH_MOVE,
+	WindowEventType_TouchEnd   = RUSH_WINDOW_EVENT_TYPE_TOUCH_END,
 
 	WindowEventType_COUNT     = RUSH_WINDOW_EVENT_TYPE_COUNT
 };
@@ -324,6 +332,7 @@ enum WindowEventMask : u32
 	WindowEventMask_Scroll    = RUSH_WINDOW_EVENT_MASK_SCROLL,
 	WindowEventMask_Key       = RUSH_WINDOW_EVENT_MASK_KEY,
 	WindowEventMask_Mouse     = RUSH_WINDOW_EVENT_MASK_MOUSE,
+	WindowEventMask_Touch     = RUSH_WINDOW_EVENT_MASK_TOUCH,
 	WindowEventMask_All       = RUSH_WINDOW_EVENT_MASK_ALL,
 };
 
@@ -343,6 +352,8 @@ struct WindowEvent
 	bool doubleClick = false;
 
 	Vec2 scroll = Vec2(0.0f);
+
+	u64 touchId = 0;
 
 	static WindowEvent Resize(u32 _width, u32 _height)
 	{
@@ -410,6 +421,15 @@ struct WindowEvent
 		e.type     = WindowEventType_Scroll;
 		e.scroll.x = x;
 		e.scroll.y = y;
+		return e;
+	}
+
+	static WindowEvent Touch(WindowEventType _type, u64 _touchId, const Vec2& _pos)
+	{
+		WindowEvent e;
+		e.type    = _type;
+		e.touchId = _touchId;
+		e.pos     = _pos;
 		return e;
 	}
 };

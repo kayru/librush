@@ -104,7 +104,6 @@ public:
 	virtual void           setMouseLock(bool) override {}
 	virtual bool           setFullscreen(bool) override { return true; }
 	virtual Box2 getSafeArea() const override;
-	virtual ArrayView<const TouchPoint> getTouches() const override { return m_touches; }
 
 	void setUIWindow(UIWindow* window) { m_uiWindow = window; }
 	void setViewController(RushViewController* vc);
@@ -113,17 +112,20 @@ public:
 	void setKeyDown(Key key) { m_keyboard.keys[key] = true; }
 	void setKeyUp(Key key) { m_keyboard.keys[key] = false; }
 
-	u64  touchBegan(void* nativeId, const Vec2& pos);
+	void touchBegan(void* nativeId, const Vec2& pos);
 	void touchMoved(void* nativeId, const Vec2& pos);
 	void touchEnded(void* nativeId, const Vec2& pos);
 
 private:
 	int findTouchByNativeId(void* nativeId) const;
-	int findTouchById(u64 id) const;
 
-	DynamicArray<TouchPoint> m_touches;
-	DynamicArray<void*>      m_nativeTouchIds;
-	u64                      m_nextTouchId = 1;
+	struct NativeTouch
+	{
+		void* nativeId = nullptr;
+		u64   id       = 0;
+	};
+	DynamicArray<NativeTouch> m_nativeTouches;
+	u64                       m_nextTouchId = 1;
 
 	UIWindow* m_uiWindow = nullptr;
 	RushViewController* m_viewController = nullptr;

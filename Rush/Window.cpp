@@ -52,6 +52,63 @@ void Window::broadcast(const WindowEvent& e)
 	}
 }
 
+void Window::processTouchEvent(const WindowEvent& e)
+{
+	RUSH_ASSERT(e.touchId != 0);
+
+	TouchPoint* touch = nullptr;
+	for (TouchPoint& it : m_touches)
+	{
+		if (it.id == e.touchId)
+		{
+			touch = &it;
+		}
+	}
+
+	if ((e.type == WindowEventType_TouchBegin) == (touch != nullptr))
+	{
+		return;
+	}
+
+	if (e.type == WindowEventType_TouchBegin)
+	{
+		m_touches.push_back({e.touchId, e.pos});
+	}
+	else if (e.type == WindowEventType_TouchMove)
+	{
+		touch->pos = e.pos;
+	}
+	else
+	{
+		*touch = m_touches.back();
+		m_touches.pop_back();
+	}
+	broadcast(e);
+
+	if (e.type == WindowEventType_TouchBegin && m_mouseTouchId == 0)
+	{
+		m_mouseTouchId = e.touchId;
+		m_mouse.pos = e.pos;
+		m_mouse.buttons[0] = true;
+		broadcast(WindowEvent::MouseMove(e.pos));
+		broadcast(WindowEvent::MouseDown(e.pos, 0, false));
+	}
+	else if (e.touchId == m_mouseTouchId)
+	{
+		m_mouse.pos = e.pos;
+		if (e.type == WindowEventType_TouchMove)
+		{
+			broadcast(WindowEvent::MouseMove(e.pos));
+		}
+		else if (e.type == WindowEventType_TouchEnd)
+		{
+			m_mouseTouchId = 0;
+			m_mouse.buttons[0] = false;
+			broadcast(WindowEvent::MouseUp(e.pos, 0));
+		}
+	}
+}
+
 void Window::injectInputEvent(const WindowEvent& e)
 {
 	switch (e.type)
@@ -90,6 +147,11 @@ void Window::injectInputEvent(const WindowEvent& e)
 		m_mouse.wheelH += int(e.scroll.x);
 		m_mouse.wheelV += int(e.scroll.y);
 		break;
+	case WindowEventType_TouchBegin:
+	case WindowEventType_TouchMove:
+	case WindowEventType_TouchEnd:
+		processTouchEvent(e);
+		return;
 	default:
 		break;
 	}
