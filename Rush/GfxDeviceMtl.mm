@@ -804,11 +804,23 @@ void ShaderMTL::destroy()
 	[library release];
 }
 
+template <typename T>
+static GfxOwn<T> createShaderResource(const GfxShaderSource& code)
+{
+	ShaderMTL shader = ShaderMTL::create(code);
+	if (!shader.function)
+	{
+		shader.destroy();
+		return GfxOwn<T>();
+	}
+	return GfxDevice::makeOwn(retainResourceT<T>(g_device->m_resources.shaders, shader));
+}
+
 // Compute shader
 
 GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 {
-	return GfxDevice::makeOwn(retainResourceT<GfxComputeShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
+	return createShaderResource<GfxComputeShader>(code);
 }
 
 
@@ -816,14 +828,14 @@ GfxOwn<GfxComputeShader> Gfx_CreateComputeShader(const GfxShaderSource& code)
 
 GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code)
 {
-	return GfxDevice::makeOwn(retainResourceT<GfxVertexShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
+	return createShaderResource<GfxVertexShader>(code);
 }
 
 
 // pixel shader
 GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code)
 {
-	return GfxDevice::makeOwn(retainResourceT<GfxPixelShader>(g_device->m_resources.shaders, ShaderMTL::create(code)));
+	return createShaderResource<GfxPixelShader>(code);
 }
 
 
