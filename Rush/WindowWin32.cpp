@@ -285,7 +285,10 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 
 	case WM_KILLFOCUS: m_focused = false; break;
 
-	case WM_CLOSE: close(); return true;
+	case WM_CLOSE:
+		RUSH_LOG("Closing: WM_CLOSE (close button, Alt+F4 or system)");
+		close();
+		return true;
 	}
 
 	return false;

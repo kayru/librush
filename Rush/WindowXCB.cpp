@@ -379,6 +379,7 @@ void WindowXCB::pollEvents()
 			{
 				if( (*(xcb_client_message_event_t*)xcbEvent).data.data32[0] == (*m_closeReply).atom )
 				{
+					RUSH_LOG("Closing: WM_DELETE_WINDOW from the window manager");
 					close();
 				}
 				break;
