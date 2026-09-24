@@ -127,18 +127,6 @@ static DynamicArray<VkExtensionProperties> enumerateInstanceExtensions()
 	return enumerated;
 }
 
-static DynamicArray<VkLayerProperties> enumerateDeviceLayers(VkPhysicalDevice physicalDevice)
-{
-	u32 count = 0;
-
-	V(vkEnumerateDeviceLayerProperties(physicalDevice, &count, nullptr));
-	DynamicArray<VkLayerProperties> enumerated(count);
-
-	V(vkEnumerateDeviceLayerProperties(physicalDevice, &count, enumerated.data()));
-
-	return enumerated;
-}
-
 static DynamicArray<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalDevice physicalDevice)
 {
 	u32 count = 0;
@@ -676,7 +664,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
 	RUSH_ASSERT(m_timelineSemaphoreFeatures.timelineSemaphore);
 
-	auto enumeratedDeviceLayers     = enumerateDeviceLayers(m_physicalDevice);
 	auto enumeratedDeviceExtensions = enumerateDeviceExtensions(m_physicalDevice);
 
 	u32 queueCount = 0;
@@ -761,7 +748,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		queueCreateInfos.push_back(info);
 	}
 
-	DynamicArray<const char*> enabledDeviceLayers;
 	DynamicArray<const char*> enabledDeviceExtensions;
 
 	auto enableDeviceExtension = [&](const char* name, bool required = false) {
@@ -844,11 +830,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	bool debugMerkersAvailable = enableDeviceExtension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME, false);
 
-	if (cfg.debug)
-	{
-		enableLayer(enabledDeviceLayers, enumeratedDeviceLayers, "VK_LAYER_KHRONOS_validation");
-	}
-
 	// Explicitly turn off certain features
 	m_physicalDeviceFeatures2.features.robustBufferAccess = VK_FALSE;
 	m_bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = VK_FALSE;
@@ -881,8 +862,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
 	deviceCreateInfo.pQueueCreateInfos       = queueCreateInfos.data();
-	deviceCreateInfo.enabledLayerCount       = (u32)enabledDeviceLayers.size();
-	deviceCreateInfo.ppEnabledLayerNames     = enabledDeviceLayers.data();
+	// Device layers are deprecated: the instance's layers (validation) cover the device
 	deviceCreateInfo.enabledExtensionCount   = (u32)enabledDeviceExtensions.size();
 	deviceCreateInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
 	deviceCreateInfo.pNext = &m_physicalDeviceFeatures2;
@@ -4523,7 +4503,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 	RUSH_ASSERT(!isDepthBuffer || (getGfxFormatComponent(desc.format) & GfxFormatComponent_Depth));
 	RUSH_ASSERT(data || isDepthBuffer || isRenderTarget || isStorageImage);
-	RUSH_ASSERT(desc.type == TextureType::Tex2D || desc.type == TextureType::TexCube);
+	RUSH_ASSERT(desc.type == TextureType::Tex2D || desc.type == TextureType::TexCube || desc.type == TextureType::Tex3D);
 	RUSH_ASSERT(desc.mips != 0);
 	RUSH_ASSERT(desc.width != 0);
 	RUSH_ASSERT(desc.height != 0);
@@ -4681,7 +4661,8 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			const u32 mipLevel  = data[i].mip;
 			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (desc.width >> mipLevel));
 			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (desc.height >> mipLevel));
-			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (desc.depth >> mipLevel));
+			const u32 mipDepth  = data[i].depth ? data[i].depth
+				: desc.type == TextureType::Tex3D ? max<u32>(1, (desc.depth >> mipLevel)) : 1;
 
 			const size_t alignedLevelSize =
 			    alignCeiling((u64(mipWidth * mipHeight * mipDepth) * bitsPerPixel), bitsPerElement) / 8;
@@ -4699,7 +4680,8 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			const u32 mipLevel  = data[i].mip;
 			const u32 mipWidth  = data[i].width ? data[i].width : max<u32>(1, (desc.width >> mipLevel));
 			const u32 mipHeight = data[i].height ? data[i].height : max<u32>(1, (desc.height >> mipLevel));
-			const u32 mipDepth  = data[i].depth ? data[i].depth : max<u32>(1, (desc.depth >> mipLevel));
+			const u32 mipDepth  = data[i].depth ? data[i].depth
+				: desc.type == TextureType::Tex3D ? max<u32>(1, (desc.depth >> mipLevel)) : 1;
 
 			const size_t levelSize = (size_t(mipWidth * mipHeight * mipDepth) * bitsPerPixel) / 8;
 			const size_t alignedLevelSize =

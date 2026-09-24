@@ -1212,7 +1212,6 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 {
 	const bool isRenderTarget = !!(desc.usage & GfxUsageFlags::RenderTarget);
 	const bool isDepthStencil = !!(desc.usage & GfxUsageFlags::DepthStencil);
-	const bool isCube = desc.type == TextureType::TexCube;
 	const bool isBlockCompressed = isGfxFormatBlockCompressed(desc.format);
 	const int blockDim = isBlockCompressed ? 4 : 1;
 
@@ -1224,7 +1223,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 
 	textureDescriptor.width = desc.width;
 	textureDescriptor.height = desc.height;
-	textureDescriptor.depth = desc.isArray() ? 1 : desc.depth;
+	textureDescriptor.depth = desc.type == TextureType::Tex3D ? desc.depth : 1;
 	textureDescriptor.pixelFormat = convertPixelFormat(desc.format);
 	if (textureDescriptor.pixelFormat == MTLPixelFormatInvalid)
 	{
@@ -1236,8 +1235,19 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 	textureDescriptor.mipmapLevelCount = desc.samples > 1 ? 1 : desc.mips;
 	textureDescriptor.sampleCount = desc.samples > 0 ? desc.samples : 1;
 	textureDescriptor.arrayLength = desc.isArray() ? desc.depth : 1;
-	textureDescriptor.textureType = isCube ? MTLTextureTypeCube
-		: (desc.samples > 1 ? MTLTextureType2DMultisample : MTLTextureType2D);
+	switch (desc.type)
+	{
+	case TextureType::Tex1D: textureDescriptor.textureType = MTLTextureType1D; break;
+	case TextureType::Tex1DArray: textureDescriptor.textureType = MTLTextureType1DArray; break;
+	case TextureType::Tex2DArray: textureDescriptor.textureType = MTLTextureType2DArray; break;
+	case TextureType::Tex3D: textureDescriptor.textureType = MTLTextureType3D; break;
+	case TextureType::TexCube: textureDescriptor.textureType = MTLTextureTypeCube; break;
+	case TextureType::TexCubeArray: textureDescriptor.textureType = MTLTextureTypeCubeArray; break;
+	case TextureType::Tex2D:
+	default:
+		textureDescriptor.textureType = desc.samples > 1 ? MTLTextureType2DMultisample : MTLTextureType2D;
+		break;
+	}
 
 	if (isRenderTarget || isDepthStencil)
 	{
@@ -1269,7 +1279,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 		const u32 mipLevel = data[i].mip;
 		const u32 mipWidth = max<u32>(1, (desc.width >> mipLevel));
 		const u32 mipHeight = max<u32>(1, (desc.height >> mipLevel));
-		const u32 mipDepth = max<u32>(1, (desc.depth >> mipLevel));
+		const u32 mipDepth = desc.type == TextureType::Tex3D ? max<u32>(1, (desc.depth >> mipLevel)) : 1;
 
 		const GfxTextureData& regionData = data[i];
 		MTLRegion region = { { 0, 0, 0 }, { mipWidth, mipHeight, mipDepth } };
