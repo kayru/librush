@@ -219,6 +219,10 @@ public:
 	};
 	ArrayView<const TouchPoint> getTouches() const { return m_touches; }
 
+	static constexpr u64 MouseTouchId = ~0ull;
+
+	void setMouseTouchEmulation(bool enabled);
+
 
 	void close() { m_closed = true; }
 	bool isClosed() const { return m_closed; }
@@ -295,6 +299,7 @@ protected:
 
 	DynamicArray<TouchPoint> m_touches;
 	u64  m_mouseTouchId = 0;
+	bool m_mouseTouchEmulation = false;
 
 	DynamicArray<WindowEventListener*> m_listeners;
 

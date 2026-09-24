@@ -50,6 +50,31 @@ void Window::broadcast(const WindowEvent& e)
 			listener->push_back(e);
 		}
 	}
+
+	if (m_mouseTouchEmulation)
+	{
+		if (e.type == WindowEventType_MouseDown && e.button == 0)
+		{
+			processTouchEvent(WindowEvent::Touch(WindowEventType_TouchBegin, MouseTouchId, e.pos));
+		}
+		else if (e.type == WindowEventType_MouseMove)
+		{
+			processTouchEvent(WindowEvent::Touch(WindowEventType_TouchMove, MouseTouchId, e.pos));
+		}
+		else if (e.type == WindowEventType_MouseUp && e.button == 0)
+		{
+			processTouchEvent(WindowEvent::Touch(WindowEventType_TouchEnd, MouseTouchId, e.pos));
+		}
+	}
+}
+
+void Window::setMouseTouchEmulation(bool enabled)
+{
+	if (!enabled && m_mouseTouchEmulation)
+	{
+		processTouchEvent(WindowEvent::Touch(WindowEventType_TouchEnd, MouseTouchId, m_mouse.pos));
+	}
+	m_mouseTouchEmulation = enabled;
 }
 
 void Window::processTouchEvent(const WindowEvent& e)
@@ -85,6 +110,11 @@ void Window::processTouchEvent(const WindowEvent& e)
 	}
 	broadcast(e);
 
+	// Under mouse touch emulation the mouse is the source
+	if (m_mouseTouchEmulation)
+	{
+		return;
+	}
 	if (e.type == WindowEventType_TouchBegin && m_mouseTouchId == 0)
 	{
 		m_mouseTouchId = e.touchId;
