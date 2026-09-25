@@ -379,8 +379,7 @@ struct Vec4
 	Vec2 xy() const { return Vec2(x, y); }
 	Vec2 xz() const { return Vec2(x, z); }
 
-	const Vec3& xyz() const { return *((Vec3*)(this)); }
-	Vec3&       xyz() { return *((Vec3*)(this)); }
+	Vec3 xyz() const { return Vec3(x, y, z); }
 
 	float swizzle(size_t a) const { return elem(a); }
 	Vec2  swizzle(size_t a, size_t b) const { return Vec2(elem(a), elem(b)); }
