@@ -4330,7 +4330,8 @@ GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& 
 	rs.polygonMode = rasterizerDesc.fillMode == GfxFillMode::Solid ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
 	rs.cullMode    = rasterizerDesc.cullMode == GfxCullMode::None ? VK_CULL_MODE_NONE
 	                                                              : VkCullModeFlagBits(rasterizerDesc.cullFace);
-	rs.frontFace   = rasterizerDesc.cullMode == GfxCullMode::CCW ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+	// Unculled pipelines keep the default winding, so front-facing means the same as when culled
+	rs.frontFace   = rasterizerDesc.cullMode == GfxCullMode::CW ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rs.depthBiasEnable         = rasterizerDesc.depthBias != 0 || rasterizerDesc.depthBiasSlopeScale != 0;
 	rs.depthBiasConstantFactor = rasterizerDesc.depthBias;
 	rs.depthBiasClamp          = 0.0f;

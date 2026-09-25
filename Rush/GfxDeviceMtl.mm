@@ -2367,9 +2367,13 @@ void GfxContext::applyState()
 			}
 
 			const auto& rasterDesc = renderPipeline->desc.rasterizer;
-			MTLCullMode cullMode = rasterDesc.cullMode == GfxCullMode::None ? MTLCullModeNone : MTLCullModeBack;
-			[m_commandEncoder setCullMode:cullMode];
-			[m_commandEncoder setFrontFacingWinding:rasterDesc.cullMode == GfxCullMode::CCW ? MTLWindingCounterClockwise : MTLWindingClockwise];
+			RUSH_ASSERT_MSG(rasterDesc.cullMode == GfxCullMode::None || rasterDesc.cullFace != GfxCullFace::FrontAndBack,
+				"Metal cannot cull both faces");
+			const bool culled = rasterDesc.cullMode != GfxCullMode::None && rasterDesc.cullFace != GfxCullFace::None;
+			[m_commandEncoder setCullMode:!culled ? MTLCullModeNone
+				: rasterDesc.cullFace == GfxCullFace::Front ? MTLCullModeFront : MTLCullModeBack];
+			// Unculled pipelines keep the default winding, so front-facing means the same as when culled
+			[m_commandEncoder setFrontFacingWinding:rasterDesc.cullMode == GfxCullMode::CW ? MTLWindingClockwise : MTLWindingCounterClockwise];
 			[m_commandEncoder setTriangleFillMode:rasterDesc.fillMode == GfxFillMode::Solid ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
 			[m_commandEncoder setDepthBias:rasterDesc.depthBias slopeScale:rasterDesc.depthBiasSlopeScale clamp:0.0f];
 

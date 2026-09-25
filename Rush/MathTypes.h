@@ -92,11 +92,11 @@ struct Vec2
 	const float*  end() const { return &y + 1; }
 	static size_t size() { return 2; }
 
-	const float& operator[](const size_t i) const { return *(&x + i); }
-	float&       operator[](const size_t i) { return *(&x + i); }
+	const float& operator[](const size_t i) const { return i == 0 ? x : y; }
+	float&       operator[](const size_t i) { return i == 0 ? x : y; }
 
-	const float& elem(const size_t i) const { return *(&x + i); }
-	float&       elem(const size_t i) { return *(&x + i); }
+	const float& elem(const size_t i) const { return (*this)[i]; }
+	float&       elem(const size_t i) { return (*this)[i]; }
 
 	float reduceAdd() const { return x + y; }
 	float reduceMul() const { return x * y; }
@@ -218,11 +218,11 @@ struct Vec3
 	const float*  end() const { return &z + 1; }
 	static size_t size() { return 3; }
 
-	const float& operator[](const size_t i) const { return *(&x + i); }
-	float&       operator[](const size_t i) { return *(&x + i); }
+	const float& operator[](const size_t i) const { return i == 0 ? x : i == 1 ? y : z; }
+	float&       operator[](const size_t i) { return i == 0 ? x : i == 1 ? y : z; }
 
-	const float& elem(const size_t i) const { return *(&x + i); }
-	float&       elem(const size_t i) { return *(&x + i); }
+	const float& elem(const size_t i) const { return (*this)[i]; }
+	float&       elem(const size_t i) { return (*this)[i]; }
 
 	float lengthSquared() const { return x * x + y * y + z * z; }
 	float length() const { return sqrtf(lengthSquared()); }
@@ -358,11 +358,11 @@ struct Vec4
 	const float*  end() const { return &w + 1; }
 	static size_t size() { return 4; }
 
-	const float& operator[](const size_t i) const { return *(&x + i); }
-	float&       operator[](const size_t i) { return *(&x + i); }
+	const float& operator[](const size_t i) const { return i == 0 ? x : i == 1 ? y : i == 2 ? z : w; }
+	float&       operator[](const size_t i) { return i == 0 ? x : i == 1 ? y : i == 2 ? z : w; }
 
-	const float& elem(const size_t i) const { return *(&x + i); }
-	float&       elem(const size_t i) { return *(&x + i); }
+	const float& elem(const size_t i) const { return (*this)[i]; }
+	float&       elem(const size_t i) { return (*this)[i]; }
 
 	float reduceAdd() const { return x + y + z + w; }
 	float reduceMul() const { return x * y * z * w; }
