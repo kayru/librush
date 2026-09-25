@@ -194,7 +194,13 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 		setFullscreen(true);
 	}
 
-	if (desc.maximized)
+	if (desc.background)
+	{
+		// SW_SHOWMAXIMIZED always activates
+		ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
+		SetWindowPos(m_hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	}
+	else if (desc.maximized)
 	{
 		ShowWindow(m_hwnd, SW_SHOWMAXIMIZED);
 	}

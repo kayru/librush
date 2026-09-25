@@ -114,8 +114,15 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 
 		id dg = [AppDelegate sharedDelegate];
 		[NSApp setDelegate:dg];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		[NSApp activateIgnoringOtherApps:YES];
+		// Background apps may not be activated at all: macOS otherwise activates
+		// an app launched by the active one (a terminal) on its first events,
+		// whatever its policy. Their windows still show.
+		const bool background = g_mainWindow && g_mainWindow->getDesc().background;
+		[NSApp setActivationPolicy:background ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
+		if (!background)
+		{
+			[NSApp activateIgnoringOtherApps:YES];
+		}
 		[NSApp finishLaunching];
 
 		[[NSNotificationCenter defaultCenter]

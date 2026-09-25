@@ -90,6 +90,7 @@ void Platform_Startup(const AppConfig& cfg)
 		windowDesc.caption    = cfg.name;
 		windowDesc.fullScreen = cfg.fullScreen;
 		windowDesc.maximized  = cfg.maximized;
+		windowDesc.background = cfg.background;
 
 		window = Platform_CreateWindow(windowDesc);
 	}

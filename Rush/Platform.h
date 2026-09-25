@@ -36,6 +36,7 @@ struct AppConfig
 	bool warp            = false;
 	bool minimizeLatency = false;
 	bool headless        = false;
+	bool background      = false; // unattended: the window must not take focus or come to the front
 
 	int    argc = 0;
 	char** argv = nullptr;

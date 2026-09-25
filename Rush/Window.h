@@ -192,6 +192,7 @@ struct WindowDesc
 	bool        maximized                = false;
 	bool        handleShortcutQuit       = true;
 	bool        handleShortcutFullScreen = true;
+	bool        background               = false; // open without taking focus, behind other windows
 };
 
 class Window

@@ -326,7 +326,14 @@ WindowMac::WindowMac(const WindowDesc& desc)
 		? [NSString stringWithUTF8String:desc.caption]
 		: [[NSProcessInfo processInfo] processName];
 	[window setTitle:appName];
-	[window makeKeyAndOrderFront:window];
+	if (desc.background)
+	{
+		[window orderBack:window];
+	}
+	else
+	{
+		[window makeKeyAndOrderFront:window];
+	}
 	[window setAcceptsMouseMovedEvents:YES];
 	[window setBackgroundColor:[NSColor blackColor]];
 	[[WindowMacInternal sharedDelegate] windowCreated:window];
@@ -919,7 +926,8 @@ static Key translateKeyIOS(UIKeyboardHIDUsage usage)
 		if (press.key)
 		{
 			const Key key = translateKeyIOS((UIKeyboardHIDUsage)press.key.keyCode);
-			if (key != Key_Unknown)
+			// Releases always pass: a key held before input was disabled must not stick
+			if (key != Key_Unknown && w->isOsInputEnabled())
 			{
 				w->setKeyDown(key);
 				w->broadcast(WindowEvent::KeyDown(key));
@@ -1039,6 +1047,11 @@ int WindowIOS::findTouchByNativeId(void* nativeId) const
 
 void WindowIOS::touchBegan(void* nativeId, const Vec2& pos)
 {
+	// A touch never begun is ignored when it moves or ends
+	if (!m_osInputEnabled)
+	{
+		return;
+	}
 	const u64 id = m_nextTouchId++;
 	m_nativeTouches.push_back({nativeId, id});
 	processTouchEvent(WindowEvent::Touch(WindowEventType_TouchBegin, id, pos));
