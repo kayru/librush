@@ -4987,10 +4987,32 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		res.info.range  = bufferCreateInfo.size;
 	}
 
-	// host-visible memory is also coherent so GPU->CPU readback needs no explicit invalidate
-	const VkFlags memoryProperties = desc.hostVisible
-		? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-		: VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	// Host-visible memory is coherent, except that CPU readback wants cached
+	// memory: uncached (write-combined, or VRAM through the BAR) reads crawl.
+	// Cached but not coherent is invalidated in Gfx_MapBuffer.
+	auto chooseMemoryType = [&](u32 memoryTypeBits)
+	{
+		const VkFlags visible = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		const VkFlags coherent = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		const VkFlags cached = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+		if (!desc.hostVisible)
+		{
+			return g_device->memoryTypeFromProperties(memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		}
+		if (!!(desc.flags & GfxBufferFlags::CpuRead))
+		{
+			for (const VkFlags required : {visible | cached | coherent, visible | cached})
+			{
+				const u32 type = g_device->memoryTypeFromProperties(memoryTypeBits, required);
+				if (type != 0xFFFFFFFF)
+				{
+					res.mappedNonCoherent = !(g_device->m_deviceMemoryProps.memoryTypes[type].propertyFlags & coherent);
+					return type;
+				}
+			}
+		}
+		return g_device->memoryTypeFromProperties(memoryTypeBits, visible | coherent);
+	};
 
 	if (data)
 	{
@@ -5006,8 +5028,7 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 		allocInfo.pNext = &allocFlags;
 		allocInfo.allocationSize = memoryReq.size;
-		allocInfo.memoryTypeIndex =
-		    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
+		allocInfo.memoryTypeIndex = chooseMemoryType(memoryReq.memoryTypeBits);
 
 		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 		res.ownsMemory = true;
@@ -5037,7 +5058,7 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 		allocInfo.pNext = &allocFlags;
 		allocInfo.allocationSize = max(memoryReq.size, bufferCreateInfo.size);
-		allocInfo.memoryTypeIndex = g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, memoryProperties);
+		allocInfo.memoryTypeIndex = chooseMemoryType(memoryReq.memoryTypeBits);
 
 		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
 		res.ownsMemory = true;
@@ -5152,8 +5173,18 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 	RUSH_ASSERT(offset == 0 && size == 0);
 	RUSH_ASSERT(desc.hostVisible);
 
+	BufferVK& buffer = g_device->m_resources.buffers[vb];
+	if (buffer.mappedNonCoherent)
+	{
+		VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+		range.memory = buffer.memory;
+		range.offset = 0;
+		range.size = VK_WHOLE_SIZE;
+		V(vkInvalidateMappedMemoryRanges(g_vulkanDevice, 1, &range));
+	}
+
 	GfxMappedBuffer result;
-	result.data   = g_device->m_resources.buffers[vb].mappedMemory;
+	result.data   = buffer.mappedMemory;
 	result.size   = desc.stride * desc.count;
 	result.handle = vb;
 

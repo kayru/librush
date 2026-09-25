@@ -113,6 +113,7 @@ struct BufferVK : GfxResourceBase
 	bool                      ownsBuffer      = false;
 	bool                      ownsMemory      = false;
 	void*                     mappedMemory    = nullptr;
+	bool                      mappedNonCoherent = false; // invalidate before the CPU reads
 	u32                       size            = 0;
 	u32                       lastUpdateFrame = ~0u;
 	u64                       deviceAddress   = 0;
