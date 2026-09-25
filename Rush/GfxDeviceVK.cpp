@@ -3523,6 +3523,9 @@ void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval =
 // The swapchain image is acquired at frame start and must be presented
 void Gfx_SkipPresent() {}
 
+// Unsynced present modes (Gfx_SetPresentInterval(0)) do not block
+bool Gfx_PresentWouldWait() { return false; }
+
 GfxProgressId Gfx_Submit()
 {
 	g_device->flushUploadContext(g_context);

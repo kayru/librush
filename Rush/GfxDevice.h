@@ -179,6 +179,10 @@ void                 Gfx_SetPresentInterval(u32 interval);
 // in an offscreen texture. Call before the frame's first back buffer pass.
 // A hint: backends that cannot skip present the frame.
 void                 Gfx_SkipPresent();
+// True when presenting now would block until the display frees a back buffer.
+// Callers that must not be paced by the display skip such frames. Backends
+// that cannot tell return false.
+bool                 Gfx_PresentWouldWait();
 const GfxCapability& Gfx_GetCapability();
 
 // GPU progress tracking: Submit/Present return a GfxProgressId.
@@ -478,6 +482,7 @@ inline void Gfx_EndFrame() {}
 inline GfxProgressId Gfx_Present() { return {}; }
 inline void Gfx_SetPresentInterval(u32 interval) {}
 inline void Gfx_SkipPresent() {}
+inline bool Gfx_PresentWouldWait() { return false; }
 inline GfxProgressId Gfx_Submit() { return {}; }
 inline GfxProgressId Gfx_GetPendingProgressId() { return {}; }
 inline GfxProgressStatus Gfx_QueryProgress(GfxProgressId, GfxProgressFlags) { return GfxProgressStatus::Complete; }

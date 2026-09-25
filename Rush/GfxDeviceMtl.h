@@ -8,6 +8,7 @@
 #include "Window.h"
 
 #include <atomic>
+#include <memory>
 
 #if defined(RUSH_PLATFORM_IOS)
 #import <UIKit/UIKit.h>
@@ -219,6 +220,8 @@ public:
 	// Written by the command buffer completion handler (Metal thread), published
 	// into m_stats on the main thread at the start of the next frame
 	std::atomic<double> m_completedFrameGpuTime{0.0};
+	// Presented, not yet on screen. Shared: presented handlers may outlive the device.
+	std::shared_ptr<std::atomic<u32>> m_presentsInFlight = std::make_shared<std::atomic<u32>>(0);
 
 	u32 m_uniqueResourceCounter = 1;
 
