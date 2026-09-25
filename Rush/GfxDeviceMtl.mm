@@ -304,6 +304,7 @@ GfxDevice::~GfxDevice()
 {
 	g_metalDevice = nil;
 
+	[m_offscreenBackBuffer release];
 	[m_progressEvent release];
 	[m_lastSubmittedCommandBuffer release];
 	[m_commandBuffer release];
@@ -376,27 +377,62 @@ void GfxDevice::beginFrame()
 		m_resizeEvents.clear();
 	}
 
-	if (!m_headless)
-	{
-		// FIXME: handle nextDrawable returning nil (resize/minimize) before using drawable/texture.
-		m_drawable = [m_metalLayer nextDrawable];
-		[m_drawable retain];
-
-		m_backBufferTexture = [m_drawable texture];
-		[m_backBufferTexture retain];
-
-		m_backBufferPixelFormat = [m_metalLayer pixelFormat];
-	}
-	else
-	{
-		m_drawable = nil;
-		m_backBufferTexture = nil;
-		m_backBufferPixelFormat = MTLPixelFormatInvalid;
-	}
+	// The drawable is acquired on first use (acquireBackBuffer): nextDrawable
+	// blocks until the compositor frees one, so frames that only render
+	// offscreen must not pay for it
+	m_drawable = nil;
+	m_backBufferTexture = nil;
+	m_backBufferPixelFormat = m_headless ? MTLPixelFormatInvalid : [m_metalLayer pixelFormat];
+	m_skipPresent = false;
 
 	m_commandBuffer = [m_commandQueue commandBuffer];
 	[m_commandBuffer retain];
 
+}
+
+bool GfxDevice::acquireBackBuffer()
+{
+	if (m_backBufferTexture)
+	{
+		return true;
+	}
+	if (m_headless)
+	{
+		return false;
+	}
+
+	if (m_skipPresent)
+	{
+		const CGSize size = m_metalLayer.drawableSize;
+		if (!m_offscreenBackBuffer || [m_offscreenBackBuffer width] != (NSUInteger)size.width
+			|| [m_offscreenBackBuffer height] != (NSUInteger)size.height)
+		{
+			[m_offscreenBackBuffer release];
+			MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:m_backBufferPixelFormat
+				width:(NSUInteger)size.width height:(NSUInteger)size.height mipmapped:NO];
+			desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+			desc.storageMode = MTLStorageModePrivate;
+			m_offscreenBackBuffer = [m_metalDevice newTextureWithDescriptor:desc];
+		}
+		if (!m_offscreenBackBuffer)
+		{
+			return false;
+		}
+		m_backBufferTexture = [m_offscreenBackBuffer retain];
+		return true;
+	}
+
+	// nil while the window cannot show anything (e.g. zero-sized)
+	m_drawable = [m_metalLayer nextDrawable];
+	if (!m_drawable)
+	{
+		return false;
+	}
+	[m_drawable retain];
+
+	m_backBufferTexture = [m_drawable texture];
+	[m_backBufferTexture retain];
+	return true;
 }
 
 void Gfx_BeginFrame()
@@ -496,7 +532,7 @@ GfxProgressId Gfx_Present()
 	{
 		if (g_device->m_headless || !g_device->m_backBufferTexture)
 		{
-			Log::warning("Gfx_RequestScreenshot is not supported in headless mode");
+			Log::warning("Gfx_RequestScreenshot: no back buffer this frame (headless, or nothing was drawn to it)");
 			g_device->m_pendingScreenshot.callback = nullptr;
 			g_device->m_pendingScreenshot.userData = nullptr;
 		}
@@ -546,6 +582,12 @@ GfxProgressId Gfx_Present()
 	g_device->m_drawable = nil;
 
 	return GfxProgressId{progressValue};
+}
+
+void Gfx_SkipPresent()
+{
+	RUSH_ASSERT_MSG(!g_device->m_backBufferTexture, "Gfx_SkipPresent must precede the frame's first back buffer pass");
+	g_device->m_skipPresent = true;
 }
 
 void Gfx_SetPresentInterval(u32 interval)
@@ -2468,8 +2510,9 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	// TODO: stencil
 
 	const bool useBackBuffer = !desc.color[0].valid() && !desc.depth.valid();
-	RUSH_ASSERT_MSG(!useBackBuffer || g_device->m_backBufferTexture,
-	    "Headless mode has no back buffer. Bind explicit render targets.");
+	const bool hasBackBuffer = useBackBuffer && g_device->acquireBackBuffer();
+	RUSH_ASSERT_MSG(!useBackBuffer || hasBackBuffer,
+	    "No back buffer (headless mode, or no drawable available). Bind explicit render targets.");
 
 	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{

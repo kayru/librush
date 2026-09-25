@@ -3520,6 +3520,9 @@ GfxProgressId Gfx_Present()
 
 void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval = interval; }
 
+// The swapchain image is acquired at frame start and must be presented
+void Gfx_SkipPresent() {}
+
 GfxProgressId Gfx_Submit()
 {
 	g_device->flushUploadContext(g_context);

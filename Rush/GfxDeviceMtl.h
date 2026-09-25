@@ -181,6 +181,7 @@ public:
 	u32 generateId();
 
 	void beginFrame();
+	bool acquireBackBuffer(); // current frame's drawable (offscreen when skipping present); false when headless or none is available
 	void createDefaultDepthBuffer(u32 width, u32 height);
 
 	id<MTLDevice> m_metalDevice = nil;
@@ -223,6 +224,8 @@ public:
 
 	id<CAMetalDrawable> m_drawable = nil;
 	id<MTLTexture> m_backBufferTexture = nil;
+	id<MTLTexture> m_offscreenBackBuffer = nil; // stands in for the drawable while skipping present
+	bool m_skipPresent = false;
 	MTLPixelFormat m_backBufferPixelFormat = MTLPixelFormatInvalid;
 	id<MTLCommandBuffer> m_commandBuffer = nil;
 	struct PendingScreenshot
