@@ -592,7 +592,7 @@ public:
 		MaxStorageImages   = 8,
 		MaxVertexStreams   = 8,
 		MaxConstantBuffers = 4,
-		MaxStorageBuffers  = 8,
+		MaxStorageBuffers  = 16,
 		MaxDescriptorSets  = GfxShaderBindingDesc::MaxDescriptorSets,
 		MaxAccelerationStructures = 1, // TODO: support binding multiple RTASes
 	};

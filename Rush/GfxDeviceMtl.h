@@ -278,7 +278,7 @@ public:
 		MaxStorageImages = 8,
 		MaxVertexStreams = 8,
 		MaxConstantBuffers = 4,
-		MaxStorageBuffers = 8,
+		MaxStorageBuffers = 16,
 		MaxSamplers = 16,
 		MaxDescriptorSets = 4,
 		MaxAccelerationStructures = 1,

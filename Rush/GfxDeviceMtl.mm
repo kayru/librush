@@ -255,6 +255,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	m_caps.pushConstants = true;
 	m_caps.instancing = true;
 	m_caps.drawIndirect = true;
+	m_caps.dispatchIndirect = true;
 	if ([m_metalDevice respondsToSelector:@selector(supportsRaytracing)])
 	{
 		const bool supportsRaytracing = [m_metalDevice supportsRaytracing];
@@ -2924,6 +2925,26 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* p
 	[rc->m_computeCommandEncoder
 		dispatchThreadgroups:MTLSizeMake(sizeX, sizeY, sizeZ)
 		threadsPerThreadgroup:MTLSizeMake(workGroupSize.x, workGroupSize.y, workGroupSize.z)];
+}
+
+void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize)
+{
+	RUSH_ASSERT_MSG(rc->m_commandEncoder == nil, "Can't execute compute inside graphics render pass!");
+
+	rc->applyState();
+
+	const auto& pipeline = g_device->m_resources.computePipelines[rc->m_pendingComputePipeline.get()];
+	if (pushConstants)
+	{
+		RUSH_ASSERT(pipeline.desc.bindings.pushConstantSize == pushConstantsSize);
+		setPushConstants(rc, pushConstants, pushConstantsSize, pipeline.desc.bindings.pushConstantStageFlags, pipeline.descriptorSetCount);
+	}
+
+	const BufferMTL& buf = g_device->m_resources.buffers[argsBuffer];
+	[rc->m_computeCommandEncoder
+		dispatchThreadgroupsWithIndirectBuffer:buf.native
+		indirectBufferOffset:argsBufferOffset
+		threadsPerThreadgroup:MTLSizeMake(pipeline.workGroupSize.x, pipeline.workGroupSize.y, pipeline.workGroupSize.z)];
 }
 
 void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
