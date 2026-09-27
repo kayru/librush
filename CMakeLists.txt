@@ -67,6 +67,7 @@ add_library(Rush STATIC
 	Rush/GfxEmbeddedShadersMSL.cpp
 	Rush/GfxPrimitiveBatch.cpp
 	Rush/GfxPrimitiveBatch.h
+	Rush/MathCommon.cpp
 	Rush/MathCommon.h
 	Rush/MathTypes.cpp
 	Rush/MathTypes.h
