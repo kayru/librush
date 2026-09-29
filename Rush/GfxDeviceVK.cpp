@@ -87,6 +87,7 @@ void releaseResource(ResourcePool<ObjectType, PoolHandleType>& pool, HandleType 
 		return;
 
 	t.destroy();
+	++g_device->m_resourceGeneration;
 
 	pool.remove(handle);
 }
@@ -1116,15 +1117,15 @@ static void extendDescriptorPool(GfxDevice::FrameData* frameData)
 		// TODO: create separate pools based on different descriptor set layouts to save on descriptor memory
 		const u32                               maxSets = 1024;
 		DescriptorPoolVK::DescriptorsPerSetDesc desc;
-		desc.dynamicUniformBuffers  = GfxContext::MaxConstantBuffers;
-		desc.samplers               = GfxContext::MaxTextures / 2;
-		desc.sampledImages          = GfxContext::MaxTextures;
-		desc.storageImages          = GfxContext::MaxStorageImages;
-		desc.storageBuffers         = GfxContext::MaxStorageBuffers;
-		desc.storageTexelBuffers    = GfxContext::MaxStorageBuffers;
+		desc.dynamicUniformBuffers  = 4;
+		desc.samplers               = 8;
+		desc.sampledImages          = 16;
+		desc.storageImages          = 8;
+		desc.storageBuffers         = 16;
+		desc.storageTexelBuffers    = 16;
 		if (g_device->m_caps.rayTracing)
 		{
-			desc.accelerationStructures = GfxContext::MaxAccelerationStructures;
+			desc.accelerationStructures = 1;
 		}
 		else
 		{
@@ -1182,6 +1183,11 @@ GfxDevice::~GfxDevice()
 	m_resources.textures.reset();
 	m_resources.samplers.reset();
 	m_resources.descriptorSets.reset();
+
+	for (auto& it : m_defaultSetTemplates)
+	{
+		vkDestroyDescriptorUpdateTemplate(m_vulkanDevice, it.second, g_allocationCallbacks);
+	}
 
 	for (auto& it : m_descriptorSetLayouts)
 	{
@@ -2176,6 +2182,9 @@ void GfxContext::beginBuild()
 	m_dirtyState         = 0xFFFFFFFF;
 	m_isRenderPassActive = false;
 
+	m_currentDescriptorSet       = VK_NULL_HANDLE;
+	m_currentDescriptorSetLayout = VK_NULL_HANDLE;
+
 	m_currentFrameBuffer          = VK_NULL_HANDLE;
 	m_currentRenderPass           = VK_NULL_HANDLE;
 	m_currentColorAttachmentCount = 0;
@@ -2625,7 +2634,9 @@ static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDesc
 {
 	const u32 maxWriteDescriptorSetCount = 3 + desc.rwImages + desc.rwBuffers + desc.rwTypedBuffers + desc.accelerationStructures;
 
-	InlineDynamicArray<VkWriteDescriptorSet, 16> writeDescriptorSets(maxWriteDescriptorSetCount);
+	InlineDynamicArray<VkWriteDescriptorSet,
+	    3 + GfxContext::MaxStorageImages + GfxContext::MaxStorageBuffers + GfxContext::MaxAccelerationStructures>
+	    writeDescriptorSets(maxWriteDescriptorSetCount);
 
 	u32 writeDescriptorSetCount = 0;
 
@@ -2665,7 +2676,7 @@ static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDesc
 			VkDescriptorBufferInfo& bufferInfo = pendingConstantBufferInfo[i];
 
 			bufferInfo.buffer = buffer.info.buffer;
-			bufferInfo.offset = buffer.info.offset;
+			bufferInfo.offset = useDynamicUniformBuffers ? 0 : buffer.info.offset; // added to the dynamic offset at bind time
 			bufferInfo.range  = min(buffer.info.range, maxBufferSize);
 
 			RUSH_ASSERT(bufferInfo.range != 0);
@@ -2674,8 +2685,9 @@ static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDesc
 
 	const u32 maxImageInfoCount = desc.samplers + desc.textures + desc.rwImages;
 
-	InlineDynamicArray<VkDescriptorImageInfo, 16> imageInfos(maxImageInfoCount);
-	u32                                           imageInfoCount = 0;
+	InlineDynamicArray<VkDescriptorImageInfo, 2 * GfxContext::MaxTextures + GfxContext::MaxStorageImages> imageInfos(
+	    maxImageInfoCount);
+	u32 imageInfoCount = 0;
 
 	// Samplers
 
@@ -2854,6 +2866,159 @@ static void updateDescriptorSet(GfxDevice* device, VkDevice vulkanDevice, VkDesc
 	vkUpdateDescriptorSets(vulkanDevice, writeDescriptorSetCount, writeDescriptorSets.m_data, 0, nullptr);
 }
 
+VkDescriptorUpdateTemplate GfxDevice::getDefaultSetTemplate(VkDescriptorSetLayout layout, const GfxDescriptorSetDesc& desc)
+{
+	if (desc.flags != GfxDescriptorSetFlags::None || desc.isEmpty())
+	{
+		return VK_NULL_HANDLE;
+	}
+
+	auto existing = m_defaultSetTemplates.find(layout);
+	if (existing != m_defaultSetTemplates.end())
+	{
+		return existing->second;
+	}
+
+	using Data = GfxContext::DefaultSetTemplateData;
+
+	StaticArray<VkDescriptorUpdateTemplateEntry, 7> entries;
+	u32 binding = 0;
+	auto addEntry = [&](u32 count, VkDescriptorType type, size_t offset, size_t stride)
+	{
+		if (count)
+		{
+			entries.pushBack({binding, 0, count, type, offset, stride});
+			binding += count;
+		}
+	};
+
+	addEntry(desc.constantBuffers, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, offsetof(Data, constantBuffers), sizeof(VkDescriptorBufferInfo));
+	addEntry(desc.samplers, VK_DESCRIPTOR_TYPE_SAMPLER, offsetof(Data, samplers), sizeof(VkDescriptorImageInfo));
+	addEntry(desc.textures, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, offsetof(Data, textures), sizeof(VkDescriptorImageInfo));
+	addEntry(desc.rwImages, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, offsetof(Data, storageImages), sizeof(VkDescriptorImageInfo));
+	addEntry(desc.rwBuffers, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, offsetof(Data, storageBuffers), sizeof(VkDescriptorBufferInfo));
+	// texelBuffers is indexed by storage buffer slot
+	addEntry(desc.rwTypedBuffers, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+	    offsetof(Data, texelBuffers) + desc.rwBuffers * sizeof(VkBufferView), sizeof(VkBufferView));
+	addEntry(desc.accelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, offsetof(Data, accelerationStructures),
+	    sizeof(VkAccelerationStructureKHR));
+
+	VkDescriptorUpdateTemplateCreateInfo createInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO};
+	createInfo.descriptorUpdateEntryCount = u32(entries.currentSize);
+	createInfo.pDescriptorUpdateEntries   = entries.data;
+	createInfo.templateType               = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET;
+	createInfo.descriptorSetLayout        = layout;
+
+	VkDescriptorUpdateTemplate result = VK_NULL_HANDLE;
+	V(vkCreateDescriptorUpdateTemplate(m_vulkanDevice, &createInfo, g_allocationCallbacks, &result));
+	m_defaultSetTemplates.insert(std::make_pair(layout, result));
+
+	return result;
+}
+
+static u64 slotMask(u32 count)
+{
+	return count >= 64 ? ~0ull : (1ull << count) - 1;
+}
+
+void GfxContext::writeDefaultDescriptorSet(PipelineBaseVK& pipelineBase, const GfxDescriptorSetDesc& desc, VkDescriptorSet targetSet)
+{
+	if (pipelineBase.defaultSetTemplate == VK_NULL_HANDLE)
+	{
+		if (!desc.isEmpty())
+		{
+			updateDescriptorSet(m_device, m_vulkanDevice, targetSet, desc,
+			    true, // use dynamic uniform buffers
+			    true, // allow transient buffers
+			    m_pending.constantBuffers, m_pending.samplers, m_pending.textures, m_pending.storageImages,
+			    m_pending.storageBuffers, &m_pending.accelerationStructure);
+		}
+		return;
+	}
+
+	DefaultSetTemplateData& data = m_defaultSetData;
+	auto&                   res  = m_device->m_resources;
+
+	if (m_defaultSetDataGeneration != m_device->m_resourceGeneration)
+	{
+		m_defaultSetDataGeneration = m_device->m_resourceGeneration;
+		m_validSamplerMask         = 0;
+		m_validTextureMask         = 0;
+		m_validStorageImageMask    = 0;
+	}
+
+	if (m_defaultSetDataStorageImageCount != desc.rwImages)
+	{
+		m_defaultSetDataStorageImageCount = desc.rwImages;
+		m_validTextureMask                = 0; // texture entries use GENERAL layout if also bound as storage images
+	}
+
+	const VkDeviceSize maxBufferSize = m_device->m_physicalDeviceProps.limits.maxUniformBufferRange;
+	for (u32 i = 0; i < desc.constantBuffers; ++i)
+	{
+		RUSH_ASSERT(m_pending.constantBuffers[i].valid());
+		BufferVK& buffer = res.buffers[m_pending.constantBuffers[i]];
+		validateBufferUse(buffer, true);
+		data.constantBuffers[i] = {buffer.info.buffer, 0, min(buffer.info.range, maxBufferSize)};
+	}
+
+	const u64 samplerSlots = slotMask(desc.samplers);
+	for (u64 stale = samplerSlots & ~m_validSamplerMask; stale; stale = clearLowestBit(stale))
+	{
+		const u32 i = bitScanForward64(stale);
+		RUSH_ASSERT(m_pending.samplers[i].valid());
+		data.samplers[i] = {res.samplers[m_pending.samplers[i]].native, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+	}
+	m_validSamplerMask |= samplerSlots;
+
+	const u64 textureSlots = slotMask(desc.textures);
+	for (u64 stale = textureSlots & ~m_validTextureMask; stale; stale = clearLowestBit(stale))
+	{
+		const u32 i = bitScanForward64(stale);
+		RUSH_ASSERT(m_pending.textures[i].valid());
+		const VkImageLayout layout = isAlsoBoundAsStorageImage(m_pending.textures[i], m_pending.storageImages, desc.rwImages)
+		    ? VK_IMAGE_LAYOUT_GENERAL
+		    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		data.textures[i] = {VK_NULL_HANDLE, res.textures[m_pending.textures[i]].imageView, layout};
+	}
+	m_validTextureMask |= textureSlots;
+
+	const u64 storageImageSlots = slotMask(desc.rwImages);
+	for (u64 stale = storageImageSlots & ~m_validStorageImageMask; stale; stale = clearLowestBit(stale))
+	{
+		const u32 i = bitScanForward64(stale);
+		RUSH_ASSERT(m_pending.storageImages[i].valid());
+		data.storageImages[i] = {VK_NULL_HANDLE, res.textures[m_pending.storageImages[i]].imageView, VK_IMAGE_LAYOUT_GENERAL};
+	}
+	m_validStorageImageMask |= storageImageSlots;
+
+	for (u32 i = 0; i < u32(desc.rwBuffers) + u32(desc.rwTypedBuffers); ++i)
+	{
+		RUSH_ASSERT(m_pending.storageBuffers[i].valid());
+		BufferVK& buffer = res.buffers[m_pending.storageBuffers[i]];
+		validateBufferUse(buffer, true);
+		// no valid mask for buffers, they get renamed on update
+		if (i < desc.rwBuffers)
+		{
+			RUSH_ASSERT(buffer.info.buffer != VK_NULL_HANDLE);
+			data.storageBuffers[i] = buffer.info;
+		}
+		else
+		{
+			RUSH_ASSERT(buffer.bufferView != VK_NULL_HANDLE);
+			data.texelBuffers[i] = buffer.bufferView;
+		}
+	}
+
+	for (u32 i = 0; i < desc.accelerationStructures; ++i)
+	{
+		RUSH_ASSERT(m_pending.accelerationStructure.valid());
+		data.accelerationStructures[i] = res.accelerationStructures[m_pending.accelerationStructure].native;
+	}
+
+	vkUpdateDescriptorSetWithTemplate(m_vulkanDevice, targetSet, pipelineBase.defaultSetTemplate, &data);
+}
+
 void GfxContext::applyState()
 {
 	if (m_dirtyState == 0)
@@ -2967,6 +3132,24 @@ void GfxContext::applyState()
 		m_dirtyState &= ~DirtyStateFlag_DescriptorSet;
 	}
 
+	if ((m_dirtyState & DirtyStateFlag_ConstantBuffer) && !(m_dirtyState & ~(DirtyStateFlag_ConstantBuffer | DirtyStateFlag_ConstantBufferOffset))
+	    && bindingDesc.useDefaultDescriptorSet && m_currentDescriptorSet != VK_NULL_HANDLE
+	    && m_currentDescriptorSetLayout == pipelineBase.setLayouts[0])
+	{
+		const VkDeviceSize maxBufferSize = m_device->m_physicalDeviceProps.limits.maxUniformBufferRange;
+		bool sameBuffers = true;
+		for (u32 i = 0; i < descSet.constantBuffers && sameBuffers; ++i)
+		{
+			const BufferVK& buffer = m_device->m_resources.buffers[m_pending.constantBuffers[i]];
+			sameBuffers = buffer.info.buffer == m_currentDescriptorSetConstantBuffers[i]
+			    && min(buffer.info.range, maxBufferSize) == m_currentDescriptorSetConstantBufferRanges[i];
+		}
+		if (sameBuffers)
+		{
+			m_dirtyState = DirtyStateFlag_ConstantBufferOffset;
+		}
+	}
+
 	if (m_dirtyState == DirtyStateFlag_ConstantBufferOffset)
 	{
 		RUSH_ASSERT_MSG(bindingDesc.useDefaultDescriptorSet,
@@ -2983,6 +3166,33 @@ void GfxContext::applyState()
 		// allocate descriptor set
 		// assume the technique will be used many times and there will be a benefit from batching the allocations
 		// todo: cache descriptors by descriptor set layout, not simply by technique
+
+		for (u32 i = 0; i < descSet.textures; ++i)
+		{
+			RUSH_ASSERT(m_pending.textures[i].valid());
+			TextureVK& texture = m_device->m_resources.textures[m_pending.textures[i]];
+			// Go straight to GENERAL when this texture is also a storage image in
+			// this set, otherwise the loop below would immediately transition again.
+			const VkImageLayout targetLayout =
+			    (descSet.rwImages && isAlsoBoundAsStorageImage(m_pending.textures[i], m_pending.storageImages, descSet.rwImages))
+			        ? VK_IMAGE_LAYOUT_GENERAL
+			        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			if (texture.currentLayout != targetLayout)
+			{
+				VkImageSubresourceRange subresourceRange = {
+				    texture.aspectFlags, 0, texture.desc.mips, 0, 1}; // TODO: track subresource states
+				texture.currentLayout =
+				    addImageBarrier(texture.image, texture.currentLayout, targetLayout, &subresourceRange);
+			}
+		}
+
+		for (u32 i = 0; i < descSet.rwImages; ++i)
+		{
+			RUSH_ASSERT(m_pending.storageImages[i].valid());
+			TextureVK& texture = m_device->m_resources.textures[m_pending.storageImages[i]];
+			texture.currentLayout =
+			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_GENERAL, nullptr, true);
+		}
 
 		if (pipelineBase.descriptorSetCacheFrame != m_device->m_frameCount)
 		{
@@ -3025,35 +3235,16 @@ void GfxContext::applyState()
 		m_currentDescriptorSet = pipelineBase.descriptorSetCache.back();
 		pipelineBase.descriptorSetCache.pop_back();
 
-		for (u32 i = 0; i < descSet.textures; ++i)
-		{
-			RUSH_ASSERT(m_pending.textures[i].valid());
-			TextureVK&              texture          = m_device->m_resources.textures[m_pending.textures[i]];
-			VkImageSubresourceRange subresourceRange = {
-			    texture.aspectFlags, 0, texture.desc.mips, 0, 1}; // TODO: track subresource states
-			// Go straight to GENERAL when this texture is also a storage image in
-			// this set, otherwise the loop below would immediately transition again.
-			const VkImageLayout targetLayout =
-			    isAlsoBoundAsStorageImage(m_pending.textures[i], m_pending.storageImages, descSet.rwImages)
-			        ? VK_IMAGE_LAYOUT_GENERAL
-			        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			texture.currentLayout =
-			    addImageBarrier(texture.image, texture.currentLayout, targetLayout, &subresourceRange);
-		}
+		writeDefaultDescriptorSet(pipelineBase, descSet, m_currentDescriptorSet);
 
-		for (u32 i = 0; i < descSet.rwImages; ++i)
+		m_currentDescriptorSetLayout = pipelineBase.setLayouts[0];
+		const VkDeviceSize maxBufferSize = m_device->m_physicalDeviceProps.limits.maxUniformBufferRange;
+		for (u32 i = 0; i < descSet.constantBuffers; ++i)
 		{
-			RUSH_ASSERT(m_pending.storageImages[i].valid());
-			TextureVK& texture = m_device->m_resources.textures[m_pending.storageImages[i]];
-			texture.currentLayout =
-			    addImageBarrier(texture.image, texture.currentLayout, VK_IMAGE_LAYOUT_GENERAL, nullptr, true);
+			const BufferVK& buffer           = m_device->m_resources.buffers[m_pending.constantBuffers[i]];
+			m_currentDescriptorSetConstantBuffers[i]      = buffer.info.buffer;
+			m_currentDescriptorSetConstantBufferRanges[i] = min(buffer.info.range, maxBufferSize);
 		}
-
-		updateDescriptorSet(m_device, m_vulkanDevice, m_currentDescriptorSet, descSet,
-		    true, // use dynamic uniform buffers
-		    true, // allow transient buffers
-		    m_pending.constantBuffers, m_pending.samplers, m_pending.textures, m_pending.storageImages,
-		    m_pending.storageBuffers, &m_pending.accelerationStructure);
 
 		descriptorSets[0] = m_currentDescriptorSet;
 		descriptorSetMask |= 1;
@@ -3065,8 +3256,15 @@ void GfxContext::applyState()
 		u32 count              = bitCount(descriptorSetMask);
 		u32 dynamicOffsetCount = first == 0 ? descSet.constantBuffers : 0;
 
+		u32 dynamicOffsets[MaxConstantBuffers];
+		for (u32 i = 0; i < dynamicOffsetCount; ++i)
+		{
+			const BufferVK& buffer = m_device->m_resources.buffers[m_pending.constantBuffers[i]];
+			dynamicOffsets[i]      = u32(buffer.info.offset) + m_pending.constantBufferOffsets[i];
+		}
+
 		vkCmdBindDescriptorSets(m_commandBuffer, m_currentBindPoint, pipelineBase.pipelineLayout, first, count,
-		    &descriptorSets[first], dynamicOffsetCount, m_pending.constantBufferOffsets);
+		    &descriptorSets[first], dynamicOffsetCount, dynamicOffsets);
 	}
 
 	m_dirtyState = 0;
@@ -4098,8 +4296,15 @@ static VkPipelineLayout createPipelineLayoutForBindings(
     DescriptorSetLayoutArray& outSetLayouts)
 {
 	const GfxDescriptorSetDesc& descSet = bindings.descriptorSets[0];
-	RUSH_ASSERT(descSet.rwTypedBuffers + descSet.rwBuffers <= GfxContext::MaxStorageBuffers);
-	RUSH_ASSERT(descSet.constantBuffers <= GfxContext::MaxConstantBuffers);
+	if (bindings.useDefaultDescriptorSet)
+	{
+		RUSH_ASSERT(descSet.constantBuffers <= GfxContext::MaxConstantBuffers);
+		RUSH_ASSERT(descSet.samplers <= GfxContext::MaxTextures);
+		RUSH_ASSERT(descSet.textures <= GfxContext::MaxTextures);
+		RUSH_ASSERT(descSet.rwImages <= GfxContext::MaxStorageImages);
+		RUSH_ASSERT(descSet.rwTypedBuffers + descSet.rwBuffers <= GfxContext::MaxStorageBuffers);
+		RUSH_ASSERT(descSet.accelerationStructures <= GfxContext::MaxAccelerationStructures);
+	}
 
 	outSetLayouts = g_device->createDescriptorSetLayouts(bindings, resourceStageFlags);
 
@@ -4217,6 +4422,7 @@ GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& 
 
 	res.setLayouts = {};
 	res.pipelineLayout = createPipelineLayoutForBindings(desc.bindings, resourceStageFlags, res.setLayouts);
+	res.defaultSetTemplate = g_device->getDefaultSetTemplate(res.setLayouts[0], desc.bindings.descriptorSets[0]);
 
 	// Build VkGraphicsPipelineCreateInfo
 
@@ -4476,6 +4682,7 @@ GfxOwn<GfxComputePipeline> Gfx_CreateComputePipeline(const GfxComputePipelineDes
 	const u32 resourceStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 	res.setLayouts = {};
 	res.pipelineLayout = createPipelineLayoutForBindings(desc.bindings, resourceStageFlags, res.setLayouts);
+	res.defaultSetTemplate = g_device->getDefaultSetTemplate(res.setLayouts[0], desc.bindings.descriptorSets[0]);
 
 	// Create compute pipeline
 
@@ -5200,35 +5407,36 @@ void Gfx_UnmapBuffer(GfxMappedBuffer&)
 	// nothing to do
 }
 
-static void markDirtyIfBound(GfxContext* rc, BufferVK& buffer)
+template <size_t N> static bool isBoundInSlots(const GfxBuffer (&slots)[N], GfxBuffer h)
 {
-	for (u32 i = 0; i < GfxContext::MaxVertexStreams; ++i)
+	bool result = false;
+	for (GfxBuffer bound : slots)
 	{
-		if (buffer.getId() == g_device->m_resources.buffers[rc->m_pending.vertexBuffer[i]].getId())
-		{
-			rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
-		}
+		result |= bound == h;
+	}
+	return result;
+}
+
+static void markDirtyIfBound(GfxContext* rc, GfxBuffer h)
+{
+	if (isBoundInSlots(rc->m_pending.vertexBuffer, h))
+	{
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 	}
 
-	if (buffer.getId() == g_device->m_resources.buffers[rc->m_pending.indexBuffer].getId())
+	if (rc->m_pending.indexBuffer == h)
 	{
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_IndexBuffer;
 	}
 
-	for (u32 i = 0; i < GfxContext::MaxStorageBuffers; ++i)
+	if (isBoundInSlots(rc->m_pending.storageBuffers, h))
 	{
-		if (buffer.getId() == g_device->m_resources.buffers[rc->m_pending.storageBuffers[i]].getId())
-		{
-			rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
-		}
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 	}
 
-	for (u32 i = 0; i < GfxContext::MaxConstantBuffers; ++i)
+	if (isBoundInSlots(rc->m_pending.constantBuffers, h))
 	{
-		if (buffer.getId() == g_device->m_resources.buffers[rc->m_pending.constantBuffers[i]].getId())
-		{
-			rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
-		}
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
 	}
 }
 
@@ -5291,7 +5499,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 	}
 
 	BufferVK& buffer = g_device->m_resources.buffers[h];
-	markDirtyIfBound(rc, buffer);
+	markDirtyIfBound(rc, h);
 
 	RUSH_ASSERT_MSG(!!(buffer.desc.flags & GfxBufferFlags::Transient),
 	    "Only temporary buffers can be dynamically updated/renamed.");
@@ -5591,6 +5799,8 @@ void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
 
 		rc->m_pending.storageImages[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageImage;
+		rc->m_validStorageImageMask &= ~(1ull << idx);
+		rc->m_validTextureMask = 0; // texture entries use GENERAL layout if also bound as storage images
 	}
 }
 
@@ -5618,6 +5828,7 @@ void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h)
 	{
 		rc->m_pending.textures[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
+		rc->m_validTextureMask &= ~(1ull << idx);
 	}
 }
 
@@ -5629,6 +5840,7 @@ void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h)
 	{
 		rc->m_pending.samplers[idx] = h;
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
+		rc->m_validSamplerMask &= ~(1ull << idx);
 	}
 }
 
@@ -6172,6 +6384,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 
 	const u32 resourceStageFlags = convertStageFlags(GfxStageFlags::RayTracing);
 	result.setLayouts            = g_device->createDescriptorSetLayouts(desc.bindings, resourceStageFlags);
+	result.defaultSetTemplate    = g_device->getDefaultSetTemplate(result.setLayouts[0], desc.bindings.descriptorSets[0]);
 
 	// pipeline layout
 

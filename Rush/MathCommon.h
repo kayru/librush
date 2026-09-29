@@ -61,6 +61,19 @@ inline u32 bitScanForward(u32 mask)
 #endif
 }
 
+inline u32 bitScanForward64(u64 mask)
+{
+#ifdef _MSC_VER
+	unsigned long count;
+	_BitScanForward64(&count, mask);
+	return count;
+#else
+	return __builtin_ctzll(mask);
+#endif
+}
+
+[[nodiscard]] inline u64 clearLowestBit(u64 mask) { return mask & (mask - 1); }
+
 inline u32 bitScanReverse(u32 mask)
 {
 #ifdef _MSC_VER

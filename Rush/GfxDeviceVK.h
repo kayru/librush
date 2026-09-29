@@ -69,6 +69,8 @@ struct PipelineBaseVK : GfxResourceBase
 	DescriptorSetLayoutArray setLayouts; // lifetime managed by device
 	VkPipelineLayout         pipelineLayout = VK_NULL_HANDLE;
 
+	VkDescriptorUpdateTemplate defaultSetTemplate = VK_NULL_HANDLE; // lifetime managed by device
+
 	DynamicArray<VkDescriptorSet> descriptorSetCache;
 	u32                           descriptorSetCacheFrame = 0;
 
@@ -418,6 +420,12 @@ public:
 	std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKey::Hash>    m_renderPasses;
 	std::unordered_map<FrameBufferKey, VkFramebuffer, FrameBufferKey::Hash> m_frameBuffers;
 	std::unordered_map<DescriptorSetLayoutKey, VkDescriptorSetLayout, DescriptorSetLayoutKey::Hash> m_descriptorSetLayouts;
+	std::unordered_map<VkDescriptorSetLayout, VkDescriptorUpdateTemplate> m_defaultSetTemplates;
+
+	// bumped on resource destruction
+	u64 m_resourceGeneration = 1;
+
+	VkDescriptorUpdateTemplate getDefaultSetTemplate(VkDescriptorSetLayout layout, const GfxDescriptorSetDesc& desc);
 
 	DynamicArray<VkPhysicalDevice>        m_physicalDevices;
 	DynamicArray<VkQueueFamilyProperties> m_queueProps;
@@ -588,11 +596,11 @@ public:
 
 	enum
 	{
-		MaxTextures        = 16,
-		MaxStorageImages   = 8,
+		MaxTextures        = 64,
+		MaxStorageImages   = 64,
 		MaxVertexStreams   = 8,
 		MaxConstantBuffers = 4,
-		MaxStorageBuffers  = 16,
+		MaxStorageBuffers  = 64,
 		MaxDescriptorSets  = GfxShaderBindingDesc::MaxDescriptorSets,
 		MaxAccelerationStructures = 1, // TODO: support binding multiple RTASes
 	};
@@ -621,6 +629,7 @@ public:
 	void resolveImage(GfxTextureArg src, GfxTextureArg dst);
 
 	void applyState();
+	void writeDefaultDescriptorSet(PipelineBaseVK& pipelineBase, const GfxDescriptorSetDesc& desc, VkDescriptorSet targetSet);
 
 	VkFence             m_fence                = VK_NULL_HANDLE;
 	VkCommandBuffer     m_commandBuffer        = VK_NULL_HANDLE;
@@ -674,6 +683,28 @@ public:
 	} m_pending;
 
 	VkPipeline m_activePipeline = VK_NULL_HANDLE;
+
+	struct DefaultSetTemplateData
+	{
+		VkDescriptorBufferInfo     constantBuffers[MaxConstantBuffers];
+		VkDescriptorImageInfo      samplers[MaxTextures];
+		VkDescriptorImageInfo      textures[MaxTextures];
+		VkDescriptorImageInfo      storageImages[MaxStorageImages];
+		VkDescriptorBufferInfo     storageBuffers[MaxStorageBuffers];
+		VkBufferView               texelBuffers[MaxStorageBuffers];
+		VkAccelerationStructureKHR accelerationStructures[MaxAccelerationStructures];
+	} m_defaultSetData;
+
+	// bitmasks of m_defaultSetData entries that don't need refilling
+	u64 m_validSamplerMask          = 0;
+	u64 m_validTextureMask          = 0;
+	u64 m_validStorageImageMask     = 0;
+	u64 m_defaultSetDataGeneration  = 0;
+	u32 m_defaultSetDataStorageImageCount = 0;
+
+	VkDescriptorSetLayout m_currentDescriptorSetLayout = VK_NULL_HANDLE;
+	VkBuffer              m_currentDescriptorSetConstantBuffers[MaxConstantBuffers] = {};
+	VkDeviceSize          m_currentDescriptorSetConstantBufferRanges[MaxConstantBuffers] = {};
 
 	ClearParamsVK m_pendingClear;
 	bool          m_isRenderPassActive = false;
