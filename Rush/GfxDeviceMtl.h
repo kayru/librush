@@ -87,9 +87,8 @@ struct DescriptorSetMTL : GfxRefCount
 	DynamicArray<id<MTLTexture>> typedBufferTextures;
 	DynamicArray<GfxAccelerationStructure> accelerationStructures;
 
-	id<MTLArgumentEncoder> encoder = nil; // #todo: pool argument encoders by descriptor set desc
 	id<MTLBuffer> argBuffer = nil;
-	u64 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
+	u64 argBufferOffset = 0;
 	u64 argBufferSize = 0;
 	bool argBufferFromUploadRing = false;
 
@@ -236,7 +235,6 @@ public:
 
 	u32 m_uniqueResourceCounter = 1;
 	u64 m_encoderSerialCounter = 0;
-	bool m_directArgumentBuffers = false; // tier 2
 
 	id<CAMetalDrawable> m_drawable = nil;
 	id<MTLTexture> m_backBufferTexture = nil;

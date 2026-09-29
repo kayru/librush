@@ -227,7 +227,11 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	m_commandQueue = [m_metalDevice newCommandQueue];
 
 	g_metalDevice = m_metalDevice;
-	m_directArgumentBuffers = [m_metalDevice argumentBuffersSupport] == MTLArgumentBuffersTier2;
+
+	if ([m_metalDevice argumentBuffersSupport] != MTLArgumentBuffersTier2)
+	{
+		RUSH_LOG_FATAL("Metal device '%s' does not support tier 2 argument buffers", [[m_metalDevice name] UTF8String]);
+	}
 
 	if (!m_headless)
 	{
@@ -3327,118 +3331,19 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	res.uniqueId = g_device->generateId();
 	res.desc = desc;
 
-	u32 argumentIndex = 0;
-	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
-
-	NSMutableArray<MTLArgumentDescriptor *>* descriptors = [NSMutableArray<MTLArgumentDescriptor *> new];
-	for(u32 i=0; i<desc.constantBuffers; ++i)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypePointer];
-		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLBindingAccessReadOnly];
-		[descriptors addObject: descriptor];
-		++argumentIndex;
-	}
 	res.constantBuffers.resize(desc.constantBuffers);
 	res.constantBufferOffsets.resize(desc.constantBuffers);
-
-	for(u32 i=0; i<desc.samplers; ++i)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypeSampler];
-		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLBindingAccessReadOnly];
-		[descriptors addObject: descriptor];
-		++argumentIndex;
-	}
 	res.samplers.resize(desc.samplers);
-
-	if (isTextureArray && desc.textures)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypeTexture];
-		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLBindingAccessReadOnly];
-		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
-		[descriptor setArrayLength: desc.textures];
-		[descriptors addObject: descriptor];
-		argumentIndex += desc.textures;
-	}
-	else
-	{
-		for(u32 i=0; i<desc.textures; ++i)
-		{
-			MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-			[descriptor setDataType: MTLDataTypeTexture];
-			[descriptor setIndex: argumentIndex];
-			[descriptor setAccess: MTLBindingAccessReadOnly];
-			[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
-			[descriptors addObject: descriptor];
-			++argumentIndex;
-		}
-	}
 	res.textures.resize(desc.textures);
-
-	for(u32 i=0; i<desc.rwImages; ++i)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypeTexture];
-		[descriptor setIndex: argumentIndex];
-		[descriptor setAccess: MTLBindingAccessReadWrite];
-		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
-		[descriptors addObject: descriptor];
-		++argumentIndex;
-	}
 	res.storageImages.resize(desc.rwImages);
-
-	for(u32 i=0; i<desc.rwBuffers; ++i)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypePointer];
-		[descriptor setAccess: MTLBindingAccessReadWrite];
-		[descriptor setIndex: argumentIndex];
-		[descriptors addObject: descriptor];
-		++argumentIndex;
-	}
-
-	for(u32 i=0; i<desc.rwTypedBuffers; ++i)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypeTexture];
-		[descriptor setAccess: MTLBindingAccessReadWrite];
-		[descriptor setTextureType: MTLTextureType2D];
-		[descriptor setIndex: argumentIndex];
-		[descriptors addObject: descriptor];
-		++argumentIndex;
-	}
-
 	res.storageBuffers.resize(desc.rwBuffers + desc.rwTypedBuffers);
 	res.typedBufferTextures.resize(desc.rwTypedBuffers);
-
-	for(u32 i=0; i<desc.accelerationStructures; ++i)
-	{
-		MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
-		[descriptor setDataType: MTLDataTypeInstanceAccelerationStructure];
-		[descriptor setAccess: MTLBindingAccessReadOnly];
-		[descriptor setIndex: argumentIndex];
-		[descriptors addObject: descriptor];
-		++argumentIndex;
-	}
 	res.accelerationStructures.resize(desc.accelerationStructures);
 
-	if (descriptors.count > 0)
-	{
-		res.encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
-		res.argBufferSize = [res.encoder encodedLength];
-		RUSH_ASSERT(!g_device->m_directArgumentBuffers || res.argBufferSize == u64(argumentIndex) * sizeof(u64));
-	}
-
-	for(id obj in descriptors)
-	{
-		[obj release];
-	}
-	[descriptors release];
+	// one gpuAddress / gpuResourceID per resource
+	const u32 argumentCount = u32(desc.constantBuffers) + desc.samplers + desc.textures + desc.rwImages + desc.rwBuffers +
+	                          desc.rwTypedBuffers + desc.accelerationStructures;
+	res.argBufferSize = u64(argumentCount) * sizeof(u64);
 
 	return res;
 }
@@ -3469,6 +3374,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	const GfxDescriptorSetDesc& desc = ds.desc;
 
 	// Allocate a fresh argument buffer each update to avoid overwriting in-flight GPU data.
+	void* argData = nullptr;
 	if (ds.argBufferFromUploadRing)
 	{
 		if (ds.argBufferSize == 0)
@@ -3476,9 +3382,11 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 			ds.argBuffer = nil;
 			return;
 		}
-		const GfxDevice::UploadAllocation upload = g_device->allocateUpload(ds.argBufferSize, [ds.encoder alignment]);
+		// constant address space offsets need 256-byte alignment on macOS
+		const GfxDevice::UploadAllocation upload = g_device->allocateUpload(ds.argBufferSize, 256);
 		ds.argBuffer       = upload.buffer;
 		ds.argBufferOffset = upload.offset;
+		argData            = upload.data;
 	}
 	else
 	{
@@ -3488,19 +3396,11 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 			ds.argBuffer = nil;
 			return;
 		}
-		ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
+		ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:MTLResourceStorageModeShared];
+		argData      = [ds.argBuffer contents];
 	}
 
-	// tier 2: write the same values the encoder would
-	u64* args = nullptr;
-	if (ds.argBufferFromUploadRing && g_device->m_directArgumentBuffers)
-	{
-		args = reinterpret_cast<u64*>(static_cast<u8*>([ds.argBuffer contents]) + ds.argBufferOffset);
-	}
-	else
-	{
-		[ds.encoder setArgumentBuffer:ds.argBuffer offset:ds.argBufferOffset];
-	}
+	u64* args = static_cast<u64*>(argData);
 
 	u32 idxOffset = 0;
 	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
@@ -3511,14 +3411,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		u64 offset = constantBufferOffsets ? constantBufferOffsets[i] : 0;
 		ds.constantBufferOffsets[i] = offset;
 		ds.constantBuffers[i] = constantBuffers[i];
-		if (args)
-		{
-			args[idxOffset + i] = [buf.native gpuAddress] + buf.offset + offset;
-		}
-		else
-		{
-			[ds.encoder setBuffer:buf.native offset:buf.offset + offset atIndex:idxOffset+i];
-		}
+		args[idxOffset + i] = [buf.native gpuAddress] + buf.offset + offset;
 	}
 	idxOffset += desc.constantBuffers;
 
@@ -3526,14 +3419,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	{
 		SamplerMTL& smp = g_device->m_resources.samplers[samplers[i]];
 		ds.samplers[i] = samplers[i];
-		if (args)
-		{
-			args[idxOffset + i] = smp.gpuResourceId;
-		}
-		else
-		{
-			[ds.encoder setSamplerState:smp.native atIndex:idxOffset + i];
-		}
+		args[idxOffset + i] = smp.gpuResourceId;
 	}
 	idxOffset += desc.samplers;
 
@@ -3544,14 +3430,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 			TextureMTL& tex = g_device->m_resources.textures[textures[i]];
 			//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
 			ds.textures[i] = textures[i];
-			if (args)
-			{
-				args[idxOffset + i] = tex.gpuResourceId;
-			}
-			else
-			{
-				[ds.encoder setTexture:tex.native atIndex:idxOffset + i];
-			}
+			args[idxOffset + i] = tex.gpuResourceId;
 		}
 		idxOffset += desc.textures;
 	}
@@ -3562,14 +3441,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 			TextureMTL& tex = g_device->m_resources.textures[textures[i]];
 			//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
 			ds.textures[i] = textures[i];
-			if (args)
-			{
-				args[idxOffset + i] = tex.gpuResourceId;
-			}
-			else
-			{
-				[ds.encoder setTexture:tex.native atIndex:idxOffset+i];
-			}
+			args[idxOffset + i] = tex.gpuResourceId;
 		}
 		idxOffset += desc.textures;
 	}
@@ -3579,14 +3451,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		TextureMTL& tex = g_device->m_resources.textures[storageImages[i]];
 		//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
 		ds.storageImages[i] = storageImages[i];
-		if (args)
-		{
-			args[idxOffset + i] = tex.gpuResourceId;
-		}
-		else
-		{
-			[ds.encoder setTexture:tex.native atIndex:idxOffset+i];
-		}
+		args[idxOffset + i] = tex.gpuResourceId;
 	}
 	idxOffset += desc.rwImages;
 
@@ -3594,14 +3459,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	{
 		BufferMTL& buf = g_device->m_resources.buffers[storageBuffers[i]];
 		ds.storageBuffers[i] = storageBuffers[i];
-		if (args)
-		{
-			args[idxOffset + i] = [buf.native gpuAddress] + buf.offset;
-		}
-		else
-		{
-			[ds.encoder setBuffer:buf.native offset:buf.offset atIndex:idxOffset+i];
-		}
+		args[idxOffset + i] = [buf.native gpuAddress] + buf.offset;
 	}
 	idxOffset += desc.rwBuffers;
 
@@ -3637,14 +3495,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		}
 		ds.typedBufferTextures[i] = tex;
 
-		if (args)
-		{
-			args[idxOffset + i] = [tex gpuResourceID]._impl;
-		}
-		else
-		{
-			[ds.encoder setTexture:tex atIndex:idxOffset+i];
-		}
+		args[idxOffset + i] = [tex gpuResourceID]._impl;
 	}
 	idxOffset += desc.rwTypedBuffers;
 
@@ -3653,14 +3504,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		RUSH_ASSERT(accelStructures);
 		AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[accelStructures[i]];
 		ds.accelerationStructures[i] = accelStructures[i];
-		if (args)
-		{
-			args[idxOffset + i] = [accel.native gpuResourceID]._impl;
-		}
-		else
-		{
-			[ds.encoder setAccelerationStructure:accel.native atIndex:idxOffset+i];
-		}
+		args[idxOffset + i] = [accel.native gpuResourceID]._impl;
 	}
 	idxOffset += desc.accelerationStructures;
 }
@@ -3698,8 +3542,6 @@ void DescriptorSetMTL::destroy()
 		[argBuffer release];
 	}
 	argBuffer = nil;
-	[encoder release];
-	encoder = nil;
 }
 
 }
