@@ -2794,16 +2794,22 @@ void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxStorageImages);
 
-	rc->m_storageImages[idx].retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageImage;
+	if (rc->m_storageImages[idx].get() != h)
+	{
+		rc->m_storageImages[idx].retain(h);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageImage;
+	}
 }
 
 void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxStorageBuffers);
 
-	rc->m_storageBuffers[idx].retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
+	if (rc->m_storageBuffers[idx].get() != h)
+	{
+		rc->m_storageBuffers[idx].retain(h);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
+	}
 }
 
 void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxResourceUsage usage)
@@ -2885,33 +2891,45 @@ void Gfx_SetAccelerationStructure(GfxContext* rc, u32 idx, GfxAccelerationStruct
 {
 	RUSH_ASSERT(idx < GfxContext::MaxAccelerationStructures);
 
-	rc->m_accelerationStructures[idx].retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_AccelerationStructure;
+	if (rc->m_accelerationStructures[idx].get() != h)
+	{
+		rc->m_accelerationStructures[idx].retain(h);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_AccelerationStructure;
+	}
 }
 
 void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxSampledImages);
 
-	rc->m_sampledImages[idx].retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
+	if (rc->m_sampledImages[idx].get() != h)
+	{
+		rc->m_sampledImages[idx].retain(h);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Texture;
+	}
 }
 
 void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxSamplers);
 
-	rc->m_samplers[idx].retain(h);
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
+	if (rc->m_samplers[idx].get() != h)
+	{
+		rc->m_samplers[idx].retain(h);
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_Sampler;
+	}
 }
 
 void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset)
 {
 	RUSH_ASSERT(index < GfxContext::MaxConstantBuffers);
 
-	rc->m_constantBuffers[index].retain(h);
-	rc->m_constantBufferOffsets[index] = offset;
-	rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
+	if (rc->m_constantBuffers[index].get() != h || rc->m_constantBufferOffsets[index] != offset)
+	{
+		rc->m_constantBuffers[index].retain(h);
+		rc->m_constantBufferOffsets[index] = offset;
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
+	}
 }
 
 void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ)
