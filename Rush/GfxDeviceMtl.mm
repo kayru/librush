@@ -521,12 +521,14 @@ GfxProgressId Gfx_Present()
 
 	if (!g_device->m_headless && g_device->m_drawable)
 	{
+#if !TARGET_OS_SIMULATOR
 		// Called once the drawable is shown or discarded
 		const std::shared_ptr<std::atomic<u32>> presentsInFlight = g_device->m_presentsInFlight;
 		++*presentsInFlight;
 		[g_device->m_drawable addPresentedHandler:^(id<MTLDrawable>) {
 			--*presentsInFlight;
 		}];
+#endif
 		[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
 	}
 
@@ -616,9 +618,14 @@ bool Gfx_PresentWouldWait()
 	{
 		return false;
 	}
+#if TARGET_OS_SIMULATOR
+	// Simulator SDK has no presented handlers, so presents in flight are unknown
+	return false;
+#else
 	// One drawable stays on screen; each presented one not yet shown holds
 	// another, and nextDrawable blocks when none of the pool is left
 	return g_device->m_presentsInFlight->load() + 1 >= (u32)g_device->m_metalLayer.maximumDrawableCount;
+#endif
 }
 
 void Gfx_SkipPresent()

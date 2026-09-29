@@ -230,8 +230,10 @@ public:
 	// Written by the command buffer completion handler (Metal thread), published
 	// into m_stats on the main thread at the start of the next frame
 	std::atomic<double> m_completedFrameGpuTime{0.0};
+#if !TARGET_OS_SIMULATOR
 	// Presented, not yet on screen. Shared: presented handlers may outlive the device.
 	std::shared_ptr<std::atomic<u32>> m_presentsInFlight = std::make_shared<std::atomic<u32>>(0);
+#endif
 
 	u32 m_uniqueResourceCounter = 1;
 	u64 m_encoderSerialCounter = 0;
@@ -372,7 +374,7 @@ public:
 
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;
 	u32 m_indexStride = 4;
-	u32 m_indexBufferOffset = 0;
+	u64 m_indexBufferOffset = 0;
 	id<MTLBuffer> m_indexBuffer = nil;
 
 	MTLPrimitiveType m_primitiveType = MTLPrimitiveTypeTriangle;
