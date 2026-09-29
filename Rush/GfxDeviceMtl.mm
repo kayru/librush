@@ -1565,7 +1565,11 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 	}
 #endif
 
-	if (data && !(options & MTLResourceStorageModePrivate))
+	if (bufferSize == 0)
+	{
+		// zero-length MTLBuffers are invalid
+	}
+	else if (data && !(options & MTLResourceStorageModePrivate))
 	{
 		res.native = [g_metalDevice newBufferWithBytes:data length:bufferSize options:options];
 	}
