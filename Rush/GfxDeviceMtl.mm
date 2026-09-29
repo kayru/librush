@@ -2032,6 +2032,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	if (ctx->m_computeCommandEncoder)
 	{
 		[ctx->m_computeCommandEncoder endEncoding];
+		[ctx->m_computeCommandEncoder release];
 		ctx->m_computeCommandEncoder = nil;
 	}
 
@@ -2806,6 +2807,7 @@ void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxRe
 			if (rc->m_commandEncoder)
 			{
 				[rc->m_commandEncoder endEncoding];
+				[rc->m_commandEncoder release];
 				rc->m_commandEncoder = nil;
 			}
 			rc->m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
