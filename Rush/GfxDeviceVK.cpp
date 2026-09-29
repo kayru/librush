@@ -642,7 +642,26 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_physicalDevices.resize(gpuCount);
 	V(vkEnumeratePhysicalDevices(m_vulkanInstance, &gpuCount, m_physicalDevices.data()));
 
+	auto physicalDeviceRank = [](VkPhysicalDevice physicalDevice)
+	{
+		VkPhysicalDeviceProperties props;
+		vkGetPhysicalDeviceProperties(physicalDevice, &props);
+		switch (props.deviceType)
+		{
+		case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return 0;
+		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 1;
+		case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return 2;
+		default: return 3;
+		}
+	};
 	m_physicalDevice = m_physicalDevices[0];
+	for (VkPhysicalDevice physicalDevice : m_physicalDevices)
+	{
+		if (physicalDeviceRank(physicalDevice) < physicalDeviceRank(m_physicalDevice))
+		{
+			m_physicalDevice = physicalDevice;
+		}
+	}
 
 	enum VendorID
 	{
