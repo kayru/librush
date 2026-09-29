@@ -39,6 +39,9 @@ struct BufferMTL : GfxRefCount
 	u32 uniqueId = 0;
 	id<MTLBuffer> native = nil;
 	id<MTLBuffer> stagingBuffer = nil; // shared-mode buffer for readback of private buffers
+	u64 offset = 0;
+	u64 size = 0;
+	bool nativeFromUploadRing = false;
 	GfxBufferDesc desc;
 	MTLIndexType indexType = MTLIndexTypeUInt32;
 
@@ -85,6 +88,7 @@ struct DescriptorSetMTL : GfxRefCount
 	id<MTLBuffer> argBuffer = nil;
 	u64 argBufferOffset = 0; // #todo: pool and sub-allocate arg buffers
 	u64 argBufferSize = 0;
+	bool argBufferFromUploadRing = false;
 
 	void destroy();
 };
@@ -259,6 +263,34 @@ public:
 		GfxProgressId progressId;
 		DestructionQueue queue;
 	};
+
+	// per-frame upload memory
+	struct UploadChunk
+	{
+		id<MTLBuffer> buffer = nil;
+		u64           size   = 0;
+	};
+
+	struct UploadAllocation
+	{
+		id<MTLBuffer> buffer = nil;
+		u64           offset = 0;
+		void*         data   = nullptr;
+	};
+
+	struct RetiredUploadChunks
+	{
+		GfxProgressId             progressId;
+		DynamicArray<UploadChunk> chunks;
+	};
+
+	UploadChunk                       m_uploadChunk;
+	u64                               m_uploadOffset = 0;
+	DynamicArray<UploadChunk>         m_usedUploadChunks;
+	DynamicArray<UploadChunk>         m_freeUploadChunks;
+	DynamicArray<RetiredUploadChunks> m_retiredUploadChunks;
+
+	UploadAllocation allocateUpload(u64 size, u64 alignment);
 
 	DestructionQueue m_pendingDestructionQueue;
 	DynamicArray<DestructionEpoch> m_destructionEpochs;

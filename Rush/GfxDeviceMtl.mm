@@ -305,6 +305,23 @@ GfxDevice::~GfxDevice()
 {
 	g_metalDevice = nil;
 
+	[m_uploadChunk.buffer release];
+	for (const UploadChunk& chunk : m_usedUploadChunks)
+	{
+		[chunk.buffer release];
+	}
+	for (const UploadChunk& chunk : m_freeUploadChunks)
+	{
+		[chunk.buffer release];
+	}
+	for (const RetiredUploadChunks& retired : m_retiredUploadChunks)
+	{
+		for (const UploadChunk& chunk : retired.chunks)
+		{
+			[chunk.buffer release];
+		}
+	}
+
 	[m_offscreenBackBuffer release];
 	[m_progressEvent release];
 	[m_lastSubmittedCommandBuffer release];
@@ -969,6 +986,7 @@ static void initBindingOffsets(const GfxShaderBindingDesc& bindings, u32& consta
 
 	validateDefaultSetCapacity(dsetDesc);
 	defaultDescriptorSet = createDescriptorSet(dsetDesc);
+	defaultDescriptorSet.argBufferFromUploadRing = true;
 }
 
 GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& desc)
@@ -1185,6 +1203,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 	}
 	validateDefaultSetCapacity(dsetDesc);
 	result.defaultDescriptorSet = createDescriptorSet(dsetDesc);
+	result.defaultDescriptorSet.argBufferFromUploadRing = true;
 
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.rayTracingPipelines, result));
 }
@@ -1516,6 +1535,11 @@ GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc)
 
 void BufferMTL::destroy()
 {
+	if (nativeFromUploadRing)
+	{
+		native = nil; // owned by the upload ring
+	}
+
 	if (g_device)
 	{
 		g_device->enqueueDestroy(native);
@@ -1561,6 +1585,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 	BufferMTL res;
 	res.uniqueId = g_device->generateId();
 	res.desc = desc;
+	res.size = bufferSize;
 
 	MTLResourceOptions options = 0;
 #if TARGET_OS_OSX
@@ -1655,18 +1680,19 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 	// Private buffers require staging through a shared buffer
 	if (buffer.stagingBuffer)
 	{
-		const u32 bufferSize = (u32)[buffer.native length];
+		const u32 bufferSize = u32(buffer.size);
 		id<MTLCommandBuffer> cmd = [g_device->m_commandQueue commandBuffer];
 		id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-		[blit copyFromBuffer:buffer.native sourceOffset:0 toBuffer:buffer.stagingBuffer destinationOffset:0 size:bufferSize];
+		[blit copyFromBuffer:buffer.native sourceOffset:buffer.offset toBuffer:buffer.stagingBuffer destinationOffset:0 size:bufferSize];
 		[blit endEncoding];
 		[cmd commit];
 		[cmd waitUntilCompleted];
 	}
 
 	id<MTLBuffer> mapTarget = buffer.stagingBuffer ? buffer.stagingBuffer : buffer.native;
+	const u64 mapOffset = buffer.stagingBuffer ? 0 : buffer.offset;
 
-	const u32 bufferSize = (u32)[mapTarget length];
+	const u32 bufferSize = u32(buffer.size);
 	if (offset > bufferSize)
 	{
 		Log::error("Gfx_MapBuffer: offset exceeds buffer length");
@@ -1691,7 +1717,7 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 	}
 
 	GfxMappedBuffer result;
-	result.data = static_cast<u8*>(base) + offset;
+	result.data = static_cast<u8*>(base) + mapOffset + offset;
 	result.size = size;
 	result.handle = vb;
 	return result;
@@ -1722,8 +1748,66 @@ void GfxDevice::DestructionQueue::flush()
 	objects.clear();
 }
 
+GfxDevice::UploadAllocation GfxDevice::allocateUpload(u64 size, u64 alignment)
+{
+	static constexpr u64 ChunkSize = 4 * 1024 * 1024;
+
+	u64 offset = alignCeiling(m_uploadOffset, alignment);
+	if (!m_uploadChunk.buffer || offset + size > m_uploadChunk.size)
+	{
+		if (m_uploadChunk.buffer)
+		{
+			m_usedUploadChunks.push_back(m_uploadChunk);
+		}
+		m_uploadChunk = {};
+
+		for (size_t i = 0; i < m_freeUploadChunks.size(); ++i)
+		{
+			if (m_freeUploadChunks[i].size >= size)
+			{
+				m_uploadChunk       = m_freeUploadChunks[i];
+				m_freeUploadChunks[i] = m_freeUploadChunks.back();
+				m_freeUploadChunks.pop_back();
+				break;
+			}
+		}
+
+		if (!m_uploadChunk.buffer)
+		{
+			m_uploadChunk.size   = max(size, ChunkSize);
+			m_uploadChunk.buffer = [m_metalDevice newBufferWithLength:m_uploadChunk.size
+			                                                  options:MTLResourceStorageModeShared];
+		}
+
+		offset = 0;
+	}
+
+	m_uploadOffset = offset + size;
+
+	UploadAllocation result;
+	result.buffer = m_uploadChunk.buffer;
+	result.offset = offset;
+	result.data   = static_cast<u8*>([m_uploadChunk.buffer contents]) + offset;
+	return result;
+}
+
 void GfxDevice::sealDestructionEpoch(GfxProgressId progressId)
 {
+	if (m_uploadChunk.buffer)
+	{
+		m_usedUploadChunks.push_back(m_uploadChunk);
+		m_uploadChunk  = {};
+		m_uploadOffset = 0;
+	}
+	if (!m_usedUploadChunks.empty())
+	{
+		RetiredUploadChunks retired;
+		retired.progressId = progressId;
+		retired.chunks     = std::move(m_usedUploadChunks);
+		m_retiredUploadChunks.push_back(std::move(retired));
+		m_usedUploadChunks = {};
+	}
+
 	if (m_pendingDestructionQueue.empty())
 	{
 		return;
@@ -1736,6 +1820,30 @@ void GfxDevice::sealDestructionEpoch(GfxProgressId progressId)
 
 void GfxDevice::drainCompletedDestructionEpochs()
 {
+	if (!m_retiredUploadChunks.empty())
+	{
+		const u64 completedValue = [m_progressEvent signaledValue];
+		u32       completedCount = 0;
+		for (RetiredUploadChunks& retired : m_retiredUploadChunks)
+		{
+			if (completedValue < retired.progressId.value)
+			{
+				break;
+			}
+			for (const UploadChunk& chunk : retired.chunks)
+			{
+				m_freeUploadChunks.push_back(chunk);
+			}
+			++completedCount;
+		}
+		const u32 remaining = u32(m_retiredUploadChunks.size()) - completedCount;
+		for (u32 i = 0; i < remaining; ++i)
+		{
+			m_retiredUploadChunks[i] = std::move(m_retiredUploadChunks[completedCount + i]);
+		}
+		m_retiredUploadChunks.resize(remaining);
+	}
+
 	if (m_destructionEpochs.empty())
 	{
 		return;
@@ -1799,6 +1907,21 @@ static void markDirtyIfBound(GfxContext* rc, GfxBufferArg h)
 	}
 }
 
+static void* renameToUploadRing(BufferMTL& buffer, u32 size)
+{
+	if (!buffer.nativeFromUploadRing)
+	{
+		g_device->enqueueDestroy(buffer.native);
+		buffer.nativeFromUploadRing = true;
+	}
+
+	const GfxDevice::UploadAllocation upload = g_device->allocateUpload(size, 256);
+	buffer.native = upload.buffer;
+	buffer.offset = upload.offset;
+	buffer.size   = size;
+	return upload.data;
+}
+
 void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size)
 {
 	if (!h.valid() || size==0)
@@ -1808,8 +1931,16 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
 
-	g_device->enqueueDestroy(buffer.native);
-	buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
+	if (!!(buffer.desc.flags & GfxBufferFlags::Transient))
+	{
+		std::memcpy(renameToUploadRing(buffer, size), data, size);
+	}
+	else
+	{
+		g_device->enqueueDestroy(buffer.native);
+		buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
+		buffer.size   = size;
+	}
 
 	markDirtyIfBound(rc, h);
 }
@@ -1822,15 +1953,23 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 	}
 
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
-	if (size == 0 && buffer.native)
+	if (size == 0)
 	{
-		size = (u32)[buffer.native length];
+		size = u32(buffer.size);
+	}
+
+	if (!!(buffer.desc.flags & GfxBufferFlags::Transient))
+	{
+		void* data = renameToUploadRing(buffer, size);
+		markDirtyIfBound(rc, h);
+		return data;
 	}
 
 	if (!buffer.native || (size > 0 && [buffer.native length] < size))
 	{
 		g_device->enqueueDestroy(buffer.native);
 		buffer.native = [g_metalDevice newBufferWithLength:size options:0];
+		buffer.size   = size;
 		markDirtyIfBound(rc, h);
 	}
 
@@ -1864,7 +2003,7 @@ void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h)
 u64 Gfx_GetBufferAddress(GfxBufferArg h)
 {
 	BufferMTL& buffer = g_device->m_resources.buffers[h];
-	return [buffer.native gpuAddress];
+	return [buffer.native gpuAddress] + buffer.offset;
 }
 
 static MTLPrimitiveAccelerationStructureDescriptor* createPrimitiveAccelerationStructureDescriptor(
@@ -1886,11 +2025,11 @@ static MTLPrimitiveAccelerationStructureDescriptor* createPrimitiveAccelerationS
 		MTLAccelerationStructureTriangleGeometryDescriptor* triangle =
 		    [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
 		triangle.vertexBuffer = vertexBuffer.native;
-		triangle.vertexBufferOffset = geometryDesc.vertexBufferOffset;
+		triangle.vertexBufferOffset = vertexBuffer.offset + geometryDesc.vertexBufferOffset;
 		triangle.vertexFormat = convertRayTracingVertexFormat(geometryDesc.vertexFormat);
 		triangle.vertexStride = geometryDesc.vertexStride;
 		triangle.indexBuffer = indexBuffer.native;
-		triangle.indexBufferOffset = geometryDesc.indexBufferOffset;
+		triangle.indexBufferOffset = indexBuffer.offset + geometryDesc.indexBufferOffset;
 		triangle.indexType = convertRayTracingIndexType(geometryDesc.indexFormat);
 		triangle.triangleCount = geometryDesc.indexCount / 3;
 		triangle.opaque = geometryDesc.isOpaque ? YES : NO;
@@ -1899,7 +2038,7 @@ static MTLPrimitiveAccelerationStructureDescriptor* createPrimitiveAccelerationS
 		{
 			BufferMTL& transformBuffer = g_device->m_resources.buffers[geometryDesc.transformBuffer];
 			triangle.transformationMatrixBuffer = transformBuffer.native;
-			triangle.transformationMatrixBufferOffset = geometryDesc.transformBufferOffset;
+			triangle.transformationMatrixBufferOffset = transformBuffer.offset + geometryDesc.transformBufferOffset;
 		}
 
 		[geometryDescriptors addObject:triangle];
@@ -2095,8 +2234,8 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		}
 
 		BufferMTL& instanceBufferMTL = g_device->m_resources.buffers[instanceBuffer];
-		const GfxRayTracingInstanceDesc* srcInstances =
-		    static_cast<const GfxRayTracingInstanceDesc*>([instanceBufferMTL.native contents]);
+		const GfxRayTracingInstanceDesc* srcInstances = reinterpret_cast<const GfxRayTracingInstanceDesc*>(
+		    static_cast<const u8*>([instanceBufferMTL.native contents]) + instanceBufferMTL.offset);
 		if (!srcInstances)
 		{
 			Log::error("Instance buffer contents unavailable");
@@ -2721,7 +2860,7 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
 	         sourceOrigin:MTLOriginMake(srcRegion.offset.x, srcRegion.offset.y, srcRegion.offset.z)
 	           sourceSize:MTLSizeMake(copySize.x, copySize.y, copySize.z)
 	             toBuffer:dstBuf.native
-	    destinationOffset:dstOffset
+	    destinationOffset:dstBuf.offset + dstOffset
 	destinationBytesPerRow:info.bytesPerRow
 	destinationBytesPerImage:info.bytesPerRow * info.rowCount];
 	[blit endEncoding];
@@ -2777,7 +2916,7 @@ void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferA
 	rc->m_indexType = g_device->m_resources.buffers[h].indexType;
 	rc->m_indexStride = g_device->m_resources.buffers[h].desc.stride;
 	rc->m_indexBuffer = g_device->m_resources.buffers[h].native;
-	rc->m_indexBufferOffset = offset;
+	rc->m_indexBufferOffset = g_device->m_resources.buffers[h].offset + offset;
 
 	[rc->m_indexBuffer retain];
 }
@@ -2787,7 +2926,8 @@ void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h)
 	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
 	rc->m_vertexBuffers[idx].retain(h);
 	// FIXME: binding only applies to active encoder; calls before BeginPass are dropped.
-	[rc->m_commandEncoder setVertexBuffer:g_device->m_resources.buffers[h].native offset:offset atIndex:(GfxContext::FirstVertexBufferIndex + idx)];
+	const BufferMTL& buffer = g_device->m_resources.buffers[h];
+	[rc->m_commandEncoder setVertexBuffer:buffer.native offset:buffer.offset + offset atIndex:(GfxContext::FirstVertexBufferIndex + idx)];
 }
 
 void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
@@ -2983,7 +3123,7 @@ void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBu
 	const BufferMTL& buf = g_device->m_resources.buffers[argsBuffer];
 	[rc->m_computeCommandEncoder
 		dispatchThreadgroupsWithIndirectBuffer:buf.native
-		indirectBufferOffset:argsBufferOffset
+		indirectBufferOffset:buf.offset + argsBufferOffset
 		threadsPerThreadgroup:MTLSizeMake(pipeline.workGroupSize.x, pipeline.workGroupSize.y, pipeline.workGroupSize.z)];
 }
 
@@ -3084,7 +3224,7 @@ void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t arg
 		 indexBuffer:rc->m_indexBuffer
 		 indexBufferOffset:0
 		 indirectBuffer:buf.native
-		 indirectBufferOffset:argsBufferOffset + sizeof(GfxDrawIndexedArg) * i];
+		 indirectBufferOffset:buf.offset + argsBufferOffset + sizeof(GfxDrawIndexedArg) * i];
 	}
 
 	g_device->m_stats.drawCalls++;
@@ -3296,15 +3436,29 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	const GfxDescriptorSetDesc& desc = ds.desc;
 
 	// Allocate a fresh argument buffer each update to avoid overwriting in-flight GPU data.
-	g_device->enqueueDestroy(ds.argBuffer);
-	if (ds.argBufferSize == 0)
+	if (ds.argBufferFromUploadRing)
 	{
-		ds.argBuffer = nil;
-		return;
+		if (ds.argBufferSize == 0)
+		{
+			ds.argBuffer = nil;
+			return;
+		}
+		const GfxDevice::UploadAllocation upload = g_device->allocateUpload(ds.argBufferSize, [ds.encoder alignment]);
+		ds.argBuffer       = upload.buffer;
+		ds.argBufferOffset = upload.offset;
 	}
-	ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
+	else
+	{
+		g_device->enqueueDestroy(ds.argBuffer);
+		if (ds.argBufferSize == 0)
+		{
+			ds.argBuffer = nil;
+			return;
+		}
+		ds.argBuffer = [g_metalDevice newBufferWithLength:ds.argBufferSize options:0];
+	}
 
-	[ds.encoder setArgumentBuffer:ds.argBuffer offset:0];
+	[ds.encoder setArgumentBuffer:ds.argBuffer offset:ds.argBufferOffset];
 
 	u32 idxOffset = 0;
 	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
@@ -3315,7 +3469,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		u64 offset = constantBufferOffsets ? constantBufferOffsets[i] : 0;
 		ds.constantBufferOffsets[i] = offset;
 		ds.constantBuffers[i] = constantBuffers[i];
-		[ds.encoder setBuffer:buf.native offset:offset atIndex:idxOffset+i];
+		[ds.encoder setBuffer:buf.native offset:buf.offset + offset atIndex:idxOffset+i];
 	}
 	idxOffset += desc.constantBuffers;
 
@@ -3363,7 +3517,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	{
 		BufferMTL& buf = g_device->m_resources.buffers[storageBuffers[i]];
 		ds.storageBuffers[i] = storageBuffers[i];
-		[ds.encoder setBuffer:buf.native offset:0 atIndex:idxOffset+i];
+		[ds.encoder setBuffer:buf.native offset:buf.offset atIndex:idxOffset+i];
 	}
 	idxOffset += desc.rwBuffers;
 
@@ -3390,7 +3544,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 
 		const u32 bytesPerRowUnaligned = texWidth * buf.desc.stride;
 		const u32 bytesPerRow = (bytesPerRowUnaligned + 15u) & ~15u;
-		id<MTLTexture> tex = [buf.native newTextureWithDescriptor:texDesc offset:0 bytesPerRow:bytesPerRow];
+		id<MTLTexture> tex = [buf.native newTextureWithDescriptor:texDesc offset:buf.offset bytesPerRow:bytesPerRow];
 		[texDesc release];
 
 		if (ds.typedBufferTextures[i])
@@ -3433,7 +3587,11 @@ void DescriptorSetMTL::destroy()
 	}
 	typedBufferTextures.clear();
 
-	if (g_device)
+	if (argBufferFromUploadRing)
+	{
+		// owned by the upload ring
+	}
+	else if (g_device)
 	{
 		g_device->enqueueDestroy(argBuffer);
 	}
