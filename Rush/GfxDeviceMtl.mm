@@ -1916,6 +1916,7 @@ static void* renameToUploadRing(BufferMTL& buffer, u32 size)
 	}
 
 	const GfxDevice::UploadAllocation upload = g_device->allocateUpload(size, 256);
+	buffer.residentEncoder = 0;
 	buffer.native = upload.buffer;
 	buffer.offset = upload.offset;
 	buffer.size   = size;
@@ -1940,6 +1941,7 @@ void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size
 		g_device->enqueueDestroy(buffer.native);
 		buffer.native = [g_metalDevice newBufferWithBytes:data length:size options:0];
 		buffer.size   = size;
+		buffer.residentEncoder = 0;
 	}
 
 	markDirtyIfBound(rc, h);
@@ -1970,6 +1972,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 		g_device->enqueueDestroy(buffer.native);
 		buffer.native = [g_metalDevice newBufferWithLength:size options:0];
 		buffer.size   = size;
+		buffer.residentEncoder = 0;
 		markDirtyIfBound(rc, h);
 	}
 
@@ -2192,6 +2195,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	}
 
 	AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[h];
+	accel.residentEncoder = 0;
 
 	if (accel.type == GfxAccelerationStructureType::BottomLevel)
 	{
@@ -2369,42 +2373,58 @@ static MTLBlendFactor convertBlendParam(GfxBlendParam blendParam)
 	}
 }
 
-static void useResources(id commandEncoder, DescriptorSetMTL& ds)
+void GfxContext::onEncoderCreated()
 {
+	m_encoderSerial = ++g_device->m_encoderSerialCounter;
+}
+
+// useResource applies to the whole encoder
+template <typename T>
+static void useResourceOnce(id commandEncoder, u64 encoderSerial, T& resource, id<MTLResource> native, MTLResourceUsage usage)
+{
+	if (!native)
+	{
+		return;
+	}
+	if (resource.residentEncoder != encoderSerial)
+	{
+		resource.residentEncoder = encoderSerial;
+		resource.residentUsage   = 0;
+	}
+	else if ((resource.residentUsage & usage) == usage)
+	{
+		return;
+	}
+	resource.residentUsage |= usage;
+	[commandEncoder useResource:native usage:usage];
+}
+
+static void useResources(id commandEncoder, u64 encoderSerial, DescriptorSetMTL& ds)
+{
+	auto& res = g_device->m_resources;
+
 	for (u64 j=0; j<ds.constantBuffers.size(); ++j)
 	{
-		id<MTLResource> res = g_device->m_resources.buffers[ds.constantBuffers[j]].native;
-		if (res)
-		{
-			[commandEncoder useResource:res usage:MTLResourceUsageRead];
-		}
+		BufferMTL& buffer = res.buffers[ds.constantBuffers[j]];
+		useResourceOnce(commandEncoder, encoderSerial, buffer, buffer.native, MTLResourceUsageRead);
 	}
 
 	for (u64 j=0; j<ds.textures.size(); ++j)
 	{
-		id<MTLResource> res = g_device->m_resources.textures[ds.textures[j]].native;
-		if (res)
-		{
-			[commandEncoder useResource:res usage:MTLResourceUsageRead];
-		}
+		TextureMTL& texture = res.textures[ds.textures[j]];
+		useResourceOnce(commandEncoder, encoderSerial, texture, texture.native, MTLResourceUsageRead);
 	}
 
 	for (u64 j=0; j<ds.storageImages.size(); ++j)
 	{
-		id<MTLResource> res = g_device->m_resources.textures[ds.storageImages[j]].native;
-		if (res)
-		{
-			[commandEncoder useResource:res usage:MTLResourceUsageRead | MTLResourceUsageWrite];
-		}
+		TextureMTL& texture = res.textures[ds.storageImages[j]];
+		useResourceOnce(commandEncoder, encoderSerial, texture, texture.native, MTLResourceUsageRead | MTLResourceUsageWrite);
 	}
 
 	for (u64 j=0; j<ds.storageBuffers.size(); ++j)
 	{
-		id<MTLResource> res = g_device->m_resources.buffers[ds.storageBuffers[j]].native;
-		if (res)
-		{
-			[commandEncoder useResource:res usage:MTLResourceUsageRead | MTLResourceUsageWrite];
-		}
+		BufferMTL& buffer = res.buffers[ds.storageBuffers[j]];
+		useResourceOnce(commandEncoder, encoderSerial, buffer, buffer.native, MTLResourceUsageRead | MTLResourceUsageWrite);
 	}
 
 	for (u64 j=0; j<ds.typedBufferTextures.size(); ++j)
@@ -2419,7 +2439,12 @@ static void useResources(id commandEncoder, DescriptorSetMTL& ds)
 
 	for (u64 j=0; j<ds.accelerationStructures.size(); ++j)
 	{
-		AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[ds.accelerationStructures[j]];
+		AccelerationStructureMTL& accel = res.accelerationStructures[ds.accelerationStructures[j]];
+		if (accel.residentEncoder == encoderSerial)
+		{
+			continue;
+		}
+		accel.residentEncoder = encoderSerial;
 		if (accel.native)
 		{
 			[commandEncoder useResource:accel.native usage:MTLResourceUsageRead];
@@ -2492,6 +2517,7 @@ void GfxContext::applyState()
 			{
 				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
 				[m_computeCommandEncoder retain];
+				onEncoderCreated();
 			}
 			[m_computeCommandEncoder setComputePipelineState:rayTracingPipeline->rayGenPipeline];
 		}
@@ -2501,6 +2527,7 @@ void GfxContext::applyState()
 			{
 				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
 				[m_computeCommandEncoder retain];
+				onEncoderCreated();
 			}
 			[m_computeCommandEncoder setComputePipelineState:computePipeline->computePipeline];
 		}
@@ -2597,12 +2624,12 @@ void GfxContext::applyState()
 			// TODO: set the buffers to stages present in the current PSO
 			[m_commandEncoder setVertexBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:0];
 			[m_commandEncoder setFragmentBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:0];
-			useResources(m_commandEncoder, ds);
+			useResources(m_commandEncoder, m_encoderSerial, ds);
 		}
 		else if (m_computeCommandEncoder)
 		{
 			[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:0];
-			useResources(m_computeCommandEncoder, ds);
+			useResources(m_computeCommandEncoder, m_encoderSerial, ds);
 		}
 	}
 
@@ -2614,7 +2641,7 @@ void GfxContext::applyState()
 			for (u32 i=firstDescriptorSet; i<descriptorSetCount; ++i)
 			{
 				DescriptorSetMTL& ds = g_device->m_resources.descriptorSets[m_descriptorSets[i].get()];
-				useResources(m_commandEncoder, ds);
+				useResources(m_commandEncoder, m_encoderSerial, ds);
 
 				if(!!(ds.desc.stageFlags & GfxStageFlags::Vertex))
 				{
@@ -2636,7 +2663,7 @@ void GfxContext::applyState()
 			for (u32 i=firstDescriptorSet; i<descriptorSetCount; ++i)
 			{
 				DescriptorSetMTL& ds = g_device->m_resources.descriptorSets[m_descriptorSets[i].get()];
-				useResources(m_computeCommandEncoder, ds);
+				useResources(m_computeCommandEncoder, m_encoderSerial, ds);
 
 				[m_computeCommandEncoder setBuffer:ds.argBuffer offset:ds.argBufferOffset atIndex:i];
 			}
@@ -2747,6 +2774,7 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	RUSH_ASSERT(g_device->m_commandBuffer);
 	rc->m_commandEncoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
 	[rc->m_commandEncoder retain];
+	rc->onEncoderCreated();
 
 	rc->m_dirtyState = 0xFFFFFFFF;
 
@@ -2974,6 +3002,7 @@ void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxRe
 			}
 			rc->m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
 			[rc->m_computeCommandEncoder retain];
+			rc->onEncoderCreated();
 		}
 	}
 	else

@@ -42,6 +42,8 @@ struct BufferMTL : GfxRefCount
 	u64 offset = 0;
 	u64 size = 0;
 	bool nativeFromUploadRing = false;
+	u64 residentEncoder = 0;
+	u32 residentUsage = 0;
 	GfxBufferDesc desc;
 	MTLIndexType indexType = MTLIndexTypeUInt32;
 
@@ -57,6 +59,7 @@ struct AccelerationStructureMTL : GfxResourceBase
 	DynamicArray<GfxRayTracingGeometryDesc> geometries;
 
 	id<MTLAccelerationStructure> native = nil;
+	u64 residentEncoder = 0;
 	id<MTLBuffer> scratchBuffer = nil;
 	id<MTLBuffer> instanceBuffer = nil;
 	NSArray<id<MTLAccelerationStructure>>* instancedAccelerationStructures = nil;
@@ -163,6 +166,8 @@ struct TextureMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 	id<MTLTexture> native = nil;
+	u64 residentEncoder = 0;
+	u32 residentUsage = 0;
 	GfxTextureDesc desc;
 	static TextureMTL create(const GfxTextureDesc& desc, const GfxTextureData* data, u32 count, const void* pixels);
 	void destroy();
@@ -228,6 +233,7 @@ public:
 	std::shared_ptr<std::atomic<u32>> m_presentsInFlight = std::make_shared<std::atomic<u32>>(0);
 
 	u32 m_uniqueResourceCounter = 1;
+	u64 m_encoderSerialCounter = 0;
 
 	id<CAMetalDrawable> m_drawable = nil;
 	id<MTLTexture> m_backBufferTexture = nil;
@@ -369,6 +375,9 @@ public:
 	id<MTLBuffer> m_indexBuffer = nil;
 
 	MTLPrimitiveType m_primitiveType = MTLPrimitiveTypeTriangle;
+
+	u64 m_encoderSerial = 0;
+	void onEncoderCreated();
 
 };
 
