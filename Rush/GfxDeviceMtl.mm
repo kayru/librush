@@ -303,6 +303,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	if (!m_headless)
 	{
 		m_caps.backBufferDesc.colorFormats[0] = convertPixelFormat([m_metalLayer pixelFormat]);
+		m_caps.backBufferDesc.depthFormat     = GfxFormat_D32_Float;
 	}
 }
 
@@ -388,10 +389,6 @@ void GfxDevice::beginFrame()
 
 	if (!m_headless && !m_resizeEvents.empty())
 	{
-		createDefaultDepthBuffer(
-			m_window->getFramebufferWidth(),
-			m_window->getFramebufferHeight());
-
 		CGSize nextDrawableSize = { 
 			(CGFloat) m_window->getFramebufferWidth(), 
 			(CGFloat) m_window->getFramebufferHeight() };
@@ -2730,6 +2727,18 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	RUSH_ASSERT_MSG(!useBackBuffer || hasBackBuffer,
 	    "No back buffer (headless mode, or no drawable available). Bind explicit render targets.");
 
+	if (hasBackBuffer)
+	{
+		// default depth buffer follows the drawable size
+		const u32 width  = u32([g_device->m_backBufferTexture width]);
+		const u32 height = u32([g_device->m_backBufferTexture height]);
+		const GfxTextureDesc& depthDesc = g_device->m_resources.textures[g_device->m_defaultDepthBuffer.get()].desc;
+		if (depthDesc.width != width || depthDesc.height != height)
+		{
+			g_device->createDefaultDepthBuffer(width, height);
+		}
+	}
+
 	for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
 	{
 		if ((!useBackBuffer || i!=0) && !desc.color[i].valid())
@@ -2754,9 +2763,9 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 			desc.clearColors[i].a);
 	}
 
-	if (desc.depth.valid())
+	const GfxTexture depthBuffer = desc.depth.valid() ? desc.depth : useBackBuffer ? g_device->m_defaultDepthBuffer.get() : GfxTexture();
+	if (depthBuffer.valid())
 	{
-		GfxTexture depthBuffer = desc.depth;
 		passDescriptor.depthAttachment.texture = g_device->m_resources.textures[depthBuffer].native;
 
 		if (!!(desc.flags & GfxPassFlags::ClearDepthStencil))

@@ -299,6 +299,7 @@ inline GfxRenderTargetDesc Gfx_GetRenderTargetDesc(GfxContext* rc)
 	{
 		const auto& bbDesc = Gfx_GetCapability().backBufferDesc;
 		result.colorFormats[0] = bbDesc.colorFormats[0];
+		result.depthFormat = bbDesc.depthFormat;
 		result.sampleCount = bbDesc.sampleCount;
 	}
 	return result;
