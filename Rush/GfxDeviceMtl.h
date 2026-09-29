@@ -166,6 +166,7 @@ struct TextureMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 	id<MTLTexture> native = nil;
+	u64 gpuResourceId = 0;
 	u64 residentEncoder = 0;
 	u32 residentUsage = 0;
 	GfxTextureDesc desc;
@@ -178,6 +179,7 @@ struct SamplerMTL : GfxRefCount
 {
 	u32 uniqueId = 0;
 	id<MTLSamplerState> native = nil;
+	u64 gpuResourceId = 0;
 	void destroy();
 };
 
@@ -234,6 +236,7 @@ public:
 
 	u32 m_uniqueResourceCounter = 1;
 	u64 m_encoderSerialCounter = 0;
+	bool m_directArgumentBuffers = false; // tier 2
 
 	id<CAMetalDrawable> m_drawable = nil;
 	id<MTLTexture> m_backBufferTexture = nil;
