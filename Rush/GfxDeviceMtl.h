@@ -274,14 +274,17 @@ public:
 
 	enum
 	{
-		MaxSampledImages = 16,
-		MaxStorageImages = 8,
+		MaxSampledImages = 64,
+		MaxStorageImages = 64,
 		MaxVertexStreams = 8,
 		MaxConstantBuffers = 4,
-		MaxStorageBuffers = 16,
-		MaxSamplers = 16,
+		MaxStorageBuffers = 64,
+		MaxSamplers = 64,
 		MaxDescriptorSets = 4,
 		MaxAccelerationStructures = 1,
+
+		// buffer indices: descriptor sets, then push constants, then vertex streams
+		FirstVertexBufferIndex = MaxDescriptorSets + 1,
 	};
 
 	GfxContext();

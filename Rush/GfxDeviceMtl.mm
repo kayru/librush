@@ -787,7 +787,7 @@ static MTLVertexDescriptor* createMTLVertexDescriptor(const GfxVertexFormatDesc&
 	{
 		const auto& element = desc.element(i);
 		native.attributes[i].format = convertVertexFormat(element);
-		native.attributes[i].bufferIndex = GfxContext::MaxConstantBuffers + element.stream;
+		native.attributes[i].bufferIndex = GfxContext::FirstVertexBufferIndex + element.stream;
 		native.attributes[i].offset = element.offset;
 		usedStreamMask |= 1 << element.stream;
 	}
@@ -796,8 +796,8 @@ static MTLVertexDescriptor* createMTLVertexDescriptor(const GfxVertexFormatDesc&
 	{
 		if (usedStreamMask & 1)
 		{
-			native.layouts[GfxContext::MaxConstantBuffers + streamIndex].stride = desc.streamStride(streamIndex);
-			native.layouts[GfxContext::MaxConstantBuffers + streamIndex].stepFunction = MTLVertexStepFunctionPerVertex;
+			native.layouts[GfxContext::FirstVertexBufferIndex + streamIndex].stride = desc.streamStride(streamIndex);
+			native.layouts[GfxContext::FirstVertexBufferIndex + streamIndex].stepFunction = MTLVertexStepFunctionPerVertex;
 		}
 		usedStreamMask = usedStreamMask >> 1;
 	}
@@ -927,6 +927,16 @@ void RayTracingPipelineMTL::destroy()
 	anyHit.destroy();
 }
 
+static void validateDefaultSetCapacity(const GfxDescriptorSetDesc& desc)
+{
+	RUSH_ASSERT(desc.constantBuffers <= GfxContext::MaxConstantBuffers);
+	RUSH_ASSERT(desc.samplers <= GfxContext::MaxSamplers);
+	RUSH_ASSERT(desc.textures <= GfxContext::MaxSampledImages);
+	RUSH_ASSERT(desc.rwImages <= GfxContext::MaxStorageImages);
+	RUSH_ASSERT(desc.rwBuffers + desc.rwTypedBuffers <= GfxContext::MaxStorageBuffers);
+	RUSH_ASSERT(desc.accelerationStructures <= GfxContext::MaxAccelerationStructures);
+}
+
 static void initBindingOffsets(const GfxShaderBindingDesc& bindings, u32& constantBufferOffset, u32& samplerOffset, u32& sampledImageOffset, u32& storageImageOffset, u32& storageBufferOffset, u32& descriptorSetCount, DescriptorSetMTL& defaultDescriptorSet)
 {
 	const auto& dsetDesc = bindings.descriptorSets[0];
@@ -957,6 +967,7 @@ static void initBindingOffsets(const GfxShaderBindingDesc& bindings, u32& consta
 		}
 	}
 
+	validateDefaultSetCapacity(dsetDesc);
 	defaultDescriptorSet = createDescriptorSet(dsetDesc);
 }
 
@@ -1172,6 +1183,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 			result.descriptorSetCount = i + 1;
 		}
 	}
+	validateDefaultSetCapacity(dsetDesc);
 	result.defaultDescriptorSet = createDescriptorSet(dsetDesc);
 
 	return GfxDevice::makeOwn(retainResource(g_device->m_resources.rayTracingPipelines, result));
@@ -1759,6 +1771,16 @@ void GfxDevice::drainCompletedDestructionEpochs()
 // Updating a buffer replaces its native MTLBuffer, so any binding that was
 // resolved from the old native object must be re-applied on the next draw.
 // Mirrors markDirtyIfBound in the Vulkan backend.
+template <size_t N> static bool isBoundInSlots(const GfxRef<GfxBuffer> (&slots)[N], GfxBuffer h)
+{
+	bool result = false;
+	for (const GfxRef<GfxBuffer>& bound : slots)
+	{
+		result |= bound.get() == h;
+	}
+	return result;
+}
+
 static void markDirtyIfBound(GfxContext* rc, GfxBufferArg h)
 {
 	if (!rc)
@@ -1766,20 +1788,14 @@ static void markDirtyIfBound(GfxContext* rc, GfxBufferArg h)
 		return;
 	}
 
-	for (u32 i = 0; i < GfxContext::MaxConstantBuffers; ++i)
+	if (isBoundInSlots(rc->m_constantBuffers, h))
 	{
-		if (rc->m_constantBuffers[i].get() == h)
-		{
-			rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
-		}
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_ConstantBuffer;
 	}
 
-	for (u32 i = 0; i < GfxContext::MaxStorageBuffers; ++i)
+	if (isBoundInSlots(rc->m_storageBuffers, h))
 	{
-		if (rc->m_storageBuffers[i].get() == h)
-		{
-			rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
-		}
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 	}
 }
 
@@ -2771,7 +2787,7 @@ void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h)
 	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
 	rc->m_vertexBuffers[idx].retain(h);
 	// FIXME: binding only applies to active encoder; calls before BeginPass are dropped.
-	[rc->m_commandEncoder setVertexBuffer:g_device->m_resources.buffers[h].native offset:offset atIndex:(GfxContext::MaxConstantBuffers+idx)];
+	[rc->m_commandEncoder setVertexBuffer:g_device->m_resources.buffers[h].native offset:offset atIndex:(GfxContext::FirstVertexBufferIndex + idx)];
 }
 
 void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
