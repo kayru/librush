@@ -227,11 +227,8 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	m_commandQueue = [m_metalDevice newCommandQueue];
 
 	g_metalDevice = m_metalDevice;
-
-	if ([m_metalDevice argumentBuffersSupport] != MTLArgumentBuffersTier2)
-	{
-		RUSH_LOG_FATAL("Metal device '%s' does not support tier 2 argument buffers", [[m_metalDevice name] UTF8String]);
-	}
+	// iOS simulator is tier 1
+	m_directArgumentBuffers = [m_metalDevice argumentBuffersSupport] == MTLArgumentBuffersTier2;
 
 	if (!m_headless)
 	{
@@ -3340,6 +3337,61 @@ RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RELEASE_IMPL)
 
 // Descriptor sets
 
+static MTLArgumentDescriptor* newArgumentDescriptor(MTLDataType type, MTLBindingAccess access, u32 index)
+{
+	MTLArgumentDescriptor* descriptor = [MTLArgumentDescriptor new];
+	[descriptor setDataType:type];
+	[descriptor setAccess:access];
+	[descriptor setIndex:index];
+	if (type == MTLDataTypeTexture)
+	{
+		[descriptor setTextureType:MTLTextureType2D]; // TODO: support other texture types
+	}
+	return descriptor;
+}
+
+static id<MTLArgumentEncoder> newArgumentEncoder(const GfxDescriptorSetDesc& desc)
+{
+	NSMutableArray<MTLArgumentDescriptor*>* descriptors = [NSMutableArray<MTLArgumentDescriptor*> new];
+	u32 index = 0;
+	auto add = [&](MTLDataType type, MTLBindingAccess access, u32 count)
+	{
+		for (u32 i = 0; i < count; ++i)
+		{
+			MTLArgumentDescriptor* descriptor = newArgumentDescriptor(type, access, index++);
+			[descriptors addObject:descriptor];
+			[descriptor release];
+		}
+	};
+
+	add(MTLDataTypePointer, MTLBindingAccessReadOnly, desc.constantBuffers);
+	add(MTLDataTypeSampler, MTLBindingAccessReadOnly, desc.samplers);
+	if (!!(desc.flags & GfxDescriptorSetFlags::TextureArray) && desc.textures)
+	{
+		MTLArgumentDescriptor* descriptor = newArgumentDescriptor(MTLDataTypeTexture, MTLBindingAccessReadOnly, index);
+		[descriptor setArrayLength:desc.textures];
+		[descriptors addObject:descriptor];
+		[descriptor release];
+		index += desc.textures;
+	}
+	else
+	{
+		add(MTLDataTypeTexture, MTLBindingAccessReadOnly, desc.textures);
+	}
+	add(MTLDataTypeTexture, MTLBindingAccessReadWrite, desc.rwImages);
+	add(MTLDataTypePointer, MTLBindingAccessReadWrite, desc.rwBuffers);
+	add(MTLDataTypeTexture, MTLBindingAccessReadWrite, desc.rwTypedBuffers);
+	add(MTLDataTypeInstanceAccelerationStructure, MTLBindingAccessReadOnly, desc.accelerationStructures);
+
+	id<MTLArgumentEncoder> encoder = nil;
+	if (descriptors.count > 0)
+	{
+		encoder = [g_metalDevice newArgumentEncoderWithArguments:descriptors];
+	}
+	[descriptors release];
+	return encoder;
+}
+
 static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 {
 	DescriptorSetMTL res;
@@ -3356,10 +3408,18 @@ static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc)
 	res.typedBufferTextures.resize(desc.rwTypedBuffers);
 	res.accelerationStructures.resize(desc.accelerationStructures);
 
-	// one gpuAddress / gpuResourceID per resource
-	const u32 argumentCount = u32(desc.constantBuffers) + desc.samplers + desc.textures + desc.rwImages + desc.rwBuffers +
-	                          desc.rwTypedBuffers + desc.accelerationStructures;
-	res.argBufferSize = u64(argumentCount) * sizeof(u64);
+	if (g_device->m_directArgumentBuffers)
+	{
+		// one gpuAddress / gpuResourceID per resource
+		const u32 argumentCount = u32(desc.constantBuffers) + desc.samplers + desc.textures + desc.rwImages +
+		                          desc.rwBuffers + desc.rwTypedBuffers + desc.accelerationStructures;
+		res.argBufferSize = u64(argumentCount) * sizeof(u64);
+	}
+	else
+	{
+		res.encoder = newArgumentEncoder(desc);
+		res.argBufferSize = res.encoder ? [res.encoder encodedLength] : 0;
+	}
 
 	return res;
 }
@@ -3376,6 +3436,76 @@ void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h)
 {
 	rc->m_descriptorSets[index].retain(h);
 	rc->m_dirtyState |= GfxContext::DirtyStateFlag_DescriptorSet;
+}
+
+namespace
+{
+// Tier 2 argument buffers are plain arrays of gpuAddress / gpuResourceID. Tier 1 layout is opaque.
+struct ArgumentWriter
+{
+	u64*                   args = nullptr;
+	id<MTLArgumentEncoder> encoder = nil;
+
+	void setBuffer(id<MTLBuffer> buffer, u64 offset, u32 index) const
+	{
+		if (args)
+		{
+			args[index] = [buffer gpuAddress] + offset;
+		}
+		else
+		{
+			[encoder setBuffer:buffer offset:offset atIndex:index];
+		}
+	}
+
+	void setSampler(const SamplerMTL& sampler, u32 index) const
+	{
+		if (args)
+		{
+			args[index] = sampler.gpuResourceId;
+		}
+		else
+		{
+			[encoder setSamplerState:sampler.native atIndex:index];
+		}
+	}
+
+	void setTexture(const TextureMTL& texture, u32 index) const
+	{
+		if (args)
+		{
+			args[index] = texture.gpuResourceId;
+		}
+		else
+		{
+			[encoder setTexture:texture.native atIndex:index];
+		}
+	}
+
+	void setTexture(id<MTLTexture> texture, u32 index) const
+	{
+		if (args)
+		{
+			args[index] = [texture gpuResourceID]._impl;
+		}
+		else
+		{
+			[encoder setTexture:texture atIndex:index];
+		}
+	}
+
+	void setAccelerationStructure(id<MTLAccelerationStructure> accel, u32 index) const
+	{
+		if (args)
+		{
+			args[index] = [accel gpuResourceID]._impl;
+		}
+		else
+		{
+			[encoder setAccelerationStructure:accel atIndex:index];
+		}
+	}
+};
 }
 
 static void updateDescriptorSet(DescriptorSetMTL& ds,
@@ -3399,7 +3529,8 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 			return;
 		}
 		// constant address space offsets need 256-byte alignment on macOS
-		const GfxDevice::UploadAllocation upload = g_device->allocateUpload(ds.argBufferSize, 256);
+		const u64 alignment = ds.encoder ? max<u64>(256, [ds.encoder alignment]) : 256;
+		const GfxDevice::UploadAllocation upload = g_device->allocateUpload(ds.argBufferSize, alignment);
 		ds.argBuffer       = upload.buffer;
 		ds.argBufferOffset = upload.offset;
 		argData            = upload.data;
@@ -3416,10 +3547,18 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		argData      = [ds.argBuffer contents];
 	}
 
-	u64* args = static_cast<u64*>(argData);
+	ArgumentWriter writer;
+	if (ds.encoder)
+	{
+		writer.encoder = ds.encoder;
+		[ds.encoder setArgumentBuffer:ds.argBuffer offset:ds.argBufferOffset];
+	}
+	else
+	{
+		writer.args = static_cast<u64*>(argData);
+	}
 
 	u32 idxOffset = 0;
-	const bool isTextureArray = !!(desc.flags & GfxDescriptorSetFlags::TextureArray);
 
 	for(u32 i=0; i<desc.constantBuffers; ++i)
 	{
@@ -3427,47 +3566,29 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		u64 offset = constantBufferOffsets ? constantBufferOffsets[i] : 0;
 		ds.constantBufferOffsets[i] = offset;
 		ds.constantBuffers[i] = constantBuffers[i];
-		args[idxOffset + i] = [buf.native gpuAddress] + buf.offset + offset;
+		writer.setBuffer(buf.native, buf.offset + offset, idxOffset + i);
 	}
 	idxOffset += desc.constantBuffers;
 
 	for(u32 i=0; i<desc.samplers; ++i)
 	{
-		SamplerMTL& smp = g_device->m_resources.samplers[samplers[i]];
 		ds.samplers[i] = samplers[i];
-		args[idxOffset + i] = smp.gpuResourceId;
+		writer.setSampler(g_device->m_resources.samplers[samplers[i]], idxOffset + i);
 	}
 	idxOffset += desc.samplers;
 
-	if (isTextureArray && desc.textures)
+	// texture array elements occupy consecutive argument indices
+	for(u32 i=0; i<desc.textures; ++i)
 	{
-		for(u32 i=0; i<desc.textures; ++i)
-		{
-			TextureMTL& tex = g_device->m_resources.textures[textures[i]];
-			//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
-			ds.textures[i] = textures[i];
-			args[idxOffset + i] = tex.gpuResourceId;
-		}
-		idxOffset += desc.textures;
+		ds.textures[i] = textures[i];
+		writer.setTexture(g_device->m_resources.textures[textures[i]], idxOffset + i);
 	}
-	else
-	{
-		for(u32 i=0; i<desc.textures; ++i)
-		{
-			TextureMTL& tex = g_device->m_resources.textures[textures[i]];
-			//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
-			ds.textures[i] = textures[i];
-			args[idxOffset + i] = tex.gpuResourceId;
-		}
-		idxOffset += desc.textures;
-	}
+	idxOffset += desc.textures;
 
 	for(u32 i=0; i<desc.rwImages; ++i)
 	{
-		TextureMTL& tex = g_device->m_resources.textures[storageImages[i]];
-		//RUSH_ASSERT(tex.desc.type == TextureType::Tex2D); // only 2D textures are currently supported
 		ds.storageImages[i] = storageImages[i];
-		args[idxOffset + i] = tex.gpuResourceId;
+		writer.setTexture(g_device->m_resources.textures[storageImages[i]], idxOffset + i);
 	}
 	idxOffset += desc.rwImages;
 
@@ -3475,7 +3596,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 	{
 		BufferMTL& buf = g_device->m_resources.buffers[storageBuffers[i]];
 		ds.storageBuffers[i] = storageBuffers[i];
-		args[idxOffset + i] = [buf.native gpuAddress] + buf.offset;
+		writer.setBuffer(buf.native, buf.offset, idxOffset + i);
 	}
 	idxOffset += desc.rwBuffers;
 
@@ -3511,7 +3632,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		}
 		ds.typedBufferTextures[i] = tex;
 
-		args[idxOffset + i] = [tex gpuResourceID]._impl;
+		writer.setTexture(tex, idxOffset + i);
 	}
 	idxOffset += desc.rwTypedBuffers;
 
@@ -3520,7 +3641,7 @@ static void updateDescriptorSet(DescriptorSetMTL& ds,
 		RUSH_ASSERT(accelStructures);
 		AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[accelStructures[i]];
 		ds.accelerationStructures[i] = accelStructures[i];
-		args[idxOffset + i] = [accel.native gpuResourceID]._impl;
+		writer.setAccelerationStructure(accel.native, idxOffset + i);
 	}
 	idxOffset += desc.accelerationStructures;
 }
@@ -3558,6 +3679,8 @@ void DescriptorSetMTL::destroy()
 		[argBuffer release];
 	}
 	argBuffer = nil;
+	[encoder release];
+	encoder = nil;
 }
 
 }
