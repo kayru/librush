@@ -461,11 +461,9 @@ void Gfx_EndFrame()
 {
 	if (g_device->m_pendingScreenshot.callback && g_device->m_backBufferTexture)
 	{
-		if (g_context && g_context->m_computeCommandEncoder)
+		if (g_context)
 		{
-			[g_context->m_computeCommandEncoder endEncoding];
-			[g_context->m_computeCommandEncoder release];
-			g_context->m_computeCommandEncoder = nil;
+			g_context->endComputeEncoder();
 		}
 
 		if (g_device->m_pendingScreenshot.buffer)
@@ -509,12 +507,7 @@ GfxProgressId Gfx_Present()
 	RUSH_ASSERT(g_device->m_commandBuffer);
 
 	// TODO: deal with multiple contexts
-	if (g_context->m_computeCommandEncoder)
-	{
-		[g_context->m_computeCommandEncoder endEncoding];
-		[g_context->m_computeCommandEncoder release];
-		g_context->m_computeCommandEncoder = nil;
-	}
+	g_context->endComputeEncoder();
 
 	if (!g_device->m_headless && g_device->m_drawable)
 	{
@@ -671,12 +664,7 @@ GfxProgressId Gfx_Submit()
 			[g_context->m_commandEncoder release];
 			g_context->m_commandEncoder = nil;
 		}
-		if (g_context->m_computeCommandEncoder)
-		{
-			[g_context->m_computeCommandEncoder endEncoding];
-			[g_context->m_computeCommandEncoder release];
-			g_context->m_computeCommandEncoder = nil;
-		}
+		g_context->endComputeEncoder();
 
 		// Force full re-bind on next dispatch since the command buffer is new
 		g_context->m_dirtyState = ~0u;
@@ -2195,12 +2183,7 @@ u64 Gfx_GetAccelerationStructureHandle(GfxAccelerationStructureArg h)
 void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg h, GfxBufferArg instanceBuffer)
 {
 	RUSH_ASSERT_MSG(ctx->m_commandEncoder == nil, "Can't build acceleration structure inside a render pass.");
-	if (ctx->m_computeCommandEncoder)
-	{
-		[ctx->m_computeCommandEncoder endEncoding];
-		[ctx->m_computeCommandEncoder release];
-		ctx->m_computeCommandEncoder = nil;
-	}
+	ctx->endComputeEncoder();
 
 	AccelerationStructureMTL& accel = g_device->m_resources.accelerationStructures[h];
 	accel.residentEncoder = 0;
@@ -2384,6 +2367,20 @@ static MTLBlendFactor convertBlendParam(GfxBlendParam blendParam)
 void GfxContext::onEncoderCreated()
 {
 	m_encoderSerial = ++g_device->m_encoderSerialCounter;
+}
+
+void GfxContext::endComputeEncoder()
+{
+	if (!m_computeCommandEncoder)
+	{
+		return;
+	}
+	[m_computeCommandEncoder endEncoding];
+	[m_computeCommandEncoder release];
+	m_computeCommandEncoder = nil;
+
+	// The next dispatch creates a new encoder, which starts with nothing bound
+	m_dirtyState = ~0u;
 }
 
 // useResource applies to the whole encoder
@@ -2710,12 +2707,7 @@ void Gfx_Release(GfxContext* rc)
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
-	if (rc->m_computeCommandEncoder)
-	{
-		[rc->m_computeCommandEncoder endEncoding];
-		[rc->m_computeCommandEncoder release];
-		rc->m_computeCommandEncoder = nil;
-	}
+	rc->endComputeEncoder();
 
 	MTLRenderPassDescriptor* passDescriptor = [MTLRenderPassDescriptor new];
 
@@ -2841,6 +2833,8 @@ void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 	const TextureMTL& srcTexture = g_device->m_resources.textures[src];
 	const TextureMTL& dstTexture = g_device->m_resources.textures[dst];
 
+	rc->endComputeEncoder();
+
 	if (srcTexture.desc.samples <= 1)
 	{
 		id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
@@ -2886,7 +2880,7 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
     GfxBufferArg          dst,
     u64                   dstOffset)
 {
-	RUSH_ASSERT(!ctx->m_computeCommandEncoder);
+	ctx->endComputeEncoder();
 
 	const TextureMTL& srcTex = g_device->m_resources.textures[src];
 	const BufferMTL&  dstBuf = g_device->m_resources.buffers[dst];

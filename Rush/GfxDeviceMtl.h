@@ -359,6 +359,8 @@ public:
 	id<MTLRenderCommandEncoder> m_commandEncoder = nil;
 	id<MTLComputeCommandEncoder> m_computeCommandEncoder = nil;
 
+	void endComputeEncoder();
+
 	GfxRef<GfxRenderPipeline> m_pendingRenderPipeline;
 	GfxRef<GfxComputePipeline> m_pendingComputePipeline;
 	GfxRef<GfxRayTracingPipeline> m_pendingRayTracingPipeline;
