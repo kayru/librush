@@ -150,6 +150,10 @@ private:
 	GfxTimingLevel m_nextLevel   = GfxTimingLevel::Frame;
 	bool           m_timestamps  = false;
 
+	// End of the latest completed frame's work per queue. A command buffer can report a start before
+	// the previous one finishes (Metal GPUStartTime), so later frames are clipped to avoid double counting.
+	u64 m_queueEndNs[u32(GfxContextType::count)] = {};
+
 	GfxTimingFrame*               m_current  = nullptr;
 	GfxTimingFrame*               m_returned = nullptr;
 	DynamicArray<GfxTimingFrame*> m_pending;

@@ -187,10 +187,31 @@ const char* GfxTimingCollector::innermostScopeName(GfxContextType queue) const
 	return nullptr;
 }
 
-static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals, DynamicArray<GfxCpuInterval>& outBusy)
+static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals, DynamicArray<GfxCpuInterval>& outBusy,
+    u64& queueEndNs)
 {
 	GfxQueueTime result;
 	outBusy.clear();
+
+	// A frame ending before the previous one is a clock discontinuity, not overlap, so it is not clipped
+	u64 frameEndNs = 0;
+	for (const GfxTimingInterval& it : intervals)
+	{
+		frameEndNs = std::max(frameEndNs, it.endNs);
+	}
+	const u64 clipNs = frameEndNs > queueEndNs ? queueEndNs : 0;
+
+	// Clipping keeps the order, beginNs only moves forward
+	size_t keep = 0;
+	for (const GfxTimingInterval& it : intervals)
+	{
+		if (it.endNs > clipNs)
+		{
+			intervals[keep++] = {std::max(it.beginNs, clipNs), it.endNs};
+		}
+	}
+	intervals.resize(keep);
+
 	if (intervals.empty())
 	{
 		return result;
@@ -221,6 +242,7 @@ static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals,
 	outBusy.push_back({runBegin, runEnd});
 	result.endNs = runEnd;
 	result.busyIntervals = ArrayView<const GfxCpuInterval>(outBusy.data(), outBusy.size());
+	queueEndNs = runEnd;
 	return result;
 }
 
@@ -228,7 +250,7 @@ void GfxTimingCollector::buildOutput(GfxTimingFrame& frame)
 {
 	for (u32 i = 0; i < u32(GfxContextType::count); ++i)
 	{
-		frame.queueTimes[i] = computeQueueTime(frame.intervals[i], frame.busyIntervals[i]);
+		frame.queueTimes[i] = computeQueueTime(frame.intervals[i], frame.busyIntervals[i], m_queueEndNs[i]);
 	}
 
 	// Chained completion points per queue: missing ones take the previous value, decreasing ones are invalid
