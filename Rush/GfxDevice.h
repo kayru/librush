@@ -175,15 +175,20 @@ struct GfxCapability
 
 struct GfxTextureData
 {
-	union {
-		u64         offset = 0;
-		const void* pixels;
-	};
+	// Texels start at offset bytes past pixels, or past the Gfx_CreateTexture base when pixels is null
+	u64         offset = 0;
+	const void* pixels = nullptr;
 	u32 mip    = 0;
 	u32 slice  = 0;
 	u32 width  = 0;
 	u32 height = 0;
 	u32 depth  = 0;
+
+	const u8* texels(const void* base) const
+	{
+		const void* const origin = pixels ? pixels : base;
+		return origin ? static_cast<const u8*>(origin) + offset : nullptr;
+	}
 };
 
 enum class GfxPassFlags : u32

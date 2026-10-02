@@ -13,6 +13,8 @@
 namespace Rush
 {
 
+class TaskGroup;
+
 class ThreadPool
 {
 public:
@@ -42,14 +44,25 @@ public:
 	u32 numWorkerThreads() const { return u32(m_threads.size()); }
 
 private:
+	friend class TaskGroup;
+
+	struct Task
+	{
+		TaskFunction function;
+		TaskGroup*   group = nullptr;
+	};
+
+	void pushTask(Task&& task, bool allowImmediateExecution);
 	bool doWorkInternal(bool waitForSignal);
-	TaskFunction popTask(bool waitForSignal);
+	bool executeGroupTask(TaskGroup& group);
+	Task popTask(bool waitForSignal);
+	void runTask(Task& task);
 
 	std::vector<std::thread> m_threads;
-	std::vector<TaskFunction> m_tasks;
+	std::vector<Task> m_tasks;
 	std::mutex m_mutex;
 	std::condition_variable m_wakeCondition;
-	std::atomic<bool> m_shutdown = false;
+	bool m_shutdown = false;
 	std::atomic<u32> m_runningTasks = 0;
 };
 
@@ -67,9 +80,12 @@ public:
 
 private:
 	ThreadPool& m_pool;
-	std::counting_semaphore<ThreadPool::kMaxThreads> m_native;
+	std::counting_semaphore<ThreadPool::kMaxThreads + 1> m_native;
 };
 
+// wait() runs only this group's queued tasks, then blocks until the rest
+// finish on other threads. A task's captures are destroyed before it counts
+// as finished.
 class TaskGroup
 {
 public:
@@ -83,47 +99,42 @@ public:
 	template <typename F>
 	void run(F&& fun)
 	{
-		++m_started;
-
 		const bool acquired = m_concurrencyLimit && m_concurrencyLimit->tryAcquire();
 
 		if (!m_concurrencyLimit || acquired)
 		{
+			++m_pending;
 			m_pool.pushTask(
-				[semaphore = m_concurrencyLimit,
-				 acquired,
-				 &started  = m_started,
-				 &finished = m_finished,
-				 f = std::forward<F>(fun)]()
-				{
-					f();
-					if (semaphore && acquired)
+				ThreadPool::Task{
+					[semaphore = acquired ? m_concurrencyLimit : nullptr, f = std::forward<F>(fun)]() mutable
 					{
-						semaphore->release();
-					}
-					++finished;
-				});
+						f();
+						if (semaphore)
+						{
+							semaphore->release();
+						}
+					},
+					this},
+				true);
 		}
 		else
 		{
 			fun();
-			++m_finished;
 		}
 	}
 
-	void wait()
-	{
-		while (m_finished.load() != m_started.load())
-		{
-			m_pool.tryExecuteTask();
-		}
-	}
+	void wait();
 
 private:
+	friend class ThreadPool;
+
+	void taskFinished();
+
 	ThreadPool& m_pool;
 	Semaphore* m_concurrencyLimit = nullptr;
-	std::atomic<u32> m_started = 0;
-	std::atomic<u32> m_finished = 0;
+	std::mutex m_mutex;
+	std::condition_variable m_finishedCondition;
+	std::atomic<u32> m_pending = 0;
 };
 
 template <typename I, typename F>

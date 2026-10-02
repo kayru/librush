@@ -2,10 +2,12 @@
 
 #include "Rush.h"
 
+#include <atomic>
+
 namespace Rush
 {
 
-void Platform_TerminateProcess(int status);
+void Platform_TerminateProcessFatal(int status);
 
 struct Log
 {
@@ -20,11 +22,12 @@ struct Log
 	static bool breakOnWarning;
 	static bool breakOnError;
 
-	static LogMessageCallback callbackDebug;
-	static LogMessageCallback callbackMessage;
-	static LogMessageCallback callbackWarning;
-	static LogMessageCallback callbackError;
-	static LogMessageCallback callbackFatal;
+	// Swapped at runtime (tests) while other threads log
+	static std::atomic<LogMessageCallback> callbackDebug;
+	static std::atomic<LogMessageCallback> callbackMessage;
+	static std::atomic<LogMessageCallback> callbackWarning;
+	static std::atomic<LogMessageCallback> callbackError;
+	static std::atomic<LogMessageCallback> callbackFatal;
 
 	static const char* prefixMessage;
 	static const char* prefixWarning;
@@ -39,7 +42,7 @@ struct Log
 #define RUSH_LOG_ERROR(text, ...) \
 	do { Rush::Log::error(text, ##__VA_ARGS__); if (Rush::Log::breakOnError) RUSH_BREAK; } while (0)
 #define RUSH_LOG_FATAL(text, ...) \
-	do { Rush::Log::fatal(text, ##__VA_ARGS__); if (Rush::Log::breakOnError) RUSH_BREAK; else Platform_TerminateProcess(0x80000003); } while (0)
+	do { Rush::Log::fatal(text, ##__VA_ARGS__); if (Rush::Log::breakOnError) RUSH_BREAK; else Platform_TerminateProcessFatal(0x80000003); } while (0)
 #else
 #define RUSH_LOG(text, ...) do { Rush::Log::message(text, __VA_ARGS__); } while (0)
 #define RUSH_LOG_WARNING(text, ...) \
@@ -47,7 +50,7 @@ struct Log
 #define RUSH_LOG_ERROR(text, ...) \
 	do { Rush::Log::error(text, __VA_ARGS__); if (Rush::Log::breakOnError) RUSH_BREAK; } while (0)
 #define RUSH_LOG_FATAL(text, ...) \
-	do { Rush::Log::fatal(text, __VA_ARGS__); if (Rush::Log::breakOnError) RUSH_BREAK; else Platform_TerminateProcess(0x80000003); } while (0)
+	do { Rush::Log::fatal(text, __VA_ARGS__); if (Rush::Log::breakOnError) RUSH_BREAK; else Platform_TerminateProcessFatal(0x80000003); } while (0)
 #endif
 
 #if (defined(RUSH_DEBUG) || defined(FORCE_ASSERTS) || defined(RUSH_FORCE_ASSERTS))
@@ -57,7 +60,7 @@ struct Log
 	do { if (!(v)) { RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " msg, RUSH_FUNCTION, ##__VA_ARGS__); } } while (0)
 #else
 #define RUSH_ASSERT_MSG(v, msg, ...) \
-	do { if (!(v)) { RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " ## msg, RUSH_FUNCTION, __VA_ARGS__); } } while (0)
+	do { if (!(v)) { RUSH_LOG_FATAL("Assert '" #v "' failed in '%s'. " msg, RUSH_FUNCTION, __VA_ARGS__); } } while (0)
 #endif
 #else
 #define RUSH_ASSERT(v) do { RUSH_UNUSED(v); } while (0)

@@ -22,14 +22,50 @@
 
 namespace Rush
 {
+#ifdef RUSH_PLATFORM_WINDOWS
+namespace
+{
+class ConsoleColor
+{
+public:
+	explicit ConsoleColor(WORD attributes) : m_handle(GetStdHandle(STD_OUTPUT_HANDLE))
+	{
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		if (GetConsoleScreenBufferInfo(m_handle, &csbi))
+		{
+			m_saved = csbi.wAttributes;
+			m_restore = true;
+			SetConsoleTextAttribute(m_handle, attributes);
+		}
+	}
+
+	~ConsoleColor()
+	{
+		if (m_restore)
+		{
+			SetConsoleTextAttribute(m_handle, m_saved);
+		}
+	}
+
+	ConsoleColor(const ConsoleColor&) = delete;
+	ConsoleColor& operator=(const ConsoleColor&) = delete;
+
+private:
+	HANDLE m_handle;
+	WORD m_saved = 0;
+	bool m_restore = false;
+};
+} // namespace
+#endif
+
 bool Log::breakOnError   = Platform_IsDebuggerPresent();
 bool Log::breakOnWarning = false;
 
-Log::LogMessageCallback Log::callbackDebug   = nullptr;
-Log::LogMessageCallback Log::callbackMessage = nullptr;
-Log::LogMessageCallback Log::callbackWarning = nullptr;
-Log::LogMessageCallback Log::callbackError   = nullptr;
-Log::LogMessageCallback Log::callbackFatal   = nullptr;
+std::atomic<Log::LogMessageCallback> Log::callbackDebug   = nullptr;
+std::atomic<Log::LogMessageCallback> Log::callbackMessage = nullptr;
+std::atomic<Log::LogMessageCallback> Log::callbackWarning = nullptr;
+std::atomic<Log::LogMessageCallback> Log::callbackError   = nullptr;
+std::atomic<Log::LogMessageCallback> Log::callbackFatal   = nullptr;
 
 const char* Log::prefixMessage = "";
 const char* Log::prefixWarning = "Warning: ";
@@ -38,14 +74,14 @@ const char* Log::prefixFatal   = "Fatal: ";
 
 void Log::debug(const char* msg, ...)
 {
-	if (callbackDebug)
+	if (const LogMessageCallback callback = callbackDebug.load())
 	{
 		char    str[1024];
 		va_list varargs;
 		va_start(varargs, msg);
 		vsnprintf(str, sizeof(str), msg, varargs);
 		va_end(varargs);
-		callbackDebug(str);
+		callback(str);
 	}
 	else
 	{
@@ -67,14 +103,14 @@ void Log::debug(const char* msg, ...)
 
 void Log::message(const char* msg, ...)
 {
-	if (callbackMessage)
+	if (const LogMessageCallback callback = callbackMessage.load())
 	{
 		char    str[1024];
 		va_list varargs;
 		va_start(varargs, msg);
 		vsnprintf(str, sizeof(str), msg, varargs);
 		va_end(varargs);
-		callbackMessage(str);
+		callback(str);
 	}
 	else
 	{
@@ -90,22 +126,19 @@ void Log::message(const char* msg, ...)
 
 void Log::warning(const char* msg, ...)
 {
-	if (callbackWarning)
+	if (const LogMessageCallback callback = callbackWarning.load())
 	{
 		char    str[1024];
 		va_list varargs;
 		va_start(varargs, msg);
 		vsnprintf(str, sizeof(str), msg, varargs);
 		va_end(varargs);
-		callbackWarning(str);
+		callback(str);
 	}
 	else
 	{
 #ifdef RUSH_PLATFORM_WINDOWS
-		auto                       h = GetStdHandle(STD_OUTPUT_HANDLE);
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		GetConsoleScreenBufferInfo(h, &csbi);
-		SetConsoleTextAttribute(h, 0x06);
+		const ConsoleColor color(0x06);
 #endif
 
 		va_list varargs;
@@ -115,31 +148,24 @@ void Log::warning(const char* msg, ...)
 		fprintf(stderr, "\n");
 		va_end(varargs);
 		fflush(stderr);
-
-#ifdef RUSH_PLATFORM_WINDOWS
-		SetConsoleTextAttribute(h, csbi.wAttributes);
-#endif
 	}
 }
 
 void Log::error(const char* msg, ...)
 {
-	if (callbackError)
+	if (const LogMessageCallback callback = callbackError.load())
 	{
 		char    str[1024];
 		va_list varargs;
 		va_start(varargs, msg);
 		vsnprintf(str, sizeof(str), msg, varargs);
 		va_end(varargs);
-		callbackError(str);
+		callback(str);
 	}
 	else
 	{
 #ifdef RUSH_PLATFORM_WINDOWS
-		auto                       h = GetStdHandle(STD_OUTPUT_HANDLE);
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		GetConsoleScreenBufferInfo(h, &csbi);
-		SetConsoleTextAttribute(h, 0x0C);
+		const ConsoleColor color(0x0C);
 #endif
 
 		va_list varargs;
@@ -149,31 +175,24 @@ void Log::error(const char* msg, ...)
 		fprintf(stderr, "\n");
 		va_end(varargs);
 		fflush(stderr);
-
-#ifdef RUSH_PLATFORM_WINDOWS
-		SetConsoleTextAttribute(h, csbi.wAttributes);
-#endif
 	}
 }
 
 void Log::fatal(const char* msg, ...)
 {
-	if (callbackFatal)
+	if (const LogMessageCallback callback = callbackFatal.load())
 	{
 		char    str[1024];
 		va_list varargs;
 		va_start(varargs, msg);
 		vsnprintf(str, sizeof(str), msg, varargs);
 		va_end(varargs);
-		callbackFatal(str);
+		callback(str);
 	}
 	else
 	{
 #ifdef RUSH_PLATFORM_WINDOWS
-		auto                       h = GetStdHandle(STD_OUTPUT_HANDLE);
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		GetConsoleScreenBufferInfo(h, &csbi);
-		SetConsoleTextAttribute(h, 0x04);
+		const ConsoleColor color(0x04);
 #endif
 
 		va_list varargs;
@@ -183,10 +202,6 @@ void Log::fatal(const char* msg, ...)
 		fprintf(stderr, "\n");
 		va_end(varargs);
 		fflush(stderr);
-
-#ifdef RUSH_PLATFORM_WINDOWS
-		SetConsoleTextAttribute(h, csbi.wAttributes);
-#endif
 	}
 }
 }

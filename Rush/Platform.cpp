@@ -3,7 +3,10 @@
 #include "UtilLog.h"
 #include "Window.h"
 
+#include <atomic>
 #include <csignal>
+#include <cstdio>
+#include <cstdlib>
 
 namespace Rush
 {
@@ -14,10 +17,19 @@ GfxContext* g_mainGfxContext = nullptr;
 
 static bool g_exitRequested = false;
 
+void Platform_TerminateProcessFatal(int status)
+{
+	// No static destructors: other threads may still be running
+	std::fflush(nullptr);
+	std::_Exit(status);
+}
+
 void Platform_RequestExit() { g_exitRequested = true; }
 bool Platform_IsExitRequested() { return g_exitRequested; }
 
-static volatile std::sig_atomic_t g_terminationSignal = 0;
+// Handlers may run on any thread (a new one on Windows): volatile sig_atomic_t covers only the interrupted thread
+static std::atomic<int> g_terminationSignal = 0;
+static_assert(std::atomic<int>::is_always_lock_free);
 
 static void terminationSignalHandler(int signal)
 {
@@ -42,12 +54,11 @@ static const struct
 
 void closeWindowOnTerminationSignal()
 {
-	const int signal = g_terminationSignal;
+	const int signal = g_terminationSignal.exchange(0);
 	if (signal == 0)
 	{
 		return;
 	}
-	g_terminationSignal = 0;
 	for (const auto& it : kTerminationSignals)
 	{
 		if (it.signal == signal)

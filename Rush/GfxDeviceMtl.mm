@@ -1748,7 +1748,7 @@ TextureMTL TextureMTL::create(const GfxTextureDesc& desc, const GfxTextureData* 
 
 		//const u32 srcPitch = (getBitsPerPixel(desc.format) * mipWidth) / 8;
 
-		const u8* srcPixels = reinterpret_cast<const u8*>(pixels) + data[i].offset;
+		const u8* srcPixels = data[i].texels(pixels);
 		RUSH_ASSERT(srcPixels);
 
 		const u32 rowSizeBytes = widthInBlocks * (blockDim*blockDim*bitsPerPixel) / 8;

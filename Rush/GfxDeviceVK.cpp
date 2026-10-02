@@ -5308,7 +5308,7 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 			const size_t alignedLevelSize =
 			    alignCeiling((u64(mipWidth * mipHeight * mipDepth) * bitsPerPixel), bitsPerElement) / 8;
 
-			const u8* srcPixels = reinterpret_cast<const u8*>(pixels) + data[i].offset;
+			const u8* srcPixels = data[i].texels(pixels);
 			RUSH_ASSERT(srcPixels);
 
 			memcpy(stagingImagePixels, srcPixels, levelSize);

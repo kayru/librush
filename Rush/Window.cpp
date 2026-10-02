@@ -1,5 +1,8 @@
 #include "Window.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace Rush
 {
 Window::Window(const WindowDesc& desc)
@@ -139,8 +142,23 @@ void Window::processTouchEvent(const WindowEvent& e)
 	}
 }
 
-void Window::injectInputEvent(const WindowEvent& e)
+void Window::injectInputEvent(const WindowEvent& injected)
 {
+	// Injected events come from tools: drop non-finite coordinates and keep
+	// the rest within range of the integer conversions downstream
+	const float coords[] = {injected.pos.x, injected.pos.y, injected.scroll.x, injected.scroll.y};
+	for (const float c : coords)
+	{
+		if (!std::isfinite(c))
+		{
+			return;
+		}
+	}
+	constexpr float kLimit = 32767.0f;
+	WindowEvent e = injected;
+	e.pos    = Vec2(std::clamp(e.pos.x, -kLimit, kLimit), std::clamp(e.pos.y, -kLimit, kLimit));
+	e.scroll = Vec2(std::clamp(e.scroll.x, -kLimit, kLimit), std::clamp(e.scroll.y, -kLimit, kLimit));
+
 	switch (e.type)
 	{
 	case WindowEventType_KeyDown:

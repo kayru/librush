@@ -90,6 +90,7 @@ template <typename T> inline int Platform_Main(AppConfig cfg)
 
 const char* Platform_GetExecutableDirectory();
 void        Platform_TerminateProcess(int status);
+void        Platform_TerminateProcessFatal(int status);
 
 GfxDevice*  Platform_GetGfxDevice();
 GfxContext* Platform_GetGfxContext();
