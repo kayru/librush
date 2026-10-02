@@ -54,6 +54,7 @@ struct GfxTimingFrame
 
 	// Filled by the backend at resolve, CPU ns
 	DynamicArray<GfxTimingInterval> intervals[u32(GfxContextType::count)];
+	DynamicArray<GfxCpuInterval>    busyIntervals[u32(GfxContextType::count)];
 
 	DynamicArray<GfxScopeTime> output;
 	GfxQueueTime               queueTimes[u32(GfxContextType::count)];

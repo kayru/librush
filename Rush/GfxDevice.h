@@ -65,6 +65,8 @@ struct GfxQueueTime
 	u64 beginNs = 0;
 	u64 endNs   = 0;
 	u64 busyNs  = 0; // union of command buffer intervals on this queue
+
+	ArrayView<const GfxCpuInterval> busyIntervals; // that union: sorted, disjoint; valid like GfxFrameTimes::scopes
 };
 
 struct GfxFrameTimes

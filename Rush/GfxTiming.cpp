@@ -34,6 +34,10 @@ void GfxTimingFrame::reset()
 	{
 		it.clear();
 	}
+	for (DynamicArray<GfxCpuInterval>& it : busyIntervals)
+	{
+		it.clear();
+	}
 	output.clear();
 	for (GfxQueueTime& it : queueTimes)
 	{
@@ -183,9 +187,10 @@ const char* GfxTimingCollector::innermostScopeName(GfxContextType queue) const
 	return nullptr;
 }
 
-static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals)
+static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals, DynamicArray<GfxCpuInterval>& outBusy)
 {
 	GfxQueueTime result;
+	outBusy.clear();
 	if (intervals.empty())
 	{
 		return result;
@@ -203,6 +208,7 @@ static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals)
 		if (it.beginNs > runEnd)
 		{
 			result.busyNs += runEnd - runBegin;
+			outBusy.push_back({runBegin, runEnd});
 			runBegin = it.beginNs;
 			runEnd   = it.endNs;
 		}
@@ -212,7 +218,9 @@ static GfxQueueTime computeQueueTime(DynamicArray<GfxTimingInterval>& intervals)
 		}
 	}
 	result.busyNs += runEnd - runBegin;
+	outBusy.push_back({runBegin, runEnd});
 	result.endNs = runEnd;
+	result.busyIntervals = ArrayView<const GfxCpuInterval>(outBusy.data(), outBusy.size());
 	return result;
 }
 
@@ -220,7 +228,7 @@ void GfxTimingCollector::buildOutput(GfxTimingFrame& frame)
 {
 	for (u32 i = 0; i < u32(GfxContextType::count); ++i)
 	{
-		frame.queueTimes[i] = computeQueueTime(frame.intervals[i]);
+		frame.queueTimes[i] = computeQueueTime(frame.intervals[i], frame.busyIntervals[i]);
 	}
 
 	// Chained completion points per queue: missing ones take the previous value, decreasing ones are invalid
