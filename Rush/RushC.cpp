@@ -28,6 +28,7 @@ rush_app_config convert(const AppConfig* cfg)
 	result.warp             = cfg->warp;
 	result.minimize_latency = cfg->minimizeLatency;
 	result.headless         = cfg->headless;
+	result.timing_level     = u32(cfg->timingLevel);
 	result.argc             = cfg->argc;
 	result.argv             = cfg->argv;
 	return result;
@@ -48,6 +49,8 @@ AppConfig convert(const rush_app_config* cfg)
 	result.warp            = cfg->warp;
 	result.minimizeLatency = cfg->minimize_latency;
 	result.headless        = cfg->headless;
+	RUSH_ASSERT_MSG(cfg->timing_level <= u32(GfxTimingLevel::Isolated), "Invalid timing level");
+	result.timingLevel     = cfg->timing_level <= u32(GfxTimingLevel::Isolated) ? GfxTimingLevel(cfg->timing_level) : GfxTimingLevel::Frame;
 	result.argc            = cfg->argc;
 	result.argv            = cfg->argv;
 	return result;
@@ -491,14 +494,14 @@ void rush_gfx_pop_marker(struct rush_gfx_context* ctx)
 	Gfx_PopMarker(convert(ctx));
 }
 
-void rush_gfx_begin_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id)
+void rush_gfx_begin_scope(struct rush_gfx_context* ctx, const char* name)
 {
-	Gfx_BeginTimer(convert(ctx), timestamp_id);
+	Gfx_BeginScope(convert(ctx), name);
 }
 
-void rush_gfx_end_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id)
+void rush_gfx_end_scope(struct rush_gfx_context* ctx)
 {
-	Gfx_EndTimer(convert(ctx), timestamp_id);
+	Gfx_EndScope(convert(ctx));
 }
 
 rush_gfx_buffer rush_gfx_create_buffer(const rush_gfx_buffer_desc* in_desc, const void* data)
@@ -707,6 +710,59 @@ rush_gfx_stats rush_gfx_get_stats()
 void rush_gfx_reset_stats()
 {
 	Gfx_ResetStats();
+}
+
+void rush_gfx_set_timing_level(rush_gfx_timing_level level)
+{
+	Gfx_SetTimingLevel(GfxTimingLevel(level));
+}
+
+uint64_t rush_gfx_get_frame_index()
+{
+	return Gfx_GetFrameIndex();
+}
+
+bool rush_gfx_get_frame_times(rush_gfx_frame_times* out)
+{
+	// Valid until the next call, like the GfxFrameTimes data it mirrors
+	static DynamicArray<rush_gfx_scope_time> scopes;
+
+	GfxFrameTimes times;
+	if (!Gfx_GetFrameTimes(times))
+	{
+		return false;
+	}
+
+	scopes.resize(times.scopes.size());
+	for (size_t i = 0; i < times.scopes.size(); ++i)
+	{
+		const GfxScopeTime& in = times.scopes[i];
+		scopes[i].name     = in.name;
+		scopes[i].parent   = in.parent;
+		scopes[i].queue    = u32(in.queue);
+		scopes[i].begin_ns = in.beginNs;
+		scopes[i].end_ns   = in.endNs;
+	}
+
+	auto convertQueue = [](const GfxQueueTime& in) {
+		rush_gfx_queue_time result;
+		result.begin_ns = in.beginNs;
+		result.end_ns   = in.endNs;
+		result.busy_ns  = in.busyNs;
+		return result;
+	};
+
+	out->frame          = times.frame;
+	out->dropped_frames = times.droppedFrames;
+	out->status         = u32(times.status);
+	out->level          = rush_gfx_timing_level(times.level);
+	out->thermal_state  = times.thermalState;
+	out->graphics       = convertQueue(times.graphics);
+	out->compute        = convertQueue(times.compute);
+	out->transfer       = convertQueue(times.transfer);
+	out->scopes         = scopes.data();
+	out->scope_count    = u32(scopes.size());
+	return true;
 }
 
 rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_source* in_code)

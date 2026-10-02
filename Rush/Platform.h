@@ -12,6 +12,7 @@ class MouseState;
 class Window;
 struct GfxConfig;
 struct WindowDesc;
+enum class GfxTimingLevel : u8;
 
 typedef void (*PlatformCallback_Startup)(void* userData);
 typedef void (*PlatformCallback_Update)(void* userData);
@@ -37,6 +38,8 @@ struct AppConfig
 	bool minimizeLatency = false;
 	bool headless        = false;
 	bool background      = false; // unattended: the window must not take focus or come to the front
+
+	GfxTimingLevel timingLevel = {}; // GfxTimingLevel::Frame
 
 	int    argc = 0;
 	char** argv = nullptr;

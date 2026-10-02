@@ -11,7 +11,9 @@
 #include <variant>
 
 #if defined(RUSH_PLATFORM_WINDOWS)
-#include <Windows.h> // only needed for GetModuleHandle()
+#include <Windows.h> // GetModuleHandle(), QueryPerformanceCounter()
+#else
+#include <time.h>
 #endif
 
 #if defined(RUSH_PLATFORM_MAC)
@@ -35,9 +37,6 @@ static VkAllocationCallbacks* g_allocationCallbacks = nullptr;
 
 static PFN_vkDebugMarkerSetObjectTagEXT      vkDebugMarkerSetObjectTag         = VK_NULL_HANDLE;
 static PFN_vkDebugMarkerSetObjectNameEXT     vkDebugMarkerSetObjectName        = VK_NULL_HANDLE;
-static PFN_vkCmdDebugMarkerBeginEXT          vkCmdDebugMarkerBegin             = VK_NULL_HANDLE;
-static PFN_vkCmdDebugMarkerEndEXT            vkCmdDebugMarkerEnd               = VK_NULL_HANDLE;
-static PFN_vkCmdDebugMarkerInsertEXT         vkCmdDebugMarkerInsert            = VK_NULL_HANDLE;
 static PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = VK_NULL_HANDLE;
 
 #if defined(RUSH_PLATFORM_MAC)
@@ -585,8 +584,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	{
 		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_KHRONOS_validation", false);
 		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME, false);
-		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
 	}
+
+	// Command buffer labels for capture and profiling tools, in every build
+	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
 
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_KHR_get_physical_device_properties2");
 
@@ -678,7 +679,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_physicalDeviceDescriptorIndexingFeatures.pNext = &m_bufferDeviceAddressFeatures;
 	m_bufferDeviceAddressFeatures.pNext = &m_shaderDrawParametersFeatures;
 	m_shaderDrawParametersFeatures.pNext = &m_timelineSemaphoreFeatures;
-	m_timelineSemaphoreFeatures.pNext = nullptr;
+	m_timelineSemaphoreFeatures.pNext = &m_hostQueryResetFeatures;
+	m_hostQueryResetFeatures.pNext = nullptr;
+
+	const bool vulkan13 = VK_API_VERSION_MAJOR(m_physicalDeviceProps.apiVersion) > 1
+		|| VK_API_VERSION_MINOR(m_physicalDeviceProps.apiVersion) >= 3;
+	if (vulkan13)
+	{
+		m_hostQueryResetFeatures.pNext = &m_synchronization2Features;
+	}
 
 	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
@@ -809,6 +818,10 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_supportedExtensions.KHR_maintenance1 = enableDeviceExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
 
+	const bool calibratedTimestampsKHR = enableDeviceExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, false);
+	const bool calibratedTimestampsEXT =
+	    !calibratedTimestampsKHR && enableDeviceExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, false);
+
 	void* physicalDeviceProps2Next = nullptr;
 
 	if (m_supportedExtensions.KHR_ray_tracing)
@@ -879,6 +892,15 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_timelineSemaphoreFeatures.pNext = m_physicalDeviceFeatures2.pNext;
 	m_physicalDeviceFeatures2.pNext = &m_timelineSemaphoreFeatures;
 
+	// Supported values stay as queried
+	m_hostQueryResetFeatures.pNext = m_physicalDeviceFeatures2.pNext;
+	m_physicalDeviceFeatures2.pNext = &m_hostQueryResetFeatures;
+	if (vulkan13)
+	{
+		m_synchronization2Features.pNext = m_physicalDeviceFeatures2.pNext;
+		m_physicalDeviceFeatures2.pNext = &m_synchronization2Features;
+	}
+
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 	deviceCreateInfo.queueCreateInfoCount    = (u32)queueCreateInfos.size();
 	deviceCreateInfo.pQueueCreateInfos       = queueCreateInfos.data();
@@ -898,11 +920,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		    (PFN_vkDebugMarkerSetObjectTagEXT)vkGetDeviceProcAddr(m_vulkanDevice, "vkDebugMarkerSetObjectTagEXT");
 		vkDebugMarkerSetObjectName =
 		    (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(m_vulkanDevice, "vkDebugMarkerSetObjectNameEXT");
-		vkCmdDebugMarkerBegin =
-		    (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(m_vulkanDevice, "vkCmdDebugMarkerBeginEXT");
-		vkCmdDebugMarkerEnd = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(m_vulkanDevice, "vkCmdDebugMarkerEndEXT");
-		vkCmdDebugMarkerInsert =
-		    (PFN_vkCmdDebugMarkerInsertEXT)vkGetDeviceProcAddr(m_vulkanDevice, "vkCmdDebugMarkerInsertEXT");
 	}
 
 	vkGetDeviceQueue(m_vulkanDevice, graphicsQueueIndex, 0, &m_graphicsQueue);
@@ -1023,19 +1040,80 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
 	V(vkCreatePipelineCache(m_vulkanDevice, &pipelineCacheCreateInfo, g_allocationCallbacks, &m_pipelineCache));
 
-	// Frame data (descriptor pools, timing pools, memory allocators)
 
-	for (FrameData& it : m_frameData)
+	m_hostQueryReset   = !!m_hostQueryResetFeatures.hostQueryReset;
+	m_synchronization2 = vulkan13 && !!m_synchronization2Features.synchronization2;
+	m_timestampPeriod  = double(m_physicalDeviceProps.limits.timestampPeriod);
+	m_timestampValidBits[u32(GfxContextType::Graphics)] = m_queueProps[graphicsQueueIndex].timestampValidBits;
+	if (computeQueueIndex != invalidIndex)
 	{
-		VkQueryPoolCreateInfo timestampPoolCreateInfo = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-		timestampPoolCreateInfo.queryCount =
-		    2 * (GfxStats::MaxCustomTimers + 1); // 2 slots per custom timer + 2 slots for total frame time
-		timestampPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
-
-		V(vkCreateQueryPool(m_vulkanDevice, &timestampPoolCreateInfo, g_allocationCallbacks, &it.timestampPool));
-		it.timestampPoolData.resize(timestampPoolCreateInfo.queryCount);
-		it.timestampSlotMap.resize(timestampPoolCreateInfo.queryCount);
+		m_timestampValidBits[u32(GfxContextType::Compute)] = m_queueProps[computeQueueIndex].timestampValidBits;
 	}
+	if (transferQueueIndex != invalidIndex)
+	{
+		m_timestampValidBits[u32(GfxContextType::Transfer)] = m_queueProps[transferQueueIndex].timestampValidBits;
+	}
+
+	if (calibratedTimestampsKHR || calibratedTimestampsEXT)
+	{
+		PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR getTimeDomains = calibratedTimestampsKHR
+		    ? vkGetPhysicalDeviceCalibrateableTimeDomainsKHR
+		    : vkGetPhysicalDeviceCalibrateableTimeDomainsEXT;
+		m_getCalibratedTimestamps = calibratedTimestampsKHR ? vkGetCalibratedTimestampsKHR : vkGetCalibratedTimestampsEXT;
+
+		DynamicArray<VkTimeDomainKHR> domains;
+		u32 domainCount = 0;
+		if (getTimeDomains && getTimeDomains(m_physicalDevice, &domainCount, nullptr) == VK_SUCCESS)
+		{
+			domains.resize(domainCount);
+			getTimeDomains(m_physicalDevice, &domainCount, domains.data());
+		}
+
+		auto hasDomain = [&](VkTimeDomainKHR domain) {
+			return std::find(domains.begin(), domains.end(), domain) != domains.end();
+		};
+
+		// Host clocks readable next to std::chrono::steady_clock, best first
+		const VkTimeDomainKHR hostDomains[] = {
+#if defined(RUSH_PLATFORM_WINDOWS)
+		    VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR,
+#else
+		    VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR,
+		    VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR,
+#endif
+		};
+		if (hasDomain(VK_TIME_DOMAIN_DEVICE_KHR))
+		{
+			for (VkTimeDomainKHR domain : hostDomains)
+			{
+				if (hasDomain(domain))
+				{
+					m_hostTimeDomain = domain;
+					break;
+				}
+			}
+		}
+		if (m_hostTimeDomain == VK_TIME_DOMAIN_DEVICE_KHR)
+		{
+			m_getCalibratedTimestamps = nullptr;
+		}
+	}
+
+	m_caps.timestamps = m_timestampValidBits[u32(GfxContextType::Graphics)] != 0 && m_timestampPeriod > 0.0;
+	m_caps.timestampsAsyncCompute = m_caps.timestamps && computeQueueIndex != invalidIndex
+	    && m_timestampValidBits[u32(GfxContextType::Compute)] != 0;
+	m_caps.timestampPeriodNs = m_timestampPeriod;
+	m_timing.setTimestampsSupported(m_caps.timestamps);
+	m_timing.setLevel(cfg.timingLevel);
+	if (m_caps.timestamps)
+	{
+		calibrateTimestamps();
+	}
+	m_caps.timestampsCalibrated = m_clockCalibrated;
+
+	RUSH_LOG("GPU timing: timestamps %s (%u valid bits, %.3f ns period), calibrated %s, host query reset %s, synchronization2 %s",
+	    m_caps.timestamps ? "yes" : "no", m_timestampValidBits[u32(GfxContextType::Graphics)], m_timestampPeriod,
+	    m_clockCalibrated ? "yes" : "no", m_hostQueryReset ? "yes" : "no", m_synchronization2 ? "yes" : "no");
 
 	m_transientLocalAllocator.init(m_memoryTypes.local, false);
 	m_transientHostAllocator.init(m_memoryTypes.host, true);
@@ -1221,12 +1299,15 @@ GfxDevice::~GfxDevice()
 
 	m_pendingDestructionQueue->flush(this);
 
+	for (VkQueryPool pool : m_queryBlocks)
+	{
+		vkDestroyQueryPool(m_vulkanDevice, pool, g_allocationCallbacks);
+	}
+
 	for (FrameData& it : m_frameData)
 	{
 		it.descriptorPools.clear();
 		it.availableDescriptorPools.clear();
-
-		vkDestroyQueryPool(m_vulkanDevice, it.timestampPool, g_allocationCallbacks);
 
 		if (it.presentCompleteSemaphore)
 		{
@@ -2183,6 +2264,47 @@ GfxContext::~GfxContext()
 	vkDestroySemaphore(m_vulkanDevice, m_completionSemaphore, g_allocationCallbacks);
 }
 
+static void cmdBeginLabel(VkCommandBuffer commandBuffer, const char* name)
+{
+	if (vkCmdBeginDebugUtilsLabelEXT)
+	{
+		VkDebugUtilsLabelEXT label = {VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
+		label.pLabelName           = name;
+		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
+	}
+}
+
+static void cmdEndLabel(VkCommandBuffer commandBuffer)
+{
+	if (vkCmdEndDebugUtilsLabelEXT)
+	{
+		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+	}
+}
+
+void GfxContext::beginLabel(const char* name)
+{
+	m_labels.push_back(String(name ? name : ""));
+	if (m_isActive)
+	{
+		cmdBeginLabel(m_commandBuffer, m_labels.back().c_str());
+	}
+}
+
+void GfxContext::endLabel()
+{
+	RUSH_ASSERT_MSG(!m_labels.empty(), "Gfx_PopMarker without a matching Gfx_PushMarker");
+	if (m_labels.empty())
+	{
+		return;
+	}
+	if (m_isActive)
+	{
+		cmdEndLabel(m_commandBuffer);
+	}
+	m_labels.pop_back();
+}
+
 void GfxContext::beginBuild()
 {
 	RUSH_ASSERT(!m_isActive);
@@ -2196,6 +2318,19 @@ void GfxContext::beginBuild()
 
 	VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 	V(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
+
+	m_timingFrame      = ~0ull;
+	m_timingBeginQuery = GfxTimingInvalidIndex;
+	if (const GfxDevice::TimingFrame* frame = m_device->timingFrame())
+	{
+		m_timingBeginQuery = m_device->writeTimestamp(this);
+		m_timingFrame      = frame->frame;
+	}
+
+	for (const String& label : m_labels)
+	{
+		cmdBeginLabel(m_commandBuffer, label.c_str());
+	}
 
 	m_activePipeline     = VK_NULL_HANDLE;
 	m_dirtyState         = 0xFFFFFFFF;
@@ -2219,6 +2354,27 @@ void GfxContext::endBuild()
 	flushBarriers();
 
 	RUSH_ASSERT(m_isActive);
+
+	for (size_t i = 0; i < m_labels.size(); ++i)
+	{
+		cmdEndLabel(m_commandBuffer);
+	}
+
+	if (m_timingBeginQuery != GfxTimingInvalidIndex)
+	{
+		GfxDevice::TimingFrame* frame = m_device->timingFrame();
+		RUSH_ASSERT_MSG(frame && frame->frame == m_timingFrame, "Command buffer recorded across frames");
+		if (frame && frame->frame == m_timingFrame)
+		{
+			GfxDevice::TimingCommandBuffer record;
+			record.beginQuery = m_timingBeginQuery;
+			record.endQuery   = m_device->writeTimestamp(this);
+			record.queue      = m_type;
+			frame->commandBuffers.push_back(record);
+		}
+		m_timingBeginQuery = GfxTimingInvalidIndex;
+	}
+
 	m_isActive = false;
 
 	V(vkEndCommandBuffer(m_commandBuffer));
@@ -2485,6 +2641,8 @@ void GfxContext::flushBarriers()
 
 	m_pendingBarriers.srcStageMask = 0;
 	m_pendingBarriers.dstStageMask = 0;
+
+	++m_workSerial;
 }
 
 void GfxContext::beginRenderPass(const GfxPassDesc& desc)
@@ -2581,8 +2739,10 @@ void GfxContext::beginRenderPass(const GfxPassDesc& desc)
 	flushBarriers();
 
 	vkCmdBeginRenderPass(m_commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	++m_workSerial;
 
 	m_currentRenderPassDesc       = desc;
+	m_currentRenderPassDesc.name  = nullptr; // the caller's string may not outlive Gfx_BeginPass
 	m_currentRenderPass           = renderPassBeginInfo.renderPass;
 	m_currentColorAttachmentCount = desc.getColorTargetCount();
 	m_currentColorSampleCount     = colorSampleCount;
@@ -2629,6 +2789,7 @@ void GfxContext::resolveImage(GfxTextureArg src, GfxTextureArg dst)
 	flushBarriers();
 
 	vkCmdResolveImage(m_commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, 1, &region);
+	++m_workSerial;
 }
 
 // A texture bound as both a sampled image and a storage image must stay in
@@ -3337,93 +3498,6 @@ void Gfx_Release(GfxDevice* dev)
 	g_device = nullptr;
 }
 
-static bool getQueryPoolResults(VkDevice device, VkQueryPool pool, u32 count, DynamicArray<u64>& output, bool waitForResults)
-{
-	output.resize(count);
-	u32 stride = sizeof(*output.data());
-	VkQueryResultFlags queryFlags = VK_QUERY_RESULT_64_BIT;
-	if (waitForResults)
-	{
-		queryFlags |= VK_QUERY_RESULT_WAIT_BIT;
-	}
-
-	VkResult res = vkGetQueryPoolResults(device,
-	    pool,
-	    0,
-	    (u32)output.size(),
-	    (u32)output.size() * stride,
-	    output.data(),
-	    stride,
-	    queryFlags);
-
-	if (res == VK_SUCCESS)
-	{
-		return true;
-	}
-
-	if (res == VK_NOT_READY)
-	{
-		return false;
-	}
-
-	RUSH_LOG_ERROR("vkGetQueryPoolResults returned code %d (%s)", res, toString(res));
-	return false;
-}
-
-static void resolveTimestampStats(GfxDevice::FrameData* frameData)
-{
-	static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
-
-	if (frameData == nullptr || frameData->timestampIssuedCount == 0)
-	{
-		return;
-	}
-
-	if (!getQueryPoolResults(
-	        g_vulkanDevice,
-	        frameData->timestampPool,
-	        frameData->timestampIssuedCount,
-	        frameData->timestampPoolData,
-	        true))
-	{
-		return;
-	}
-
-	const double nanoSecondsPerTick = g_device->m_physicalDeviceProps.limits.timestampPeriod;
-	const double secondsPerTick     = 1e-9 * nanoSecondsPerTick;
-
-	for (u32 i = 0; i < GfxStats::MaxCustomTimers; ++i)
-	{
-		u16 slotBegin = frameData->timestampSlotMap[2 * i];
-		u16 slotEnd   = frameData->timestampSlotMap[2 * i + 1];
-
-		if (slotBegin != InvalidTimestampSlotIndex &&
-		    slotEnd != InvalidTimestampSlotIndex &&
-		    slotBegin < frameData->timestampIssuedCount &&
-		    slotEnd < frameData->timestampIssuedCount)
-		{
-			u64 timestampDelta = frameData->timestampPoolData[slotEnd] - frameData->timestampPoolData[slotBegin];
-			g_device->m_stats.customTimer[i] = timestampDelta * secondsPerTick;
-		}
-		else
-		{
-			g_device->m_stats.customTimer[i] = 0.0;
-		}
-	}
-
-	u16 frameBeginSlot = frameData->timestampSlotMap[2 * GfxStats::MaxCustomTimers];
-	u16 frameEndSlot   = frameData->timestampSlotMap[2 * GfxStats::MaxCustomTimers + 1];
-
-	if (frameBeginSlot != InvalidTimestampSlotIndex &&
-	    frameEndSlot != InvalidTimestampSlotIndex &&
-	    frameBeginSlot < frameData->timestampIssuedCount &&
-	    frameEndSlot < frameData->timestampIssuedCount)
-	{
-		u64 frameTimestampDelta = frameData->timestampPoolData[frameEndSlot] - frameData->timestampPoolData[frameBeginSlot];
-		g_device->m_stats.lastFrameGpuTime = frameTimestampDelta * secondsPerTick;
-	}
-}
-
 static GfxContext* getUploadContext()
 {
 	if (g_device->m_currentUploadContext == nullptr)
@@ -3463,15 +3537,6 @@ void GfxDevice::flushUploadContext(GfxContext* dependentContext, bool waitForCom
 	}
 }
 
-static void writeTimestamp(GfxContext* context, u32 slotIndex, VkPipelineStageFlagBits stageFlags)
-{
-	g_device->m_currentFrame->timestampSlotMap[slotIndex] = u16(g_device->m_currentFrame->timestampIssuedCount);
-	vkCmdWriteTimestamp(context->m_commandBuffer,
-	    stageFlags,
-	    g_device->m_currentFrame->timestampPool,
-	    g_device->m_currentFrame->timestampIssuedCount++);
-}
-
 void Gfx_BeginFrame()
 {
 	if (!g_device->m_cfg.headless
@@ -3489,6 +3554,9 @@ void Gfx_BeginFrame()
 
 	g_device->beginFrame();
 
+	g_device->pollTiming();
+	g_device->m_timing.beginFrame(g_device->m_frameCount);
+
 	recycleContext(g_context);
 
 #if 0
@@ -3499,25 +3567,6 @@ void Gfx_BeginFrame()
 #endif
 
 	g_context->beginBuild();
-
-	static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
-
-	if (g_device->m_currentFrame->timestampIssuedCount)
-	{
-		resolveTimestampStats(g_device->m_currentFrame);
-		g_device->m_currentFrame->timestampIssuedCount = 0;
-	}
-
-	vkCmdResetQueryPool(g_context->m_commandBuffer,
-		g_device->m_currentFrame->timestampPool,
-		0, u32(g_device->m_currentFrame->timestampPoolData.size()));
-
-	for (u16& it : g_device->m_currentFrame->timestampSlotMap)
-	{
-		it = InvalidTimestampSlotIndex;
-	}
-
-	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
 }
 
 void GfxDevice::captureScreenshot(VkSemaphore signalSemaphore)
@@ -3593,7 +3642,7 @@ void Gfx_EndFrame()
 {
 	RUSH_ASSERT(!g_context->m_isRenderPassActive);
 
-	writeTimestamp(g_context, 2 * GfxStats::MaxCustomTimers + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+	g_device->m_timing.closeOpenScopes(GfxContextType::Graphics, []() { return g_device->timingBoundary(g_context); });
 
 	if (!g_device->m_cfg.headless && g_device->m_swapChainValid && !g_device->m_swapChainTextures.empty())
 	{
@@ -3730,6 +3779,12 @@ GfxProgressId Gfx_Present()
 		g_device->m_pendingScreenshotUserData = nullptr;
 	}
 
+	if (GfxDevice::TimingFrame* frame = g_device->timingFrame())
+	{
+		frame->lastProgress = progressValue;
+		g_device->m_timing.endFrame();
+	}
+
 	g_device->m_frameCount++;
 
 	return GfxProgressId{progressValue};
@@ -3803,37 +3858,312 @@ GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
 	return counterValue >= id.value ? GfxProgressStatus::Complete : GfxProgressStatus::Pending;
 }
 
-void Gfx_ResolveTimestamps()
-{
-	resolveTimestampStats(g_device->m_currentFrame);
-
-	GfxDevice::FrameData* frameData = g_device->m_currentFrame;
-	if (frameData)
-	{
-		static constexpr u16 InvalidTimestampSlotIndex = 0xFFFF;
-
-		if (g_context && g_context->m_isActive &&
-		    frameData->timestampPool != VK_NULL_HANDLE &&
-		    !frameData->timestampPoolData.empty())
-		{
-			vkCmdResetQueryPool(
-				g_context->m_commandBuffer,
-				frameData->timestampPool,
-				0,
-				u32(frameData->timestampPoolData.size()));
-		}
-
-		for (u16& it : frameData->timestampSlotMap)
-		{
-			it = InvalidTimestampSlotIndex;
-		}
-		frameData->timestampIssuedCount = 0;
-	}
-}
-
 const GfxStats& Gfx_Stats() { return g_device->m_stats; }
 
 void Gfx_ResetStats() { g_device->m_stats = GfxStats(); }
+
+
+void GfxDevice::TimingFrame::reset()
+{
+	GfxTimingFrame::reset();
+	lastProgress = 0;
+	RUSH_ASSERT(queryBlocks.empty());
+	boundaryQueries.clear();
+	commandBuffers.clear();
+}
+
+u32 GfxDevice::writeTimestamp(GfxContext* ctx)
+{
+	TimingFrame* frame = timingFrame();
+	if (!frame || !m_caps.timestamps)
+	{
+		return GfxTimingInvalidIndex;
+	}
+	RUSH_ASSERT_MSG(!ctx->m_isRenderPassActive, "Timestamps are never written inside render passes");
+
+	const GfxContextType queue = ctx->m_type;
+	if (m_timestampValidBits[u32(queue)] == 0 || (queue == GfxContextType::Transfer && !m_hostQueryReset))
+	{
+		// Transfer queues cannot reset queries in command buffers
+		return GfxTimingInvalidIndex;
+	}
+
+	const u32 slot = Gfx_AllocateTimingSlots(frame->queryBlocks, m_freeQueryBlocks, QueryBlockSize, 1, [this]() {
+		VkQueryPoolCreateInfo createInfo = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+		createInfo.queryType  = VK_QUERY_TYPE_TIMESTAMP;
+		createInfo.queryCount = QueryBlockSize;
+		VkQueryPool pool      = VK_NULL_HANDLE;
+		if (m_queryBlocks.size() == MaxQueryBlocks
+		    || vkCreateQueryPool(m_vulkanDevice, &createInfo, g_allocationCallbacks, &pool) != VK_SUCCESS)
+		{
+			return GfxTimingInvalidIndex;
+		}
+		if (m_hostQueryReset)
+		{
+			vkResetQueryPool(m_vulkanDevice, pool, 0, QueryBlockSize);
+		}
+		m_queryBlocks.push_back(pool);
+		return u32(m_queryBlocks.size() - 1);
+	});
+	if (slot == GfxTimingInvalidIndex)
+	{
+		frame->status |= GfxTimingStatus::Overflow;
+		return GfxTimingInvalidIndex;
+	}
+
+	const u32         local = slot % QueryBlockSize;
+	const VkQueryPool pool  = m_queryBlocks[frame->queryBlocks[slot / QueryBlockSize].block];
+
+	if (!m_hostQueryReset)
+	{
+		// Per query, so command buffers submitted out of recording order cannot reset each other's writes
+		vkCmdResetQueryPool(ctx->m_commandBuffer, pool, local, 1);
+	}
+
+	// Written once all earlier work on the queue completes; never top of pipe, which overlaps earlier work
+	if (m_synchronization2)
+	{
+		vkCmdWriteTimestamp2(ctx->m_commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, local);
+	}
+	else
+	{
+		vkCmdWriteTimestamp(ctx->m_commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pool, local);
+	}
+
+	return slot;
+}
+
+u32 GfxDevice::timingBoundary(GfxContext* ctx)
+{
+	TimingFrame* frame = timingFrame();
+	RUSH_ASSERT(frame);
+
+	if (ctx->m_lastBoundaryFrame == frame->frame && ctx->m_lastBoundarySerial == ctx->m_workSerial)
+	{
+		return ctx->m_lastBoundary;
+	}
+
+	const u32 boundary = frame->addBoundary(ctx->m_type);
+	frame->boundaryQueries.push_back(writeTimestamp(ctx));
+
+	ctx->m_lastBoundary       = boundary;
+	ctx->m_lastBoundarySerial = ctx->m_workSerial;
+	ctx->m_lastBoundaryFrame  = frame->frame;
+	return boundary;
+}
+
+bool GfxDevice::scopesTimed(GfxContext* ctx) const
+{
+	return m_timing.scopesEnabled()
+	    && (ctx == g_context || (ctx->m_type == GfxContextType::Compute && m_caps.timestampsAsyncCompute));
+}
+
+void GfxDevice::pollTiming()
+{
+	if (m_timing.pendingCount() == 0)
+	{
+		return;
+	}
+
+	u64 completed = 0;
+	V(vkGetSemaphoreCounterValue(m_vulkanDevice, m_progressSemaphore, &completed));
+
+	while (m_timing.pendingCount() != 0)
+	{
+		TimingFrame& frame = static_cast<TimingFrame&>(*m_timing.pending(0));
+		if (completed < frame.lastProgress)
+		{
+			break;
+		}
+		resolveTimingFrame(frame);
+		m_timing.completeOldest();
+	}
+}
+
+static u64 readHostClockNs(VkTimeDomainKHR domain)
+{
+#if defined(RUSH_PLATFORM_WINDOWS)
+	RUSH_ASSERT(domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR);
+	LARGE_INTEGER counter;
+	QueryPerformanceCounter(&counter);
+	return u64(counter.QuadPart);
+#else
+	timespec ts = {};
+	clock_gettime(domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR ? CLOCK_MONOTONIC_RAW : CLOCK_MONOTONIC, &ts);
+	return u64(ts.tv_sec) * 1'000'000'000ull + u64(ts.tv_nsec);
+#endif
+}
+
+// Host clock values to ns; QueryPerformanceCounter values are ticks
+static u64 hostClockToNs(u64 value)
+{
+#if defined(RUSH_PLATFORM_WINDOWS)
+	static const u64 frequency = []() {
+		LARGE_INTEGER result;
+		QueryPerformanceFrequency(&result);
+		return u64(result.QuadPart);
+	}();
+	return (value / frequency) * 1'000'000'000ull + ((value % frequency) * 1'000'000'000ull) / frequency;
+#else
+	return value;
+#endif
+}
+
+bool GfxDevice::calibrateTimestamps()
+{
+	if (!m_getCalibratedTimestamps)
+	{
+		return false;
+	}
+
+	VkCalibratedTimestampInfoKHR infos[2] = {
+	    {VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR}, {VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR}};
+	infos[0].timeDomain = VK_TIME_DOMAIN_DEVICE_KHR;
+	infos[1].timeDomain = m_hostTimeDomain;
+
+	u64  best[2]       = {};
+	u64  bestDeviation = ~0ull;
+	for (u32 i = 0; i < 16; ++i)
+	{
+		u64 timestamps[2] = {};
+		u64 deviation     = 0;
+		if (m_getCalibratedTimestamps(m_vulkanDevice, 2, infos, timestamps, &deviation) == VK_SUCCESS
+		    && deviation < bestDeviation)
+		{
+			bestDeviation = deviation;
+			best[0]       = timestamps[0];
+			best[1]       = timestamps[1];
+		}
+	}
+	if (bestDeviation == ~0ull)
+	{
+		m_clockCalibrated = false;
+		return false;
+	}
+
+	const u64 hostBefore = hostClockToNs(readHostClockNs(m_hostTimeDomain));
+	const u64 steadyNow  = Timer::nowNs();
+	const u64 hostAfter  = hostClockToNs(readHostClockNs(m_hostTimeDomain));
+	const s64 hostToSteady = s64(steadyNow) - s64(hostBefore + (hostAfter - hostBefore) / 2);
+
+	m_clockGpu               = best[0];
+	m_clockCpuNs             = u64(s64(hostClockToNs(best[1])) + hostToSteady);
+	m_clockCalibrated        = true;
+	m_framesSinceCalibration = 0;
+	return true;
+}
+
+void GfxDevice::resolveTimingFrame(TimingFrame& frame)
+{
+	const u64 observedNs = Timer::nowNs();
+
+	DynamicArray<u64> values(frame.queryBlocks.size() * QueryBlockSize, GfxTimingInvalidTime);
+	DynamicArray<u64> results;
+	for (u32 ordinal = 0; ordinal < u32(frame.queryBlocks.size()); ++ordinal)
+	{
+		const u32         used = frame.queryBlocks[ordinal].used;
+		const VkQueryPool pool = m_queryBlocks[frame.queryBlocks[ordinal].block];
+		if (used)
+		{
+			// Never waits: the frame's work is complete, and unavailable queries stay invalid
+			results.resize(used * 2);
+			const VkResult result = vkGetQueryPoolResults(m_vulkanDevice, pool, 0, used, used * 2 * sizeof(u64),
+			    results.data(), 2 * sizeof(u64), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+			if (result == VK_SUCCESS || result == VK_NOT_READY)
+			{
+				for (u32 i = 0; i < used; ++i)
+				{
+					if (results[2 * i + 1] != 0)
+					{
+						values[ordinal * QueryBlockSize + i] = results[2 * i];
+					}
+				}
+			}
+			if (m_hostQueryReset)
+			{
+				vkResetQueryPool(m_vulkanDevice, pool, 0, used);
+			}
+		}
+		m_freeQueryBlocks.push_back(frame.queryBlocks[ordinal].block);
+	}
+	frame.queryBlocks.clear();
+
+	auto value = [&](u32 query) { return query == GfxTimingInvalidIndex ? GfxTimingInvalidTime : values[query]; };
+
+	if (m_getCalibratedTimestamps && (!m_clockCalibrated || ++m_framesSinceCalibration >= 60))
+	{
+		calibrateTimestamps();
+	}
+
+	const u32 graphicsBits = m_timestampValidBits[u32(GfxContextType::Graphics)];
+	if (!m_clockCalibrated)
+	{
+		// The CPU sees completion after the last GPU end: the tightest such pairing is the best estimate
+		u64 lastEnd = GfxTimingInvalidTime;
+		for (const TimingCommandBuffer& it : frame.commandBuffers)
+		{
+			const u64 end = value(it.endQuery);
+			if (end != GfxTimingInvalidTime && it.queue == GfxContextType::Graphics
+			    && (lastEnd == GfxTimingInvalidTime || Gfx_TimestampDelta(end, lastEnd, graphicsBits) > 0))
+			{
+				lastEnd = end;
+			}
+		}
+		if (lastEnd != GfxTimingInvalidTime)
+		{
+			const s64 predicted = s64(m_clockCpuNs)
+			    + s64(double(Gfx_TimestampDelta(lastEnd, m_clockGpu, graphicsBits)) * m_timestampPeriod);
+			if (!m_clockEstimated || s64(observedNs) < predicted)
+			{
+				m_clockGpu       = lastEnd;
+				m_clockCpuNs     = observedNs;
+				m_clockEstimated = true;
+			}
+		}
+		frame.status |= GfxTimingStatus::Uncalibrated;
+	}
+
+	auto toNs = [&](u64 ticks, u32 validBits) {
+		return u64(s64(m_clockCpuNs) + s64(double(Gfx_TimestampDelta(ticks, m_clockGpu, validBits)) * m_timestampPeriod));
+	};
+	const bool clockValid = m_clockCalibrated || m_clockEstimated;
+
+	for (const TimingCommandBuffer& it : frame.commandBuffers)
+	{
+		const u64 begin = value(it.beginQuery);
+		const u64 end   = value(it.endQuery);
+		const u32 bits  = m_timestampValidBits[u32(it.queue)];
+		if (!clockValid || begin == GfxTimingInvalidTime || end == GfxTimingInvalidTime
+		    || Gfx_TimestampDelta(end, begin, bits) < 0)
+		{
+			frame.status |= GfxTimingStatus::Invalid;
+			continue;
+		}
+		frame.intervals[u32(it.queue)].push_back({toNs(begin, bits), toNs(end, bits)});
+	}
+
+	frame.boundaryNs.resize(frame.boundaryCount(), GfxTimingInvalidTime);
+	for (u32 i = 0; i < frame.boundaryCount(); ++i)
+	{
+		const u64 ticks = value(frame.boundaryQueries[i]);
+		if (clockValid && ticks != GfxTimingInvalidTime)
+		{
+			frame.boundaryNs[i] = toNs(ticks, m_timestampValidBits[u32(frame.boundaryQueues[i])]);
+		}
+	}
+}
+
+void Gfx_SetTimingLevel(GfxTimingLevel level) { g_device->m_timing.setLevel(level); }
+
+GfxTimingLevel Gfx_GetTimingLevel() { return g_device->m_timing.nextLevel(); }
+
+u64 Gfx_GetFrameIndex() { return g_device->m_frameCount; }
+
+bool Gfx_GetFrameTimes(GfxFrameTimes& out)
+{
+	g_device->pollTiming();
+	return g_device->m_timing.getFrameTimes(out);
+}
 
 // vertex format
 
@@ -5339,6 +5669,7 @@ void Gfx_vkFillBuffer(GfxContext* ctx, GfxBuffer h, u32 value)
 	validateBufferUse(buffer, true);
 
 	vkCmdFillBuffer(ctx->m_commandBuffer, buffer.info.buffer, buffer.info.offset, buffer.info.range, value);
+	++ctx->m_workSerial;
 }
 
 void Gfx_FlushBarriers(GfxContext* ctx)
@@ -5371,6 +5702,7 @@ void Gfx_AddFullPipelineBarrier(GfxContext* ctx)
 
 	vkCmdPipelineBarrier(ctx->m_commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 	    0, 1, &barrier, 0, nullptr, 0, nullptr);
+	++ctx->m_workSerial;
 }
 
 void Gfx_vkExecutionBarrier(GfxContext* ctx, VkPipelineStageFlagBits srcStage, VkPipelineStageFlagBits dstStage)
@@ -5655,6 +5987,9 @@ void Gfx_EndAsyncCompute(GfxContext* parentContext, GfxContext* asyncContext)
 	RUSH_ASSERT_MSG(parentContext->m_type == GfxContextType::Graphics,
 	    "Waiting for async compute is only implemented on graphics contexts.");
 
+	g_device->m_timing.closeOpenScopes(
+	    GfxContextType::Compute, [asyncContext]() { return g_device->timingBoundary(asyncContext); });
+
 	asyncContext->m_useCompletionSemaphore = true;
 	asyncContext->endBuild();
 
@@ -5908,6 +6243,22 @@ void Gfx_AddImageBarrier(
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
+	RUSH_ASSERT_MSG(!rc->m_isRenderPassActive, "Gfx_BeginPass inside a render pass");
+
+	rc->m_passLabel = desc.name != nullptr;
+	if (rc->m_passLabel)
+	{
+		rc->beginLabel(desc.name);
+	}
+
+	GfxTimingCollector& timing = g_device->m_timing;
+	rc->m_passScope = desc.name && desc.timed && timing.scopesEnabled() && rc == g_context;
+	if (rc->m_passScope)
+	{
+		timing.beginScope(GfxContextType::Graphics, desc.name, [rc]() { Gfx_AddFullPipelineBarrier(rc); },
+		    [rc]() { return g_device->timingBoundary(rc); });
+	}
+
 	rc->m_dirtyState = 0xFFFFFFFF;
 
 	if (!desc.depth.valid() && !desc.color[0].valid())
@@ -5938,7 +6289,21 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	}
 }
 
-void Gfx_EndPass(GfxContext* rc) { rc->endRenderPass(); }
+void Gfx_EndPass(GfxContext* rc)
+{
+	rc->endRenderPass();
+
+	if (rc->m_passScope)
+	{
+		rc->m_passScope = false;
+		g_device->m_timing.popScope(GfxContextType::Graphics, g_device->timingBoundary(rc));
+	}
+	if (rc->m_passLabel)
+	{
+		rc->m_passLabel = false;
+		rc->endLabel();
+	}
+}
 
 const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc)
 {
@@ -5997,6 +6362,7 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
 	vkCmdCopyImageToBuffer(
 	    ctx->m_commandBuffer, srcTex.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	    dstBuf.info.buffer, 1, &region);
+	++ctx->m_workSerial;
 
 	return info;
 }
@@ -6023,6 +6389,7 @@ void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* p
 	rc->flushBarriers();
 
 	vkCmdDispatch(rc->m_commandBuffer, sizeX, sizeY, sizeZ);
+	++rc->m_workSerial;
 }
 
 void Gfx_DispatchIndirect(
@@ -6046,6 +6413,7 @@ void Gfx_DispatchIndirect(
 
 	// TODO: insert buffer barrier (VK_ACCESS_INDIRECT_COMMAND_READ_BIT)
 	vkCmdDispatchIndirect(rc->m_commandBuffer, buffer.info.buffer, buffer.info.offset + argsBufferOffset);
+	++rc->m_workSerial;
 }
 
 inline u32 computeTriangleCount(GfxPrimitive primitiveType, u32 vertexCount)
@@ -6162,40 +6530,33 @@ void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* push
 	g_device->m_stats.drawCalls++;
 }
 
-void Gfx_PushMarker(GfxContext* rc, const char* marker)
+void Gfx_PushMarker(GfxContext* rc, const char* marker) { rc->beginLabel(marker); }
+
+void Gfx_PopMarker(GfxContext* rc) { rc->endLabel(); }
+
+void Gfx_BeginScope(GfxContext* rc, const char* name)
 {
-	if (!vkCmdDebugMarkerBegin)
-		return;
+	RUSH_ASSERT_MSG(!rc->m_isRenderPassActive, "Gfx_BeginScope inside a render pass");
 
-	VkDebugMarkerMarkerInfoEXT markerInfo = {VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT};
-	markerInfo.pMarkerName                = marker;
-	markerInfo.pNext                      = nullptr;
-	markerInfo.color[0]                   = 0;
-	markerInfo.color[1]                   = 0;
-	markerInfo.color[2]                   = 0;
-	markerInfo.color[3]                   = 0;
+	if (g_device->scopesTimed(rc))
+	{
+		g_device->m_timing.beginScope(rc->m_type, name, [rc]() { Gfx_AddFullPipelineBarrier(rc); },
+		    [rc]() { return g_device->timingBoundary(rc); });
+	}
 
-	vkCmdDebugMarkerBegin(rc->m_commandBuffer, &markerInfo);
+	rc->beginLabel(name);
 }
 
-void Gfx_PopMarker(GfxContext* rc)
+void Gfx_EndScope(GfxContext* rc)
 {
-	if (!vkCmdDebugMarkerEnd)
-		return;
+	RUSH_ASSERT_MSG(!rc->m_isRenderPassActive, "Gfx_EndScope inside a render pass");
 
-	vkCmdDebugMarkerEnd(rc->m_commandBuffer);
-}
+	rc->endLabel();
 
-void Gfx_BeginTimer(GfxContext* rc, u32 timestampId)
-{
-	RUSH_ASSERT(timestampId < GfxStats::MaxCustomTimers);
-	writeTimestamp(rc, timestampId * 2, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
-}
-
-void Gfx_EndTimer(GfxContext* rc, u32 timestampId)
-{
-	RUSH_ASSERT(timestampId < GfxStats::MaxCustomTimers);
-	writeTimestamp(rc, timestampId * 2 + 1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+	if (g_device->scopesTimed(rc))
+	{
+		g_device->m_timing.popScope(rc->m_type, g_device->timingBoundary(rc));
+	}
 }
 
 void Gfx_Retain(GfxDevice* dev) { dev->addReference(); }
@@ -6747,6 +7108,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 	const VkAccelerationStructureBuildRangeInfoKHR* rangeInfos[1] = { accel.rangeInfos.data() };
 
 	vkCmdBuildAccelerationStructuresKHR(ctx->m_commandBuffer, 1, &buildInfo, rangeInfos);
+	++ctx->m_workSerial;
 }
 
 
@@ -6852,6 +7214,7 @@ void Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPipelineArg pipelineHandle,
 		&sbtHitGroup,
 		&sbtCallable, // callable
 	    width, height, depth);
+	++ctx->m_workSerial;
 }
 
 void AccelerationStructureVK::destroy()

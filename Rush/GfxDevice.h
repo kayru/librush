@@ -14,16 +14,57 @@ class GfxDevice;
 
 struct GfxStats
 {
-	u32    drawCalls        = 0;
-	u32    vertices         = 0;
-	u32    triangles        = 0;
-	double lastFrameGpuTime = 0.0; // in seconds
+	u32 drawCalls = 0;
+	u32 vertices  = 0;
+	u32 triangles = 0;
+};
 
-	enum
-	{
-		MaxCustomTimers = 16
-	};
-	double customTimer[MaxCustomTimers] = {};
+
+enum class GfxTimingLevel : u8
+{
+	Frame,    // whole-frame span and busy time only
+	Scopes,   // plus chained scope timestamps, no barriers
+	Isolated, // plus a full barrier before each top-level scope begins
+};
+static_assert(GfxTimingLevel{} == GfxTimingLevel::Frame, "Zero-initialized configs default to Frame");
+
+enum class GfxTimingStatus : u8
+{
+	None         = 0,
+	Unsupported  = 1 << 0, // no timestamps on this device or queue, scopes are not timed
+	Overflow     = 1 << 1, // ran out of timestamp storage: later scopes dropped, open ones truncated
+	Invalid      = 1 << 2, // some timestamps or command buffer times were missing or out of order
+	Uncalibrated = 1 << 3, // CPU times are estimated, not calibrated (durations stay exact)
+};
+RUSH_IMPLEMENT_FLAG_OPERATORS(GfxTimingStatus, u8)
+
+struct GfxScopeTime
+{
+	const char*    name    = nullptr; // valid until the next Gfx_GetFrameTimes call
+	u32            parent  = ~0u;     // index into GfxFrameTimes::scopes, ~0u at top level
+	GfxContextType queue   = GfxContextType::Graphics; // scopes nest and chain per queue
+	u64            beginNs = 0;       // CPU clock: std::chrono::steady_clock nanoseconds
+	u64            endNs   = 0;
+};
+
+struct GfxQueueTime
+{
+	u64 beginNs = 0;
+	u64 endNs   = 0;
+	u64 busyNs  = 0; // union of command buffer intervals on this queue
+};
+
+struct GfxFrameTimes
+{
+	u64             frame         = 0;
+	u32             droppedFrames = 0; // completed frames discarded right before this one, because nobody polled
+	GfxTimingStatus status        = GfxTimingStatus::None;
+	GfxTimingLevel  level         = GfxTimingLevel::Frame;
+	float           thermalState  = -1.0f; // 0 nominal to 1 critical, negative when unknown
+	GfxQueueTime    graphics;
+	GfxQueueTime    compute;
+	GfxQueueTime    transfer;
+	ArrayView<const GfxScopeTime> scopes; // instances in begin order, repeats included
 };
 
 struct GfxMappedBuffer
@@ -53,6 +94,7 @@ struct GfxConfig
 		warp             = cfg.warp;
 		minimizeLatency  = cfg.minimizeLatency;
 		headless         = cfg.headless;
+		timingLevel      = cfg.timingLevel;
 	}
 
 	u32  backBufferWidth  = 640;
@@ -63,6 +105,8 @@ struct GfxConfig
 	bool warp             = false;
 	bool minimizeLatency  = false;
 	bool headless         = false;
+
+	GfxTimingLevel timingLevel = GfxTimingLevel::Frame;
 };
 
 struct GfxCapability
@@ -106,6 +150,11 @@ struct GfxCapability
 	u32 rtSbtMaxStride = 0;
 	u32 rtSbtAlignment = 0;
 
+	bool   timestamps           = false;
+	bool   timestampsAsyncCompute = false;
+	bool   timestampsCalibrated = false;
+	double timestampPeriodNs    = 0.0;
+
 	GfxRenderTargetDesc backBufferDesc;
 
 	bool shaderTypeSupported(GfxShaderSourceType type) const { return (shaderTypeMask & (1 << type)) != 0; }
@@ -148,6 +197,10 @@ struct GfxPassDesc
 	float        clearDepth              = 1.0f;
 	u8           clearStencil            = 0xFF;
 
+	// Named passes get a debug label and, when timed, a timing scope. Gfx_GetCurrentPassDesc reports name as null.
+	const char* name  = nullptr;
+	bool        timed = true;
+
 	u32 getColorTargetCount() const
 	{
 		u32 count = 0;
@@ -158,13 +211,6 @@ struct GfxPassDesc
 		return count;
 	}
 };
-
-enum class GfxFinishFlags : u32
-{
-	None              = 0,
-	ResolveTimestamps = 1 << 0,
-};
-RUSH_IMPLEMENT_FLAG_OPERATORS(GfxFinishFlags, u32)
 
 // device
 
@@ -187,25 +233,31 @@ const GfxCapability& Gfx_GetCapability();
 
 // GPU progress tracking: Submit/Present return a GfxProgressId.
 // QueryProgress can poll (no flags), wait for a specific ID (Wait), or drain all work (Idle).
-// ResolveTimestamps requires the relevant submit to have completed.
 GfxProgressId        Gfx_Submit();                // flush pending commands to GPU, return progress ID
 GfxProgressId        Gfx_GetPendingProgressId();  // return the most recently submitted progress ID
 GfxProgressStatus    Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags = GfxProgressFlags::None);
-void                 Gfx_ResolveTimestamps();     // read back GPU timestamp query results
 
 // Submit and wait for all GPU work to complete
-inline void Gfx_Finish(GfxFinishFlags flags = GfxFinishFlags::None)
+inline void Gfx_Finish()
 {
 	GfxProgressId id = Gfx_Submit();
 	Gfx_QueryProgress(id, GfxProgressFlags::Idle);
-	if (!!(flags & GfxFinishFlags::ResolveTimestamps))
-	{
-		Gfx_ResolveTimestamps();
-	}
 }
 
 const GfxStats& Gfx_Stats();
 void            Gfx_ResetStats();
+
+// Frame times are always collected, scopes from GfxTimingLevel::Scopes up
+void           Gfx_SetTimingLevel(GfxTimingLevel level); // applies from the next Gfx_BeginFrame
+GfxTimingLevel Gfx_GetTimingLevel();
+u64            Gfx_GetFrameIndex();
+
+// Oldest completed frame not returned yet; never waits for the GPU. Data stays valid until the next call.
+bool Gfx_GetFrameTimes(GfxFrameTimes& out);
+
+// Balanced within a frame and context, outside render passes. Timed on the immediate and async compute contexts.
+void Gfx_BeginScope(GfxContext* rc, const char* name);
+void Gfx_EndScope(GfxContext* rc);
 
 GfxOwn<GfxVertexShader>      Gfx_CreateVertexShader(const GfxShaderSource& code);
 GfxOwn<GfxPixelShader>       Gfx_CreatePixelShader(const GfxShaderSource& code);
@@ -348,11 +400,9 @@ void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBu
 
 void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize);
 
+// Debug labels only, legal inside render passes
 void Gfx_PushMarker(GfxContext* rc, const char* marker);
 void Gfx_PopMarker(GfxContext* rc);
-
-void Gfx_BeginTimer(GfxContext* rc, u32 timestampId);
-void Gfx_EndTimer(GfxContext* rc, u32 timestampId);
 
 using GfxScreenshotCallback = void (*)(const ColorRGBA8* pixels, Tuple2u size, void* userData);
 void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData = nullptr);
@@ -414,16 +464,18 @@ struct GfxMarkerScope
 	GfxContext* m_rc;
 };
 
-struct GfxTimerScope
+struct GfxScope
 {
-	GfxTimerScope(GfxContext* rc, u32 timestampId) : m_rc(rc), m_timestampId(timestampId)
+	GfxScope(GfxContext* rc, const char* name) : m_rc(rc)
 	{
-		Gfx_BeginTimer(m_rc, m_timestampId);
+		Gfx_BeginScope(m_rc, name);
 	}
-	~GfxTimerScope() { Gfx_EndTimer(m_rc, m_timestampId); }
+	~GfxScope() { Gfx_EndScope(m_rc); }
+
+	GfxScope(const GfxScope&)            = delete;
+	GfxScope& operator=(const GfxScope&) = delete;
 
 	GfxContext* m_rc;
-	u32         m_timestampId;
 };
 
 template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferArg h, const T& data)
@@ -487,10 +539,15 @@ inline bool Gfx_PresentWouldWait() { return false; }
 inline GfxProgressId Gfx_Submit() { return {}; }
 inline GfxProgressId Gfx_GetPendingProgressId() { return {}; }
 inline GfxProgressStatus Gfx_QueryProgress(GfxProgressId, GfxProgressFlags) { return GfxProgressStatus::Complete; }
-inline void Gfx_ResolveTimestamps() {}
 inline const GfxCapability& Gfx_GetCapability() { static const GfxCapability cap; return cap; }
 inline const GfxStats& Gfx_Stats() { static const GfxStats stats; return stats; }
 inline void Gfx_ResetStats() {}
+inline void Gfx_SetTimingLevel(GfxTimingLevel) {}
+inline GfxTimingLevel Gfx_GetTimingLevel() { return GfxTimingLevel::Frame; }
+inline u64 Gfx_GetFrameIndex() { return 0; }
+inline bool Gfx_GetFrameTimes(GfxFrameTimes&) { return false; }
+inline void Gfx_BeginScope(GfxContext*, const char*) {}
+inline void Gfx_EndScope(GfxContext*) {}
 inline GfxOwn<GfxVertexShader> Gfx_CreateVertexShader(const GfxShaderSource& code) { return {}; }
 inline GfxOwn<GfxPixelShader> Gfx_CreatePixelShader(const GfxShaderSource& code) { return {}; }
 inline GfxOwn<GfxGeometryShader> Gfx_CreateGeometryShader(const GfxShaderSource& code) { return {}; }
@@ -543,8 +600,6 @@ inline void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, siz
 inline void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize) {}
 inline void Gfx_PushMarker(GfxContext* rc, const char* marker) {}
 inline void Gfx_PopMarker(GfxContext* rc) {}
-inline void Gfx_BeginTimer(GfxContext* rc, u32 timestampId) {}
-inline void Gfx_EndTimer(GfxContext* rc, u32 timestampId) {}
 inline void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData) {};
 inline GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc) { return {}; }
 inline void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h) {}

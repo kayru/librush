@@ -4,11 +4,13 @@
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
+#include "GfxTiming.h"
 #include "UtilResourcePool.h"
 #include "Window.h"
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 
 #if defined(RUSH_PLATFORM_IOS)
 #import <UIKit/UIKit.h>
@@ -202,7 +204,6 @@ public:
 
 	id<MTLSharedEvent> m_progressEvent = nil;
 	u64                m_nextProgressId = 1;
-	id<MTLCommandBuffer> m_lastSubmittedCommandBuffer = nil;
 
 	struct Resources
 	{
@@ -228,9 +229,78 @@ public:
 
 	GfxCapability m_caps;
 	GfxStats m_stats;
-	// Written by the command buffer completion handler (Metal thread), published
-	// into m_stats on the main thread at the start of the next frame
-	std::atomic<double> m_completedFrameGpuTime{0.0};
+	u64 m_frameCount = 0;
+
+
+	// Shared with command buffer completed handlers, which may outlive the device
+	struct TimingGpuState
+	{
+		std::mutex mutex;
+		DynamicArray<GfxTimingInterval> intervals;
+		u32 completed = 0;
+		bool invalid = false;
+	};
+
+	struct TimingEncoder
+	{
+		u32 startSample = GfxTimingInvalidIndex;
+		u32 endSample = GfxTimingInvalidIndex;
+		bool dropped = false;
+	};
+
+	struct TimingFrame : GfxTimingFrame
+	{
+		void reset() override;
+
+		std::shared_ptr<TimingGpuState> gpu = std::make_shared<TimingGpuState>();
+		u32 committed = 0;
+
+		DynamicArray<GfxTimingBlock> sampleBlocks;
+		DynamicArray<TimingEncoder> encoders;
+		DynamicArray<u32> boundaryEncoders; // encoders recorded before each boundary
+	};
+
+	static constexpr u32 SampleBlockSize = 4096; // Metal limit per sample buffer
+	static constexpr u32 MaxSampleBlocks = 24; // Metal allows 32 live sample buffers per process
+
+	TimingFrame* timingFrame() const { return static_cast<TimingFrame*>(m_timing.current()); }
+	u32 acquireSamples(TimingFrame& frame, u32 count);
+	u32 timingBoundary();
+	void commitCommandBuffer(id<MTLCommandBuffer> commandBuffer, const char* what);
+	void addCompletedCommandBuffer(id<MTLCommandBuffer> commandBuffer);
+	void pollTiming();
+	void resolveTimingFrame(TimingFrame& frame);
+
+	GfxTimingCollector m_timing{[]() -> GfxTimingFrame* { return new TimingFrame; }};
+	id<MTLCounterSet> m_timestampCounterSet = nil;
+	DynamicArray<id<MTLCounterSampleBuffer>> m_sampleBlocks;
+	DynamicArray<u32> m_freeSampleBlocks;
+
+	// From sampleTimestamps; CPU values are host time in ns
+	MTLTimestamp m_clockCpu = 0;
+	MTLTimestamp m_clockGpu = 0;
+	double m_clockScale = 1.0;
+	bool m_clockCalibrated = false;
+
+	// Isolated level: each encoder updates a fence of the current segment's bank and waits on
+	// all fences of the previous segment's bank; banks swap at each top-level scope
+	DynamicArray<id<MTLFence>> m_isolationFences[2];
+	u32 m_isolationUsed[2] = {};
+	u32 m_isolationBank = 0;
+	id<MTLFence> acquireIsolationFence();
+	void beginIsolationSegment();
+
+	// Debug groups. Outside render passes they go on the command buffer, so they survive
+	// encoder splits; they are popped before each commit and pushed again on the next buffer.
+	struct Marker
+	{
+		NSString* name = nil; // retained
+		bool onEncoder = false;
+	};
+	DynamicArray<Marker> m_markers;
+	void popCommandBufferMarkers();
+	void pushCommandBufferMarkers();
+
 #if !TARGET_OS_SIMULATOR
 	// Presented, not yet on screen. Shared: presented handlers may outlive the device.
 	std::shared_ptr<std::atomic<u32>> m_presentsInFlight = std::make_shared<std::atomic<u32>>(0);
@@ -358,8 +428,12 @@ public:
 
 	id<MTLRenderCommandEncoder> m_commandEncoder = nil;
 	id<MTLComputeCommandEncoder> m_computeCommandEncoder = nil;
+	id<MTLFence> m_commandEncoderFence = nil;
+	id<MTLFence> m_computeCommandEncoderFence = nil;
+	bool m_passScope = false;
 
 	void endComputeEncoder();
+	void endRenderEncoder();
 
 	GfxRef<GfxRenderPipeline> m_pendingRenderPipeline;
 	GfxRef<GfxComputePipeline> m_pendingComputePipeline;

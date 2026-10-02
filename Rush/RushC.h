@@ -38,6 +38,7 @@ typedef struct rush_app_config {
 	bool warp;
 	bool minimize_latency;
 	bool headless;
+	uint32_t timing_level; // rush_gfx_timing_level
 	int    argc;
 	char** argv;
 } rush_app_config;
@@ -488,6 +489,52 @@ typedef struct rush_gfx_stats
 	uint32_t draw_calls;
 } rush_gfx_stats;
 
+typedef enum rush_gfx_timing_level
+{
+	RUSH_GFX_TIMING_LEVEL_FRAME,
+	RUSH_GFX_TIMING_LEVEL_SCOPES,
+	RUSH_GFX_TIMING_LEVEL_ISOLATED,
+} rush_gfx_timing_level;
+
+typedef enum rush_gfx_timing_status
+{
+	RUSH_GFX_TIMING_STATUS_NONE         = 0,
+	RUSH_GFX_TIMING_STATUS_UNSUPPORTED  = 1 << 0,
+	RUSH_GFX_TIMING_STATUS_OVERFLOW     = 1 << 1,
+	RUSH_GFX_TIMING_STATUS_INVALID      = 1 << 2,
+	RUSH_GFX_TIMING_STATUS_UNCALIBRATED = 1 << 3,
+} rush_gfx_timing_status;
+
+typedef struct rush_gfx_scope_time
+{
+	const char* name;
+	uint32_t    parent; // ~0u at top level
+	uint32_t    queue;  // 0 graphics, 1 async compute, 2 transfer
+	uint64_t    begin_ns;
+	uint64_t    end_ns;
+} rush_gfx_scope_time;
+
+typedef struct rush_gfx_queue_time
+{
+	uint64_t begin_ns;
+	uint64_t end_ns;
+	uint64_t busy_ns;
+} rush_gfx_queue_time;
+
+typedef struct rush_gfx_frame_times
+{
+	uint64_t                   frame;
+	uint32_t                   dropped_frames;
+	uint32_t                   status; // rush_gfx_timing_status bits
+	rush_gfx_timing_level      level;
+	float                      thermal_state;
+	rush_gfx_queue_time        graphics;
+	rush_gfx_queue_time        compute;
+	rush_gfx_queue_time        transfer;
+	const rush_gfx_scope_time* scopes;
+	uint32_t                   scope_count;
+} rush_gfx_frame_times;
+
 typedef struct rush_gfx_viewport
 {
 	float x; // top left x
@@ -770,6 +817,10 @@ void rush_gfx_finish();
 rush_gfx_capability rush_gfx_get_capability();
 rush_gfx_stats rush_gfx_get_stats();
 void rush_gfx_reset_stats();
+void rush_gfx_set_timing_level(rush_gfx_timing_level level);
+uint64_t rush_gfx_get_frame_index();
+// Oldest completed frame not returned yet. Data stays valid until the next call.
+bool rush_gfx_get_frame_times(rush_gfx_frame_times* out);
 
 rush_gfx_vertex_shader rush_gfx_create_vertex_shader(const rush_gfx_shader_source* code);
 rush_gfx_pixel_shader rush_gfx_create_pixel_shader(const rush_gfx_shader_source* code);
@@ -831,8 +882,9 @@ void rush_gfx_draw_indexed_indirect(struct rush_gfx_context* ctx, rush_gfx_buffe
 void rush_gfx_dispatch_indirect(struct rush_gfx_context* ctx, rush_gfx_buffer args_buffer, uint32_t args_buffer_offset, const void* push_constants, uint32_t push_constants_size);
 void rush_gfx_push_marker(struct rush_gfx_context* ctx, const char* marker);
 void rush_gfx_pop_marker(struct rush_gfx_context* ctx);
-void rush_gfx_begin_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id);
-void rush_gfx_end_timer(struct rush_gfx_context* ctx, uint32_t timestamp_id);
+// The name is copied
+void rush_gfx_begin_scope(struct rush_gfx_context* ctx, const char* name);
+void rush_gfx_end_scope(struct rush_gfx_context* ctx);
 
 // Embedded resources
 rush_gfx_shader_source rush_gfx_get_embedded_shader(rush_gfx_embedded_shader_type type);

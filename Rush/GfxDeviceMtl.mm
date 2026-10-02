@@ -6,6 +6,7 @@
 #include "UtilImage.h"
 
 #include <cstring>
+#include <mach/mach_time.h>
 
 #if RUSH_RENDER_API == RUSH_RENDER_API_MTL
 
@@ -47,6 +48,12 @@ static GfxDevice* g_device = nullptr;
 static GfxContext* g_context = nullptr;
 static id<MTLDevice> g_metalDevice = nil;
 static constexpr u32 PushConstantMaxSize = 4096;
+
+static id<MTLRenderCommandEncoder> createRenderEncoder(MTLRenderPassDescriptor* desc, const char* label, id<MTLFence>& outFence);
+static id<MTLComputeCommandEncoder> createComputeEncoder(id<MTLFence>& outFence);
+static id<MTLBlitCommandEncoder> createBlitEncoder(id<MTLFence>& outFence);
+static id<MTLAccelerationStructureCommandEncoder> createAccelerationStructureEncoder(id<MTLFence>& outFence);
+template <typename EncoderType> static void endEncoder(EncoderType encoder, id<MTLFence> fence);
 
 static void setPushConstants(GfxContext* rc, const void* data, u32 size, GfxStageFlags stages, u32 bufferIndex)
 {
@@ -297,6 +304,25 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 
 	m_caps.apiName = "Metal";
 
+	// The simulator has no counter sets and returns zero from sampleTimestamps
+	if ([m_metalDevice supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary])
+	{
+		for (id<MTLCounterSet> counterSet in m_metalDevice.counterSets)
+		{
+			if ([counterSet.name isEqualToString:MTLCommonCounterSetTimestamp])
+			{
+				m_timestampCounterSet = [counterSet retain];
+				break;
+			}
+		}
+	}
+	[m_metalDevice sampleTimestamps:&m_clockCpu gpuTimestamp:&m_clockGpu];
+	m_caps.timestamps           = m_timestampCounterSet != nil && m_clockGpu != 0;
+	m_caps.timestampsCalibrated = m_caps.timestamps;
+	m_caps.timestampPeriodNs    = m_caps.timestamps ? 1.0 : 0.0;
+	m_timing.setTimestampsSupported(m_caps.timestamps);
+	m_timing.setLevel(cfg.timingLevel);
+
 	if (!m_headless)
 	{
 		m_caps.backBufferDesc.colorFormats[0] = convertPixelFormat([m_metalLayer pixelFormat]);
@@ -325,9 +351,25 @@ GfxDevice::~GfxDevice()
 		}
 	}
 
+	for (id<MTLCounterSampleBuffer> block : m_sampleBlocks)
+	{
+		[block release];
+	}
+	for (const DynamicArray<id<MTLFence>>& bank : m_isolationFences)
+	{
+		for (id<MTLFence> fence : bank)
+		{
+			[fence release];
+		}
+	}
+	for (const Marker& marker : m_markers)
+	{
+		[marker.name release];
+	}
+	[m_timestampCounterSet release];
+
 	[m_offscreenBackBuffer release];
 	[m_progressEvent release];
-	[m_lastSubmittedCommandBuffer release];
 	[m_commandBuffer release];
 	[m_commandQueue release];
 	[m_metalDevice release];
@@ -382,7 +424,11 @@ void GfxDevice::createDefaultDepthBuffer(u32 width, u32 height)
 void GfxDevice::beginFrame()
 {
 	drainCompletedDestructionEpochs();
-	m_stats.lastFrameGpuTime = m_completedFrameGpuTime.load(std::memory_order_relaxed);
+
+	pollTiming();
+	m_timing.beginFrame(m_frameCount);
+	m_isolationUsed[0] = 0;
+	m_isolationUsed[1] = 0;
 
 	if (!m_headless && !m_resizeEvents.empty())
 	{
@@ -404,7 +450,7 @@ void GfxDevice::beginFrame()
 
 	m_commandBuffer = [m_commandQueue commandBuffer];
 	[m_commandBuffer retain];
-
+	pushCommandBufferMarkers();
 }
 
 bool GfxDevice::acquireBackBuffer()
@@ -509,6 +555,9 @@ GfxProgressId Gfx_Present()
 	// TODO: deal with multiple contexts
 	g_context->endComputeEncoder();
 
+	GfxTimingCollector& timing = g_device->m_timing;
+	timing.closeOpenScopes(GfxContextType::Graphics, []() { return g_device->timingBoundary(); });
+
 	if (!g_device->m_headless && g_device->m_drawable)
 	{
 #if !TARGET_OS_SIMULATOR
@@ -524,25 +573,8 @@ GfxProgressId Gfx_Present()
 
 	const u64 progressValue = g_device->m_nextProgressId++;
 	[g_device->m_commandBuffer encodeSignalEvent:g_device->m_progressEvent value:progressValue];
-	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
-		if (buffer.GPUEndTime > buffer.GPUStartTime)
-		{
-			g_device->m_completedFrameGpuTime.store(buffer.GPUEndTime - buffer.GPUStartTime, std::memory_order_relaxed);
-		}
-		if (buffer.status == MTLCommandBufferStatusError)
-		{
-			Log::warning("GPU error (present): %s",
-				[[buffer.error localizedDescription] UTF8String]);
-			if (@available(macOS 14.0, *))
-			{
-				for (id<MTLFunctionLog> log in buffer.logs)
-				{
-					Log::warning("  GPU log: %s", [[log description] UTF8String]);
-				}
-			}
-		}
-	}];
-	[g_device->m_commandBuffer commit];
+	g_device->popCommandBufferMarkers();
+	g_device->commitCommandBuffer(g_device->m_commandBuffer, "present");
 
 	g_device->sealDestructionEpoch(GfxProgressId{progressValue});
 
@@ -598,6 +630,12 @@ GfxProgressId Gfx_Present()
 	
 	[g_device->m_drawable release];
 	g_device->m_drawable = nil;
+
+	if (timing.current())
+	{
+		timing.endFrame();
+	}
+	g_device->m_frameCount++;
 
 	return GfxProgressId{progressValue};
 }
@@ -658,12 +696,8 @@ GfxProgressId Gfx_Submit()
 
 	if (g_context)
 	{
-		if (g_context->m_commandEncoder)
-		{
-			[g_context->m_commandEncoder endEncoding];
-			[g_context->m_commandEncoder release];
-			g_context->m_commandEncoder = nil;
-		}
+		RUSH_ASSERT_MSG(!g_context->m_commandEncoder, "Gfx_Submit inside a render pass");
+		g_context->endRenderEncoder();
 		g_context->endComputeEncoder();
 
 		// Force full re-bind on next dispatch since the command buffer is new
@@ -672,24 +706,16 @@ GfxProgressId Gfx_Submit()
 
 	const u64 progressValue = g_device->m_nextProgressId++;
 	[g_device->m_commandBuffer encodeSignalEvent:g_device->m_progressEvent value:progressValue];
-	[g_device->m_commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
-		if (buffer.status == MTLCommandBufferStatusError)
-		{
-			Log::warning("GPU error (submit %llu): %s",
-				(unsigned long long)progressValue,
-				[[buffer.error localizedDescription] UTF8String]);
-		}
-	}];
-	[g_device->m_commandBuffer commit];
+	g_device->popCommandBufferMarkers();
+	g_device->commitCommandBuffer(g_device->m_commandBuffer, "submit");
 
 	const GfxProgressId progressId{progressValue};
 	g_device->sealDestructionEpoch(progressId);
 
-	[g_device->m_lastSubmittedCommandBuffer release];
-	g_device->m_lastSubmittedCommandBuffer = g_device->m_commandBuffer;
-
+	[g_device->m_commandBuffer release];
 	g_device->m_commandBuffer = [g_device->m_commandQueue commandBuffer];
 	[g_device->m_commandBuffer retain];
+	g_device->pushCommandBufferMarkers();
 
 	return progressId;
 }
@@ -723,23 +749,319 @@ GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
 		: GfxProgressStatus::Pending;
 }
 
-void Gfx_ResolveTimestamps()
+
+static u64 hostTimeNs()
 {
-	if (!g_device || !g_device->m_lastSubmittedCommandBuffer)
+	static const mach_timebase_info_data_t timebase = []() {
+		mach_timebase_info_data_t result = {};
+		mach_timebase_info(&result);
+		return result;
+	}();
+	const u64 ticks = mach_absolute_time();
+	return u64((__uint128_t(ticks) * timebase.numer) / timebase.denom);
+}
+
+static float currentThermalState()
+{
+	switch ([[NSProcessInfo processInfo] thermalState])
 	{
-		return;
+	case NSProcessInfoThermalStateNominal: return 0.0f;
+	case NSProcessInfoThermalStateFair: return 1.0f / 3.0f;
+	case NSProcessInfoThermalStateSerious: return 2.0f / 3.0f;
+	case NSProcessInfoThermalStateCritical: return 1.0f;
+	default: return -1.0f;
+	}
+}
+
+void GfxDevice::TimingFrame::reset()
+{
+	GfxTimingFrame::reset();
+	{
+		std::lock_guard<std::mutex> lock(gpu->mutex);
+		gpu->intervals.clear();
+		gpu->completed = 0;
+		gpu->invalid = false;
+	}
+	committed = 0;
+	RUSH_ASSERT(sampleBlocks.empty());
+	encoders.clear();
+	boundaryEncoders.clear();
+}
+
+u32 GfxDevice::acquireSamples(TimingFrame& frame, u32 count)
+{
+	return Gfx_AllocateTimingSlots(frame.sampleBlocks, m_freeSampleBlocks, SampleBlockSize, count, [this]() {
+		if (m_sampleBlocks.size() == MaxSampleBlocks)
+		{
+			return GfxTimingInvalidIndex;
+		}
+		MTLCounterSampleBufferDescriptor* desc = [MTLCounterSampleBufferDescriptor new];
+		desc.counterSet = m_timestampCounterSet;
+		desc.storageMode = MTLStorageModeShared;
+		desc.sampleCount = SampleBlockSize;
+		NSError* error = nil;
+		id<MTLCounterSampleBuffer> buffer = [m_metalDevice newCounterSampleBufferWithDescriptor:desc error:&error];
+		[desc release];
+		if (!buffer)
+		{
+			Log::warning("GPU timing: failed to create a counter sample buffer: %s", [[error localizedDescription] UTF8String]);
+			return GfxTimingInvalidIndex;
+		}
+		m_sampleBlocks.push_back(buffer);
+		return u32(m_sampleBlocks.size() - 1);
+	});
+}
+
+u32 GfxDevice::timingBoundary()
+{
+	TimingFrame* frame = timingFrame();
+	RUSH_ASSERT(frame);
+	frame->boundaryEncoders.push_back(u32(frame->encoders.size()));
+	return frame->addBoundary(GfxContextType::Graphics);
+}
+
+static void recordInterval(GfxDevice::TimingGpuState& state, id<MTLCommandBuffer> commandBuffer)
+{
+	const double start = commandBuffer.GPUStartTime;
+	const double end = commandBuffer.GPUEndTime;
+	if (start > 0.0 && end >= start)
+	{
+		state.intervals.push_back({u64(start * 1e9), u64(end * 1e9)});
+	}
+	else
+	{
+		state.invalid = true;
+	}
+}
+
+void GfxDevice::commitCommandBuffer(id<MTLCommandBuffer> commandBuffer, const char* what)
+{
+	std::shared_ptr<TimingGpuState> state;
+	if (TimingFrame* frame = timingFrame())
+	{
+		state = frame->gpu;
+		++frame->committed;
 	}
 
-	for (double& timer : g_device->m_stats.customTimer)
-	{
-		timer = 0.0;
-	}
+	[commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		if (state)
+		{
+			std::lock_guard<std::mutex> lock(state->mutex);
+			recordInterval(*state, buffer);
+			++state->completed;
+		}
+		if (buffer.status == MTLCommandBufferStatusError)
+		{
+			Log::warning("GPU error (%s): %s", what, [[buffer.error localizedDescription] UTF8String]);
+			if (@available(macOS 14.0, iOS 17.0, *))
+			{
+				for (id<MTLFunctionLog> log in buffer.logs)
+				{
+					Log::warning("  GPU log: %s", [[log description] UTF8String]);
+				}
+			}
+		}
+	}];
+	[commandBuffer commit];
+}
 
-	id<MTLCommandBuffer> buf = g_device->m_lastSubmittedCommandBuffer;
-	if (buf.GPUEndTime > buf.GPUStartTime)
+void GfxDevice::addCompletedCommandBuffer(id<MTLCommandBuffer> commandBuffer)
+{
+	if (TimingFrame* frame = timingFrame())
 	{
-		g_device->m_stats.customTimer[0] = buf.GPUEndTime - buf.GPUStartTime;
+		std::lock_guard<std::mutex> lock(frame->gpu->mutex);
+		recordInterval(*frame->gpu, commandBuffer);
 	}
+}
+
+void GfxDevice::pollTiming()
+{
+	while (m_timing.pendingCount() != 0)
+	{
+		TimingFrame& frame = static_cast<TimingFrame&>(*m_timing.pending(0));
+		{
+			std::lock_guard<std::mutex> lock(frame.gpu->mutex);
+			if (frame.gpu->completed < frame.committed)
+			{
+				break;
+			}
+		}
+		resolveTimingFrame(frame);
+		m_timing.completeOldest();
+	}
+}
+
+static bool isValidSample(u64 value)
+{
+	return value != 0 && value != MTLCounterErrorValue;
+}
+
+void GfxDevice::resolveTimingFrame(TimingFrame& frame)
+{
+	@autoreleasepool
+	{
+		frame.thermalState = currentThermalState();
+
+		const u64 hostBefore = hostTimeNs();
+		const u64 steadyNow = Timer::nowNs();
+		const u64 hostAfter = hostTimeNs();
+		const s64 hostToSteady = s64(steadyNow) - s64(hostBefore + (hostAfter - hostBefore) / 2);
+
+		std::lock_guard<std::mutex> lock(frame.gpu->mutex);
+
+		u64 firstHostBegin = GfxTimingInvalidTime;
+		for (const GfxTimingInterval& it : frame.gpu->intervals)
+		{
+			frame.intervals[u32(GfxContextType::Graphics)].push_back(
+				{u64(s64(it.beginNs) + hostToSteady), u64(s64(it.endNs) + hostToSteady)});
+			firstHostBegin = min(firstHostBegin, it.beginNs);
+		}
+		if (frame.gpu->invalid)
+		{
+			frame.status |= GfxTimingStatus::Invalid;
+		}
+
+		frame.boundaryNs.resize(frame.boundaryCount(), GfxTimingInvalidTime);
+		if (frame.encoders.empty() && frame.boundaryCount() == 0)
+		{
+			return;
+		}
+
+		MTLTimestamp clockCpu = 0;
+		MTLTimestamp clockGpu = 0;
+		[m_metalDevice sampleTimestamps:&clockCpu gpuTimestamp:&clockGpu];
+		if (clockGpu > m_clockGpu && clockCpu > m_clockCpu && clockGpu - m_clockGpu >= 10'000'000)
+		{
+			m_clockScale = double(clockCpu - m_clockCpu) / double(clockGpu - m_clockGpu);
+			m_clockCpu = clockCpu;
+			m_clockGpu = clockGpu;
+			m_clockCalibrated = true;
+		}
+		if (!m_clockCalibrated)
+		{
+			frame.status |= GfxTimingStatus::Uncalibrated;
+		}
+		auto gpuToHost = [this](u64 gpu) {
+			return u64(s64(m_clockCpu) + s64(double(s64(gpu - m_clockGpu)) * m_clockScale));
+		};
+
+		DynamicArray<u64> samples(frame.sampleBlocks.size() * SampleBlockSize, 0);
+		for (u32 ordinal = 0; ordinal < u32(frame.sampleBlocks.size()); ++ordinal)
+		{
+			const u32 used = frame.sampleBlocks[ordinal].used;
+			id<MTLCounterSampleBuffer> buffer = m_sampleBlocks[frame.sampleBlocks[ordinal].block];
+			NSData* data = used ? [buffer resolveCounterRange:NSMakeRange(0, used)] : nil;
+			if (data && data.length >= used * sizeof(MTLCounterResultTimestamp))
+			{
+				const MTLCounterResultTimestamp* results = (const MTLCounterResultTimestamp*)data.bytes;
+				for (u32 i = 0; i < used; ++i)
+				{
+					samples[ordinal * SampleBlockSize + i] = results[i].timestamp;
+				}
+			}
+			else if (used)
+			{
+				frame.status |= GfxTimingStatus::Invalid;
+			}
+			m_freeSampleBlocks.push_back(frame.sampleBlocks[ordinal].block);
+		}
+		frame.sampleBlocks.clear();
+
+		// The frame starts where its first encoder starts, or where its first command buffer does.
+		// Empty encoders sample zero and do not move the timeline.
+		u64 running = firstHostBegin;
+		if (!frame.encoders.empty() && frame.encoders[0].startSample != GfxTimingInvalidIndex)
+		{
+			const u64 start = samples[frame.encoders[0].startSample];
+			if (isValidSample(start))
+			{
+				running = gpuToHost(start);
+			}
+		}
+
+		// A boundary is the completion of every encoder before it
+		bool dropped = false;
+		u32 encoderIndex = 0;
+		for (u32 b = 0; b < frame.boundaryCount(); ++b)
+		{
+			const u32 encoderCount = frame.boundaryEncoders[b];
+			for (; encoderIndex < encoderCount; ++encoderIndex)
+			{
+				const TimingEncoder& encoder = frame.encoders[encoderIndex];
+				dropped |= encoder.dropped;
+				if (encoder.endSample == GfxTimingInvalidIndex || !isValidSample(samples[encoder.endSample]))
+				{
+					continue;
+				}
+				const u64 end = gpuToHost(samples[encoder.endSample]);
+				running = running == GfxTimingInvalidTime ? end : max(running, end);
+			}
+			if (!dropped && running != GfxTimingInvalidTime)
+			{
+				frame.boundaryNs[b] = u64(s64(running) + hostToSteady);
+			}
+		}
+	}
+}
+
+id<MTLFence> GfxDevice::acquireIsolationFence()
+{
+	DynamicArray<id<MTLFence>>& bank = m_isolationFences[m_isolationBank];
+	const u32 index = m_isolationUsed[m_isolationBank]++;
+	if (index == bank.size())
+	{
+		bank.push_back([m_metalDevice newFence]);
+	}
+	return bank[index];
+}
+
+void GfxDevice::beginIsolationSegment()
+{
+	m_isolationBank ^= 1;
+	m_isolationUsed[m_isolationBank] = 0;
+}
+
+void GfxDevice::popCommandBufferMarkers()
+{
+	for (size_t i = m_markers.size(); i > 0; --i)
+	{
+		if (!m_markers[i - 1].onEncoder)
+		{
+			[m_commandBuffer popDebugGroup];
+		}
+	}
+}
+
+void GfxDevice::pushCommandBufferMarkers()
+{
+	for (const Marker& marker : m_markers)
+	{
+		if (!marker.onEncoder)
+		{
+			[m_commandBuffer pushDebugGroup:marker.name];
+		}
+	}
+}
+
+void Gfx_SetTimingLevel(GfxTimingLevel level)
+{
+	g_device->m_timing.setLevel(level);
+}
+
+GfxTimingLevel Gfx_GetTimingLevel()
+{
+	return g_device->m_timing.nextLevel();
+}
+
+u64 Gfx_GetFrameIndex()
+{
+	return g_device->m_frameCount;
+}
+
+bool Gfx_GetFrameTimes(GfxFrameTimes& out)
+{
+	g_device->pollTiming();
+	return g_device->m_timing.getFrameTimes(out);
 }
 
 const GfxCapability& Gfx_GetCapability()
@@ -1618,6 +1940,7 @@ GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data)
 			[blit endEncoding];
 			[cmd commit];
 			[cmd waitUntilCompleted];
+			g_device->addCompletedCommandBuffer(cmd);
 			[staging release];
 		}
 	}
@@ -1670,6 +1993,7 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 		[blit endEncoding];
 		[syncCommandBuffer commit];
 		[syncCommandBuffer waitUntilCompleted];
+		g_device->addCompletedCommandBuffer(syncCommandBuffer);
 	}
 #endif
 
@@ -1683,6 +2007,7 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 		[blit endEncoding];
 		[cmd commit];
 		[cmd waitUntilCompleted];
+		g_device->addCompletedCommandBuffer(cmd);
 	}
 
 	id<MTLBuffer> mapTarget = buffer.stagingBuffer ? buffer.stagingBuffer : buffer.native;
@@ -2194,8 +2519,8 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		    createPrimitiveAccelerationStructureDescriptor(accel.geometries);
 		ensureAccelerationStructureResources(accel, accelDesc);
 
-		id<MTLAccelerationStructureCommandEncoder> encoder =
-		    [g_device->m_commandBuffer accelerationStructureCommandEncoder];
+		id<MTLFence> fence = nil;
+		id<MTLAccelerationStructureCommandEncoder> encoder = createAccelerationStructureEncoder(fence);
 		for (const auto& geometryDesc : accel.geometries)
 		{
 			if (geometryDesc.vertexBuffer.valid())
@@ -2218,7 +2543,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		         descriptor:accelDesc
 		       scratchBuffer:accel.scratchBuffer
 		 scratchBufferOffset:0];
-		[encoder endEncoding];
+		endEncoder(encoder, fence);
 	}
 	else if (accel.type == GfxAccelerationStructureType::TopLevel)
 	{
@@ -2287,8 +2612,8 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 
 		ensureAccelerationStructureResources(accel, accelDesc);
 
-		id<MTLAccelerationStructureCommandEncoder> encoder =
-		    [g_device->m_commandBuffer accelerationStructureCommandEncoder];
+		id<MTLFence> fence = nil;
+		id<MTLAccelerationStructureCommandEncoder> encoder = createAccelerationStructureEncoder(fence);
 		[encoder useResource:accel.instanceBuffer usage:MTLResourceUsageRead];
 		for (id<MTLAccelerationStructure> blas in accel.instancedAccelerationStructures)
 		{
@@ -2298,7 +2623,7 @@ void Gfx_BuildAccelerationStructure(GfxContext* ctx, GfxAccelerationStructureArg
 		         descriptor:accelDesc
 		       scratchBuffer:accel.scratchBuffer
 		 scratchBufferOffset:0];
-		[encoder endEncoding];
+		endEncoder(encoder, fence);
 	}
 }
 
@@ -2369,18 +2694,183 @@ void GfxContext::onEncoderCreated()
 	m_encoderSerial = ++g_device->m_encoderSerialCounter;
 }
 
+// Every encoder librush creates goes through these: timestamp samples, isolation fences, scope label
+
+struct EncoderSetup
+{
+	id<MTLCounterSampleBuffer> sampleBuffer = nil;
+	NSUInteger startIndex = MTLCounterDontSample;
+	NSUInteger endIndex = MTLCounterDontSample;
+	id<MTLFence> fence = nil;
+	bool waitForPreviousSegment = false;
+};
+
+static EncoderSetup prepareEncoder()
+{
+	EncoderSetup setup;
+	GfxDevice::TimingFrame* frame = g_device->timingFrame();
+	if (!frame || !g_device->m_timing.scopesEnabled())
+	{
+		return setup;
+	}
+
+	GfxDevice::TimingEncoder encoder;
+	const bool sampleStart = frame->encoders.empty();
+	const u32 slot = g_device->acquireSamples(*frame, sampleStart ? 2 : 1);
+	if (slot != GfxTimingInvalidIndex)
+	{
+		setup.sampleBuffer = g_device->m_sampleBlocks[frame->sampleBlocks[slot / GfxDevice::SampleBlockSize].block];
+		u32 local = slot % GfxDevice::SampleBlockSize;
+		u32 global = slot;
+		if (sampleStart)
+		{
+			setup.startIndex = local++;
+			encoder.startSample = global++;
+		}
+		setup.endIndex = local;
+		encoder.endSample = global;
+	}
+	else
+	{
+		frame->status |= GfxTimingStatus::Overflow;
+		encoder.dropped = true;
+	}
+	frame->encoders.push_back(encoder);
+
+	if (frame->level == GfxTimingLevel::Isolated)
+	{
+		setup.fence = g_device->acquireIsolationFence();
+		setup.waitForPreviousSegment = true;
+	}
+	return setup;
+}
+
+template <typename EncoderType, typename WaitFn>
+static void finishEncoderSetup(EncoderType encoder, const EncoderSetup& setup, const char* label, WaitFn&& wait)
+{
+	if (setup.waitForPreviousSegment)
+	{
+		const u32 previousBank = g_device->m_isolationBank ^ 1;
+		for (u32 i = 0; i < g_device->m_isolationUsed[previousBank]; ++i)
+		{
+			wait(encoder, g_device->m_isolationFences[previousBank][i]);
+		}
+	}
+	if (!label)
+	{
+		label = g_device->m_timing.innermostScopeName(GfxContextType::Graphics);
+	}
+	if (label)
+	{
+		encoder.label = [NSString stringWithUTF8String:label];
+	}
+}
+
+// Compute, blit and acceleration structure attachments share these properties
+static void attachSamples(id attachment, const EncoderSetup& setup)
+{
+	if (setup.sampleBuffer)
+	{
+		[attachment setSampleBuffer:setup.sampleBuffer];
+		[attachment setStartOfEncoderSampleIndex:setup.startIndex];
+		[attachment setEndOfEncoderSampleIndex:setup.endIndex];
+	}
+}
+
+static id<MTLRenderCommandEncoder> createRenderEncoder(MTLRenderPassDescriptor* desc, const char* label, id<MTLFence>& outFence)
+{
+	const EncoderSetup setup = prepareEncoder();
+	if (setup.sampleBuffer)
+	{
+		MTLRenderPassSampleBufferAttachmentDescriptor* attachment = desc.sampleBufferAttachments[0];
+		attachment.sampleBuffer = setup.sampleBuffer;
+		attachment.startOfVertexSampleIndex = setup.startIndex;
+		attachment.endOfVertexSampleIndex = MTLCounterDontSample;
+		attachment.startOfFragmentSampleIndex = MTLCounterDontSample;
+		attachment.endOfFragmentSampleIndex = setup.endIndex;
+	}
+	id<MTLRenderCommandEncoder> encoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:desc];
+	finishEncoderSetup(encoder, setup, label, [](id<MTLRenderCommandEncoder> e, id<MTLFence> f) {
+		[e waitForFence:f beforeStages:MTLRenderStageVertex];
+	});
+	outFence = setup.fence;
+	return encoder;
+}
+
+static id<MTLComputeCommandEncoder> createComputeEncoder(id<MTLFence>& outFence)
+{
+	const EncoderSetup setup = prepareEncoder();
+	MTLComputePassDescriptor* desc = [MTLComputePassDescriptor computePassDescriptor];
+	desc.dispatchType = MTLDispatchTypeSerial;
+	attachSamples(desc.sampleBufferAttachments[0], setup);
+	id<MTLComputeCommandEncoder> encoder = [g_device->m_commandBuffer computeCommandEncoderWithDescriptor:desc];
+	finishEncoderSetup(encoder, setup, nullptr, [](id<MTLComputeCommandEncoder> e, id<MTLFence> f) { [e waitForFence:f]; });
+	outFence = setup.fence;
+	return encoder;
+}
+
+static id<MTLBlitCommandEncoder> createBlitEncoder(id<MTLFence>& outFence)
+{
+	const EncoderSetup setup = prepareEncoder();
+	MTLBlitPassDescriptor* desc = [MTLBlitPassDescriptor blitPassDescriptor];
+	attachSamples(desc.sampleBufferAttachments[0], setup);
+	id<MTLBlitCommandEncoder> encoder = [g_device->m_commandBuffer blitCommandEncoderWithDescriptor:desc];
+	finishEncoderSetup(encoder, setup, nullptr, [](id<MTLBlitCommandEncoder> e, id<MTLFence> f) { [e waitForFence:f]; });
+	outFence = setup.fence;
+	return encoder;
+}
+
+static id<MTLAccelerationStructureCommandEncoder> createAccelerationStructureEncoder(id<MTLFence>& outFence)
+{
+	const EncoderSetup setup = prepareEncoder();
+	MTLAccelerationStructurePassDescriptor* desc = [MTLAccelerationStructurePassDescriptor accelerationStructurePassDescriptor];
+	attachSamples(desc.sampleBufferAttachments[0], setup);
+	id<MTLAccelerationStructureCommandEncoder> encoder =
+		[g_device->m_commandBuffer accelerationStructureCommandEncoderWithDescriptor:desc];
+	finishEncoderSetup(encoder, setup, nullptr,
+		[](id<MTLAccelerationStructureCommandEncoder> e, id<MTLFence> f) { [e waitForFence:f]; });
+	outFence = setup.fence;
+	return encoder;
+}
+
+template <typename EncoderType> static void endEncoder(EncoderType encoder, id<MTLFence> fence)
+{
+	if (fence)
+	{
+		[encoder updateFence:fence];
+	}
+	[encoder endEncoding];
+}
+
 void GfxContext::endComputeEncoder()
 {
 	if (!m_computeCommandEncoder)
 	{
 		return;
 	}
-	[m_computeCommandEncoder endEncoding];
+	endEncoder(m_computeCommandEncoder, m_computeCommandEncoderFence);
 	[m_computeCommandEncoder release];
 	m_computeCommandEncoder = nil;
+	m_computeCommandEncoderFence = nil;
 
 	// The next dispatch creates a new encoder, which starts with nothing bound
 	m_dirtyState = ~0u;
+}
+
+void GfxContext::endRenderEncoder()
+{
+	if (!m_commandEncoder)
+	{
+		return;
+	}
+	if (m_commandEncoderFence)
+	{
+		[m_commandEncoder updateFence:m_commandEncoderFence afterStages:MTLRenderStageFragment];
+	}
+	[m_commandEncoder endEncoding];
+	[m_commandEncoder release];
+	m_commandEncoder = nil;
+	m_commandEncoderFence = nil;
 }
 
 // useResource applies to the whole encoder
@@ -2520,8 +3010,7 @@ void GfxContext::applyState()
 		{
 			if (!m_computeCommandEncoder)
 			{
-				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
-				[m_computeCommandEncoder retain];
+				m_computeCommandEncoder = [createComputeEncoder(m_computeCommandEncoderFence) retain];
 				onEncoderCreated();
 			}
 			[m_computeCommandEncoder setComputePipelineState:rayTracingPipeline->rayGenPipeline];
@@ -2530,8 +3019,7 @@ void GfxContext::applyState()
 		{
 			if (!m_computeCommandEncoder)
 			{
-				m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
-				[m_computeCommandEncoder retain];
+				m_computeCommandEncoder = [createComputeEncoder(m_computeCommandEncoderFence) retain];
 				onEncoderCreated();
 			}
 			[m_computeCommandEncoder setComputePipelineState:computePipeline->computePipeline];
@@ -2707,11 +3195,21 @@ void Gfx_Release(GfxContext* rc)
 
 void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 {
+	RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Gfx_BeginPass inside a render pass");
 	rc->endComputeEncoder();
+
+	GfxTimingCollector& timing = g_device->m_timing;
+	rc->m_passScope = desc.name && desc.timed && timing.scopesEnabled() && rc == g_context;
+	if (rc->m_passScope)
+	{
+		timing.beginScope(GfxContextType::Graphics, desc.name, []() { g_device->beginIsolationSegment(); },
+			[]() { return g_device->timingBoundary(); });
+	}
 
 	MTLRenderPassDescriptor* passDescriptor = [MTLRenderPassDescriptor new];
 
 	rc->m_passDesc = desc;
+	rc->m_passDesc.name = nullptr; // the caller's string may not outlive this call
 
 	// TODO: color-only rendering (no depth buffer bound)
 	// TODO: multiple render targets
@@ -2784,8 +3282,7 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	}
 
 	RUSH_ASSERT(g_device->m_commandBuffer);
-	rc->m_commandEncoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
-	[rc->m_commandEncoder retain];
+	rc->m_commandEncoder = [createRenderEncoder(passDescriptor, desc.name, rc->m_commandEncoderFence) retain];
 	rc->onEncoderCreated();
 
 	rc->m_dirtyState = 0xFFFFFFFF;
@@ -2811,9 +3308,24 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 
 void Gfx_EndPass(GfxContext* rc)
 {
-	[rc->m_commandEncoder endEncoding];
-	[rc->m_commandEncoder release]; // TODO: when should this be released?
-	rc->m_commandEncoder = nil;
+	RUSH_ASSERT_MSG(rc->m_commandEncoder, "Gfx_EndPass without a render pass");
+
+	DynamicArray<GfxDevice::Marker>& markers = g_device->m_markers;
+	while (!markers.empty() && markers.back().onEncoder)
+	{
+		RUSH_ASSERT_MSG(false, "Gfx_PushMarker inside a render pass without a matching Gfx_PopMarker");
+		[rc->m_commandEncoder popDebugGroup];
+		[markers.back().name release];
+		markers.pop_back();
+	}
+
+	rc->endRenderEncoder();
+
+	if (rc->m_passScope)
+	{
+		rc->m_passScope = false;
+		g_device->m_timing.popScope(GfxContextType::Graphics, g_device->timingBoundary());
+	}
 }
 
 const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc)
@@ -2833,11 +3345,13 @@ void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 	const TextureMTL& srcTexture = g_device->m_resources.textures[src];
 	const TextureMTL& dstTexture = g_device->m_resources.textures[dst];
 
+	RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Gfx_ResolveImage inside a render pass");
 	rc->endComputeEncoder();
 
 	if (srcTexture.desc.samples <= 1)
 	{
-		id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
+		id<MTLFence> fence = nil;
+		id<MTLBlitCommandEncoder> blit = createBlitEncoder(fence);
 		MTLOrigin origin = {0, 0, 0};
 		MTLSize size = {srcTexture.desc.width, srcTexture.desc.height, 1};
 		[blit copyFromTexture:srcTexture.native
@@ -2849,7 +3363,7 @@ void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 			destinationSlice:0
 			destinationLevel:0
 			destinationOrigin:origin];
-		[blit endEncoding];
+		endEncoder(blit, fence);
 		return;
 	}
 
@@ -2859,7 +3373,12 @@ void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst)
 	passDescriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
 	passDescriptor.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
 
-	id<MTLRenderCommandEncoder> encoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
+	id<MTLFence> fence = nil;
+	id<MTLRenderCommandEncoder> encoder = createRenderEncoder(passDescriptor, nullptr, fence);
+	if (fence)
+	{
+		[encoder updateFence:fence afterStages:MTLRenderStageFragment];
+	}
 	[encoder endEncoding];
 }
 
@@ -2880,6 +3399,7 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
     GfxBufferArg          dst,
     u64                   dstOffset)
 {
+	RUSH_ASSERT_MSG(!ctx->m_commandEncoder, "Gfx_CopyTextureToBuffer inside a render pass");
 	ctx->endComputeEncoder();
 
 	const TextureMTL& srcTex = g_device->m_resources.textures[src];
@@ -2895,7 +3415,8 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
 
 	const GfxImageCopyInfo info = Gfx_GetImageCopyInfo(srcTex.desc.format, copySize);
 
-	id<MTLBlitCommandEncoder> blit = [g_device->m_commandBuffer blitCommandEncoder];
+	id<MTLFence> fence = nil;
+	id<MTLBlitCommandEncoder> blit = createBlitEncoder(fence);
 	[blit copyFromTexture:srcTex.native
 	          sourceSlice:srcRegion.arrayLayer
 	          sourceLevel:srcRegion.mipLevel
@@ -2905,7 +3426,7 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
 	    destinationOffset:dstBuf.offset + dstOffset
 	destinationBytesPerRow:info.bytesPerRow
 	destinationBytesPerImage:info.bytesPerRow * info.rowCount];
-	[blit endEncoding];
+	endEncoder(blit, fence);
 
 	return info;
 }
@@ -3008,14 +3529,8 @@ void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxRe
 	{
 		if (!rc->m_computeCommandEncoder)
 		{
-			if (rc->m_commandEncoder)
-			{
-				[rc->m_commandEncoder endEncoding];
-				[rc->m_commandEncoder release];
-				rc->m_commandEncoder = nil;
-			}
-			rc->m_computeCommandEncoder = [g_device->m_commandBuffer computeCommandEncoder];
-			[rc->m_computeCommandEncoder retain];
+			RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Gfx_UseResources with compute usage inside a render pass");
+			rc->m_computeCommandEncoder = [createComputeEncoder(rc->m_computeCommandEncoderFence) retain];
 			rc->onEncoderCreated();
 		}
 	}
@@ -3275,38 +3790,78 @@ void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t arg
 
 void Gfx_PushMarker(GfxContext* rc, const char* marker)
 {
-	NSString* str = @(marker);
+	GfxDevice::Marker entry;
+	entry.name = [[NSString alloc] initWithUTF8String:marker ? marker : ""];
+	entry.onEncoder = rc->m_commandEncoder != nil;
 
-	if (rc->m_computeCommandEncoder)
+	if (entry.onEncoder)
 	{
-		[rc->m_computeCommandEncoder pushDebugGroup:str];
+		[rc->m_commandEncoder pushDebugGroup:entry.name];
 	}
 	else
 	{
-		[rc->m_commandEncoder pushDebugGroup:str];
+		// No command buffer between Gfx_Present and Gfx_BeginFrame: the group is pushed when it is created
+		rc->endComputeEncoder();
+		[g_device->m_commandBuffer pushDebugGroup:entry.name];
 	}
+
+	g_device->m_markers.push_back(entry);
 }
 
 void Gfx_PopMarker(GfxContext* rc)
 {
-	if (rc->m_computeCommandEncoder)
+	DynamicArray<GfxDevice::Marker>& markers = g_device->m_markers;
+	RUSH_ASSERT_MSG(!markers.empty(), "Gfx_PopMarker without a matching Gfx_PushMarker");
+	if (markers.empty())
 	{
-		[rc->m_computeCommandEncoder popDebugGroup];
+		return;
+	}
+
+	const GfxDevice::Marker entry = markers.back();
+	markers.pop_back();
+
+	if (entry.onEncoder)
+	{
+		RUSH_ASSERT_MSG(rc->m_commandEncoder, "Marker pushed inside a render pass popped outside of it");
+		[rc->m_commandEncoder popDebugGroup];
 	}
 	else
 	{
-		[rc->m_commandEncoder popDebugGroup];
+		RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Marker pushed outside a render pass popped inside of it");
+		rc->endComputeEncoder();
+		[g_device->m_commandBuffer popDebugGroup];
 	}
+	[entry.name release];
 }
 
-void Gfx_BeginTimer(GfxContext* rc, u32 timestampId)
+void Gfx_BeginScope(GfxContext* rc, const char* name)
 {
-	// TODO
+	RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Gfx_BeginScope inside a render pass");
+
+	GfxTimingCollector& timing = g_device->m_timing;
+	if (timing.scopesEnabled() && rc == g_context)
+	{
+		// The boundary is the end of the encoder before it
+		rc->endComputeEncoder();
+		timing.beginScope(GfxContextType::Graphics, name, []() { g_device->beginIsolationSegment(); },
+			[]() { return g_device->timingBoundary(); });
+	}
+
+	Gfx_PushMarker(rc, name);
 }
 
-void Gfx_EndTimer(GfxContext* rc, u32 timestampId)
+void Gfx_EndScope(GfxContext* rc)
 {
-	// TODO
+	RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Gfx_EndScope inside a render pass");
+
+	Gfx_PopMarker(rc);
+
+	GfxTimingCollector& timing = g_device->m_timing;
+	if (timing.scopesEnabled() && rc == g_context)
+	{
+		rc->endComputeEncoder();
+		timing.popScope(GfxContextType::Graphics, g_device->timingBoundary());
+	}
 }
 
 void Gfx_Retain(GfxDevice* dev)

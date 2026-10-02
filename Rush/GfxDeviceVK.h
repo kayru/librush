@@ -8,6 +8,7 @@
 #define VK_ENABLE_BETA_EXTENSIONS
 #endif
 
+#include "GfxTiming.h"
 #include "Window.h"
 #include "UtilArray.h"
 #include "UtilHash.h"
@@ -395,6 +396,8 @@ public:
 	VkPhysicalDeviceTimelineSemaphoreFeatures m_timelineSemaphoreFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES };
 	VkPhysicalDeviceBufferDeviceAddressFeatures m_bufferDeviceAddressFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
 	VkPhysicalDeviceShaderDrawParametersFeatures m_shaderDrawParametersFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES };
+	VkPhysicalDeviceHostQueryResetFeatures m_hostQueryResetFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES };
+	VkPhysicalDeviceSynchronization2Features m_synchronization2Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
 	VkPhysicalDeviceMemoryProperties m_deviceMemoryProps = {};
 	VkPhysicalDeviceAccelerationStructurePropertiesKHR m_accelerationStructureProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR };
 	VkPhysicalDeviceRayTracingPipelinePropertiesKHR m_rayTracingPipelineProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
@@ -488,11 +491,6 @@ public:
 		DynamicArray<DescriptorPoolVK> descriptorPools;
 		DynamicArray<DescriptorPoolVK> availableDescriptorPools;
 
-		VkQueryPool       timestampPool = VK_NULL_HANDLE;
-		DynamicArray<u64> timestampPoolData;
-		DynamicArray<u16> timestampSlotMap;
-		u32               timestampIssuedCount = 0;
-
 		u32           frameIndex             = ~0u;
 		VkFence       lastGraphicsFence      = VK_NULL_HANDLE;
 		GfxProgressId lastPresentProgressId;
@@ -514,6 +512,53 @@ public:
 	u32 m_frameCount            = 0;
 
 	GfxStats m_stats;
+
+
+	struct TimingCommandBuffer
+	{
+		u32            beginQuery = GfxTimingInvalidIndex;
+		u32            endQuery   = GfxTimingInvalidIndex;
+		GfxContextType queue      = GfxContextType::Graphics;
+	};
+
+	struct TimingFrame : GfxTimingFrame
+	{
+		void reset() override;
+
+		u64 lastProgress = 0; // the frame is complete once the progress semaphore reaches it
+
+		DynamicArray<GfxTimingBlock> queryBlocks;
+		DynamicArray<u32> boundaryQueries;
+		DynamicArray<TimingCommandBuffer> commandBuffers;
+	};
+
+	static constexpr u32 QueryBlockSize = 512;
+	static constexpr u32 MaxQueryBlocks = 64;
+
+	TimingFrame* timingFrame() const { return static_cast<TimingFrame*>(m_timing.current()); }
+	bool scopesTimed(GfxContext* ctx) const;
+	u32  writeTimestamp(GfxContext* ctx);
+	u32  timingBoundary(GfxContext* ctx);
+	void pollTiming();
+	void resolveTimingFrame(TimingFrame& frame);
+	bool calibrateTimestamps();
+
+	GfxTimingCollector        m_timing{[]() -> GfxTimingFrame* { return new TimingFrame; }};
+	DynamicArray<VkQueryPool> m_queryBlocks;
+	DynamicArray<u32>         m_freeQueryBlocks;
+	bool                      m_hostQueryReset   = false;
+	bool                      m_synchronization2 = false;
+	u32                       m_timestampValidBits[u32(GfxContextType::count)] = {};
+	double                    m_timestampPeriod  = 1.0;
+
+	// GPU ticks to steady clock ns: calibrated, or estimated from completion times
+	PFN_vkGetCalibratedTimestampsKHR m_getCalibratedTimestamps = nullptr;
+	VkTimeDomainKHR m_hostTimeDomain   = VK_TIME_DOMAIN_DEVICE_KHR;
+	bool            m_clockCalibrated  = false;
+	u64             m_clockGpu         = 0;
+	u64             m_clockCpuNs       = 0;
+	bool            m_clockEstimated   = false;
+	u32             m_framesSinceCalibration = 0;
 
 	GfxContext* m_currentUploadContext = nullptr;
 
@@ -638,6 +683,21 @@ public:
 
 	bool        m_isActive = false;
 	const char* m_name     = "";
+
+	// Bumped by commands that do GPU work: boundaries with nothing between them share a timestamp
+	u64             m_workSerial         = 0;
+	u64             m_lastBoundarySerial = ~0ull;
+	u32             m_lastBoundary       = GfxTimingInvalidIndex;
+	u64             m_lastBoundaryFrame  = ~0ull;
+	u64             m_timingFrame        = ~0ull; // frame that holds this command buffer's begin timestamp
+	u32             m_timingBeginQuery   = GfxTimingInvalidIndex;
+	bool            m_passScope          = false;
+	bool            m_passLabel          = false;
+
+	// Debug labels, closed at the end of each command buffer and reopened in the next
+	DynamicArray<String> m_labels;
+	void beginLabel(const char* name);
+	void endLabel();
 
 	enum DirtyStateFlag
 	{
