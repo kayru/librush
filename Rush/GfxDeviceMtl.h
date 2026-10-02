@@ -462,11 +462,12 @@ public:
 	GfxPassDesc m_passDesc;
 
 	GfxRef<GfxBuffer> m_vertexBuffers[MaxVertexStreams];
+	u32 m_vertexBufferOffsets[MaxVertexStreams] = {};
 
 	MTLIndexType m_indexType = MTLIndexTypeUInt32;
 	u32 m_indexStride = 4;
-	u64 m_indexBufferOffset = 0;
-	id<MTLBuffer> m_indexBuffer = nil;
+	u32 m_indexBufferOffset = 0;
+	GfxRef<GfxBuffer> m_indexBuffer;
 
 	MTLPrimitiveType m_primitiveType = MTLPrimitiveTypeTriangle;
 

@@ -193,6 +193,8 @@ void GfxVertexFormatDesc::add(Element element)
 		m_hasNormal = true;
 	if (element.semantic == Semantic::Color)
 		m_hasColor = true;
+	if (element.semantic == Semantic::InstanceData)
+		m_streamStepRate[element.stream] = StepRate::Instance;
 
 	element.offset = m_streamOffset[element.stream];
 
@@ -203,6 +205,14 @@ void GfxVertexFormatDesc::add(Element element)
 
 bool GfxVertexFormatDesc::operator==(const GfxVertexFormatDesc& rhs) const
 {
+	for (u32 i = 0; i < MaxStreams; ++i)
+	{
+		if (m_streamStepRate[i] != rhs.m_streamStepRate[i])
+		{
+			return false;
+		}
+	}
+
 	if (elementCount() == rhs.elementCount())
 	{
 		for (u32 i = 0; i < elementCount(); ++i)

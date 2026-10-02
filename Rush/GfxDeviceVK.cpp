@@ -3253,9 +3253,18 @@ void GfxContext::applyState()
 			validateBufferUse(buffer, true);
 
 			const u32 expectedStride = rp.desc.vertexFormat.streamStride(i);
-			RUSH_ASSERT_MSG(buffer.desc.stride == 0 || buffer.desc.stride == expectedStride,
-				"Vertex buffer stride (%d) does not match pipeline vertex format stream stride (%d) for stream %d",
-				buffer.desc.stride, expectedStride, i);
+			if (rp.desc.vertexFormat.streamStepRate(i) == GfxVertexFormatDesc::StepRate::Constant)
+			{
+				RUSH_ASSERT_MSG(u64(m_pending.vertexBufferOffsets[i]) + expectedStride <= buffer.size,
+					"Vertex buffer (%u bytes at offset %u) is too small for constant stream %u (%u bytes)",
+					buffer.size, m_pending.vertexBufferOffsets[i], i, expectedStride);
+			}
+			else
+			{
+				RUSH_ASSERT_MSG(buffer.desc.stride == 0 || buffer.desc.stride == expectedStride,
+					"Vertex buffer stride (%d) does not match pipeline vertex format stream stride (%d) for stream %d",
+					buffer.desc.stride, expectedStride, i);
+			}
 
 			VkDeviceSize bufferOffset = buffer.info.offset + m_pending.vertexBufferOffsets[i];
 			vkCmdBindVertexBuffers(m_commandBuffer, i, 1, &buffer.info.buffer, &bufferOffset);
@@ -4689,10 +4698,6 @@ GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& 
 	for (u32 i = 0; i < u32(vertexFormat.elementCount()); ++i)
 	{
 		const auto& element = vertexFormat.element(i);
-		if (element.semantic == GfxVertexFormatDesc::Semantic::InstanceData)
-		{
-			res.instanceDataStream = element.stream;
-		}
 		res.vertexStreamCount = max<u32>(res.vertexStreamCount, element.stream + 1);
 	}
 
@@ -4846,9 +4851,10 @@ GfxOwn<GfxRenderPipeline> Gfx_CreateRenderPipeline(const GfxRenderPipelineDesc& 
 
 	for (u32 i = 0; i < res.vertexStreamCount; ++i)
 	{
+		const GfxVertexFormatDesc::StepRate stepRate = vertexFormat.streamStepRate(i);
 		vd[i].binding   = i;
-		vd[i].stride    = vertexFormat.streamStride(i);
-		vd[i].inputRate = res.instanceDataStream == i ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
+		vd[i].stride    = stepRate == GfxVertexFormatDesc::StepRate::Constant ? 0 : vertexFormat.streamStride(i);
+		vd[i].inputRate = stepRate == GfxVertexFormatDesc::StepRate::Instance ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
 		vi.vertexBindingDescriptionCount++;
 	}
 

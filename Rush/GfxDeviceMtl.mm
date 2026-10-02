@@ -1168,8 +1168,23 @@ static MTLVertexDescriptor* createMTLVertexDescriptor(const GfxVertexFormatDesc&
 	{
 		if (usedStreamMask & 1)
 		{
-			native.layouts[GfxContext::FirstVertexBufferIndex + streamIndex].stride = desc.streamStride(streamIndex);
-			native.layouts[GfxContext::FirstVertexBufferIndex + streamIndex].stepFunction = MTLVertexStepFunctionPerVertex;
+			MTLVertexBufferLayoutDescriptor* layout = native.layouts[GfxContext::FirstVertexBufferIndex + streamIndex];
+			layout.stride = desc.streamStride(streamIndex);
+			switch (desc.streamStepRate(streamIndex))
+			{
+			case GfxVertexFormatDesc::StepRate::Vertex:
+				layout.stepFunction = MTLVertexStepFunctionPerVertex;
+				layout.stepRate = 1;
+				break;
+			case GfxVertexFormatDesc::StepRate::Instance:
+				layout.stepFunction = MTLVertexStepFunctionPerInstance;
+				layout.stepRate = 1;
+				break;
+			case GfxVertexFormatDesc::StepRate::Constant:
+				layout.stepFunction = MTLVertexStepFunctionConstant;
+				layout.stepRate = 0;
+				break;
+			}
 		}
 		usedStreamMask = usedStreamMask >> 1;
 	}
@@ -2265,6 +2280,11 @@ static void markDirtyIfBound(GfxContext* rc, GfxBufferArg h)
 	{
 		rc->m_dirtyState |= GfxContext::DirtyStateFlag_StorageBuffer;
 	}
+
+	if (isBoundInSlots(rc->m_vertexBuffers, h))
+	{
+		rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
+	}
 }
 
 static void* renameToUploadRing(BufferMTL& buffer, u32 size)
@@ -2675,7 +2695,6 @@ GfxContext::GfxContext()
 
 GfxContext::~GfxContext()
 {
-	[m_indexBuffer release];
 	RUSH_ASSERT(m_commandEncoder == nil);
 	RUSH_ASSERT(m_computeCommandEncoder == nil);
 }
@@ -3073,24 +3092,6 @@ void GfxContext::applyState()
 			[m_commandEncoder setRenderPipelineState:renderPipeline->renderPipeline];
 			[m_commandEncoder setDepthStencilState:renderPipeline->depthStencilState];
 
-			const auto& vertexFormat = renderPipeline->desc.vertexFormat;
-			u32 usedStreamMask = 0;
-			for (u32 i = 0; i < u32(vertexFormat.elementCount()); ++i)
-			{
-				usedStreamMask |= 1 << vertexFormat.element(i).stream;
-			}
-			for (u32 stream = 0; usedStreamMask != 0; ++stream, usedStreamMask >>= 1)
-			{
-				if ((usedStreamMask & 1) && m_vertexBuffers[stream].valid())
-				{
-					const auto& bufferDesc = g_device->m_resources.buffers[m_vertexBuffers[stream].get()].desc;
-					const u32 expectedStride = vertexFormat.streamStride(stream);
-					RUSH_ASSERT_MSG(bufferDesc.stride == 0 || bufferDesc.stride == expectedStride,
-						"Vertex buffer stride (%d) does not match pipeline vertex format stream stride (%d) for stream %d",
-						bufferDesc.stride, expectedStride, stream);
-				}
-			}
-
 			const auto& rasterDesc = renderPipeline->desc.rasterizer;
 			RUSH_ASSERT_MSG(rasterDesc.cullMode == GfxCullMode::None || rasterDesc.cullFace != GfxCullFace::FrontAndBack,
 				"Metal cannot cull both faces");
@@ -3103,6 +3104,43 @@ void GfxContext::applyState()
 			[m_commandEncoder setDepthBias:rasterDesc.depthBias slopeScale:rasterDesc.depthBiasSlopeScale clamp:0.0f];
 
 			m_primitiveType = convertPrimitiveType(renderPipeline->desc.primitive);
+		}
+	}
+
+	if (renderPipeline && (m_dirtyState & DirtyStateFlag_VertexBuffer))
+	{
+		const auto& vertexFormat = renderPipeline->desc.vertexFormat;
+		u32 usedStreamMask = 0;
+		for (u32 i = 0; i < u32(vertexFormat.elementCount()); ++i)
+		{
+			usedStreamMask |= 1 << vertexFormat.element(i).stream;
+		}
+		for (u32 stream = 0; usedStreamMask != 0; ++stream, usedStreamMask >>= 1)
+		{
+			if (!(usedStreamMask & 1))
+			{
+				continue;
+			}
+
+			RUSH_ASSERT_MSG(m_vertexBuffers[stream].valid(), "Vertex stream %d is used by the pipeline but not bound", stream);
+
+			const BufferMTL& buffer = g_device->m_resources.buffers[m_vertexBuffers[stream].get()];
+			const u32 offset = m_vertexBufferOffsets[stream];
+			const u32 expectedStride = vertexFormat.streamStride(stream);
+			if (vertexFormat.streamStepRate(stream) == GfxVertexFormatDesc::StepRate::Constant)
+			{
+				RUSH_ASSERT_MSG(u64(offset) + expectedStride <= buffer.size,
+					"Vertex buffer (%llu bytes at offset %u) is too small for constant stream %u (%u bytes)",
+					(unsigned long long)buffer.size, offset, stream, expectedStride);
+			}
+			else
+			{
+				RUSH_ASSERT_MSG(buffer.desc.stride == 0 || buffer.desc.stride == expectedStride,
+					"Vertex buffer stride (%d) does not match pipeline vertex format stream stride (%d) for stream %d",
+					buffer.desc.stride, expectedStride, stream);
+			}
+
+			[m_commandEncoder setVertexBuffer:buffer.native offset:buffer.offset + offset atIndex:(FirstVertexBufferIndex + stream)];
 		}
 	}
 
@@ -3518,23 +3556,25 @@ void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h)
 
 void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h)
 {
-	[rc->m_indexBuffer release];
-
 	rc->m_indexType = g_device->m_resources.buffers[h].indexType;
 	rc->m_indexStride = g_device->m_resources.buffers[h].desc.stride;
-	rc->m_indexBuffer = g_device->m_resources.buffers[h].native;
-	rc->m_indexBufferOffset = g_device->m_resources.buffers[h].offset + offset;
+	rc->m_indexBuffer.retain(h);
+	rc->m_indexBufferOffset = offset;
+}
 
-	[rc->m_indexBuffer retain];
+// Resolved at draw time because updating a buffer replaces its native MTLBuffer
+static const BufferMTL& getIndexBuffer(const GfxContext* rc)
+{
+	RUSH_ASSERT(rc->m_indexBuffer.valid());
+	return g_device->m_resources.buffers[rc->m_indexBuffer.get()];
 }
 
 void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h)
 {
 	RUSH_ASSERT(idx < GfxContext::MaxVertexStreams);
 	rc->m_vertexBuffers[idx].retain(h);
-	// FIXME: binding only applies to active encoder; calls before BeginPass are dropped.
-	const BufferMTL& buffer = g_device->m_resources.buffers[h];
-	[rc->m_commandEncoder setVertexBuffer:buffer.native offset:buffer.offset + offset atIndex:(GfxContext::FirstVertexBufferIndex + idx)];
+	rc->m_vertexBufferOffsets[idx] = offset;
+	rc->m_dirtyState |= GfxContext::DirtyStateFlag_VertexBuffer;
 }
 
 void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h)
@@ -3743,15 +3783,14 @@ void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount)
 
 void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount)
 {
-	RUSH_ASSERT(rc->m_indexBuffer);
-
 	rc->applyState();
+	const BufferMTL& indexBuffer = getIndexBuffer(rc);
 	[rc->m_commandEncoder
 	 drawIndexedPrimitives:rc->m_primitiveType
 	 indexCount:indexCount
 	 indexType:rc->m_indexType
-	 indexBuffer:rc->m_indexBuffer
-	 indexBufferOffset:firstIndex * rc->m_indexStride + rc->m_indexBufferOffset
+	 indexBuffer:indexBuffer.native
+	 indexBufferOffset:indexBuffer.offset + rc->m_indexBufferOffset + u64(firstIndex) * rc->m_indexStride
 	 instanceCount:1
 	 baseVertex:baseVertex
 	 baseInstance:0];
@@ -3763,9 +3802,8 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
 					 const void* pushConstants, u32 pushConstantsSize)
 {
-	RUSH_ASSERT(rc->m_indexBuffer);
-
 	rc->applyState();
+	const BufferMTL& indexBuffer = getIndexBuffer(rc);
 
 	if (pushConstants)
 	{
@@ -3780,8 +3818,8 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 	 drawIndexedPrimitives:rc->m_primitiveType
 	 indexCount:indexCount
 	 indexType:rc->m_indexType
-	 indexBuffer:rc->m_indexBuffer
-	 indexBufferOffset:firstIndex * rc->m_indexStride + rc->m_indexBufferOffset
+	 indexBuffer:indexBuffer.native
+	 indexBufferOffset:indexBuffer.offset + rc->m_indexBufferOffset + u64(firstIndex) * rc->m_indexStride
 	 instanceCount:1
 	 baseVertex:baseVertex
 	 baseInstance:0];
@@ -3793,15 +3831,14 @@ void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVer
 void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
 							  u32 instanceCount, u32 instanceOffset)
 {
-	RUSH_ASSERT(rc->m_indexBuffer);
-
 	rc->applyState();
+	const BufferMTL& indexBuffer = getIndexBuffer(rc);
 	[rc->m_commandEncoder
 	 drawIndexedPrimitives:rc->m_primitiveType
 	 indexCount:indexCount
 	 indexType:rc->m_indexType
-	 indexBuffer:rc->m_indexBuffer
-	 indexBufferOffset:firstIndex * rc->m_indexStride + rc->m_indexBufferOffset
+	 indexBuffer:indexBuffer.native
+	 indexBufferOffset:indexBuffer.offset + rc->m_indexBufferOffset + u64(firstIndex) * rc->m_indexStride
 	 instanceCount:instanceCount
 	 baseVertex:baseVertex
 	 baseInstance:instanceOffset];
@@ -3812,10 +3849,9 @@ void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u3
 
 void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount)
 {
-	RUSH_ASSERT(rc->m_indexBuffer);
-
-	BufferMTL& buf = g_device->m_resources.buffers[argsBuffer];
 	rc->applyState();
+	const BufferMTL& indexBuffer = getIndexBuffer(rc);
+	BufferMTL& buf = g_device->m_resources.buffers[argsBuffer];
 
 	// TODO: perhaps could use indirect command buffers to emulate multi-draw-indirect
 	for (u32 i=0; i<drawCount; ++i)
@@ -3823,8 +3859,8 @@ void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t arg
 		[rc->m_commandEncoder
 		 drawIndexedPrimitives:rc->m_primitiveType
 		 indexType:rc->m_indexType
-		 indexBuffer:rc->m_indexBuffer
-		 indexBufferOffset:0
+		 indexBuffer:indexBuffer.native
+		 indexBufferOffset:indexBuffer.offset + rc->m_indexBufferOffset
 		 indirectBuffer:buf.native
 		 indirectBufferOffset:buf.offset + argsBufferOffset + sizeof(GfxDrawIndexedArg) * i];
 	}

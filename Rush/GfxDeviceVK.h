@@ -88,8 +88,7 @@ struct RenderPipelineVK : PipelineBaseVK
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
 
-	u32 instanceDataStream = 0xFFFFFFFF;
-	u32 vertexStreamCount  = 0;
+	u32 vertexStreamCount = 0;
 
 	void destroy();
 };

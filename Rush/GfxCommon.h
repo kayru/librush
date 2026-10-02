@@ -783,6 +783,13 @@ public:
 		Bitangent = TangentV, // backwards-compatible name
 	};
 
+	enum class StepRate : u8
+	{
+		Vertex,
+		Instance,
+		Constant, // Every vertex reads the same element at offset 0
+	};
+
 	struct Element
 	{
 		Element() = default;
@@ -807,6 +814,8 @@ public:
 	inline const Element& element(u32 n) const { return m_elements[n]; }
 	inline size_t         elementCount() const { return m_elements.size(); }
 	inline u16            streamStride(u32 n) const { return m_streamOffset[n]; }
+	inline StepRate       streamStepRate(u32 n) const { return m_streamStepRate[n]; }
+	inline void           setStreamStepRate(u32 n, StepRate rate) { m_streamStepRate[n] = rate; }
 
 	inline bool hasPosition() const { return m_hasPosition; }
 	inline bool hasNormal() const { return m_hasNormal; }
@@ -828,7 +837,8 @@ public:
 private:
 	StaticArray<Element, MaxElements> m_elements;
 
-	u16 m_streamOffset[MaxStreams] = {};
+	u16      m_streamOffset[MaxStreams]   = {};
+	StepRate m_streamStepRate[MaxStreams] = {};
 
 	bool m_hasPosition;
 	bool m_hasNormal;
