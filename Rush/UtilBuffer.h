@@ -27,32 +27,25 @@ struct Buffer
 		}
 	}
 
-	static void push(Buffer& buf, const T& val)
+	template <typename U> static void push(Buffer& buf, U&& val)
 	{
 		if (buf.m_size < buf.m_capacity)
 		{
-			new(&buf.m_data[buf.m_size++]) T(val);
+			new(&buf.m_data[buf.m_size++]) T(std::forward<U>(val));
+			return;
 		}
-		else
-		{
-			size_t newCapacity = (buf.m_capacity > 0) ? (2 * buf.m_capacity) : 1;
-			reserve(buf, newCapacity);
-			new(&buf.m_data[buf.m_size++]) T(val);
-		}
-	}
 
-	static void push(Buffer& buf, T&& val)
-	{
-		if (buf.m_size < buf.m_capacity)
-		{
-			new(&buf.m_data[buf.m_size++]) T(std::move(val));
-		}
-		else
-		{
-			size_t newCapacity = (buf.m_capacity > 0) ? (2 * buf.m_capacity) : 1;
-			reserve(buf, newCapacity);
-			new(&buf.m_data[buf.m_size++]) T(std::move(val));
-		}
+		// val may live in the old storage, so the new element is constructed before that is released
+		const size_t newCapacity = (buf.m_capacity > 0) ? (2 * buf.m_capacity) : 1;
+		T* newData = (T*)allocateBytes(newCapacity * sizeof(T));
+		new(&newData[buf.m_size]) T(std::forward<U>(val));
+		constructMoveRange(newData, buf.begin(), buf.end());
+		destructRange(buf.begin(), buf.end());
+		deallocateBytes(buf.m_data);
+
+		buf.m_data     = newData;
+		buf.m_capacity = newCapacity;
+		++buf.m_size;
 	}
 
 	static void pop(Buffer& buf)
@@ -119,9 +112,11 @@ struct Buffer
 
 	static void resize(Buffer& buf, size_t newSize, const T& defaultValue)
 	{
+		// defaultValue may live in the storage that reserve releases
+		const T value(defaultValue);
 		reserve(buf, newSize);
 
-		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize, defaultValue);
+		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize, value);
 		destructRange(buf.m_data + newSize, buf.m_data + buf.m_size);
 
 		buf.m_size = newSize;
