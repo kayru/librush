@@ -486,7 +486,9 @@ bool GfxDevice::acquireBackBuffer()
 	}
 
 	// nil while the window cannot show anything (e.g. zero-sized)
+	const u64 waitBegin = Timer::nowNs();
 	m_drawable = [m_metalLayer nextDrawable];
+	Gfx_RecordDisplayWait(m_stats, waitBegin, Timer::nowNs());
 	if (!m_drawable)
 	{
 		return false;
@@ -1025,7 +1027,7 @@ void GfxDevice::popCommandBufferMarkers()
 {
 	for (size_t i = m_markers.size(); i > 0; --i)
 	{
-		if (!m_markers[i - 1].onEncoder)
+		if (m_markers[i - 1].place == MarkerPlace::CommandBuffer)
 		{
 			[m_commandBuffer popDebugGroup];
 		}
@@ -1036,9 +1038,46 @@ void GfxDevice::pushCommandBufferMarkers()
 {
 	for (const Marker& marker : m_markers)
 	{
-		if (!marker.onEncoder)
+		if (marker.place == MarkerPlace::CommandBuffer)
 		{
 			[m_commandBuffer pushDebugGroup:marker.name];
+		}
+	}
+}
+
+void GfxDevice::flushPendingMarkers()
+{
+	for (Marker& marker : m_markers)
+	{
+		RUSH_ASSERT_MSG(marker.place != MarkerPlace::ComputeEncoder, "Compute encoder still open");
+		if (marker.place == MarkerPlace::Pending)
+		{
+			[m_commandBuffer pushDebugGroup:marker.name];
+			marker.place = MarkerPlace::CommandBuffer;
+		}
+	}
+}
+
+void GfxDevice::pushPendingMarkers(id<MTLComputeCommandEncoder> encoder)
+{
+	for (Marker& marker : m_markers)
+	{
+		if (marker.place == MarkerPlace::Pending)
+		{
+			[encoder pushDebugGroup:marker.name];
+			marker.place = MarkerPlace::ComputeEncoder;
+		}
+	}
+}
+
+void GfxDevice::suspendComputeMarkers(id<MTLComputeCommandEncoder> encoder)
+{
+	for (size_t i = m_markers.size(); i > 0; --i)
+	{
+		if (m_markers[i - 1].place == MarkerPlace::ComputeEncoder)
+		{
+			[encoder popDebugGroup];
+			m_markers[i - 1].place = MarkerPlace::Pending;
 		}
 	}
 }
@@ -2789,6 +2828,7 @@ static id<MTLRenderCommandEncoder> createRenderEncoder(MTLRenderPassDescriptor* 
 		attachment.startOfFragmentSampleIndex = MTLCounterDontSample;
 		attachment.endOfFragmentSampleIndex = setup.endIndex;
 	}
+	g_device->flushPendingMarkers();
 	id<MTLRenderCommandEncoder> encoder = [g_device->m_commandBuffer renderCommandEncoderWithDescriptor:desc];
 	finishEncoderSetup(encoder, setup, label, [](id<MTLRenderCommandEncoder> e, id<MTLFence> f) {
 		[e waitForFence:f beforeStages:MTLRenderStageVertex];
@@ -2805,6 +2845,7 @@ static id<MTLComputeCommandEncoder> createComputeEncoder(id<MTLFence>& outFence)
 	attachSamples(desc.sampleBufferAttachments[0], setup);
 	id<MTLComputeCommandEncoder> encoder = [g_device->m_commandBuffer computeCommandEncoderWithDescriptor:desc];
 	finishEncoderSetup(encoder, setup, nullptr, [](id<MTLComputeCommandEncoder> e, id<MTLFence> f) { [e waitForFence:f]; });
+	g_device->pushPendingMarkers(encoder);
 	outFence = setup.fence;
 	return encoder;
 }
@@ -2814,6 +2855,7 @@ static id<MTLBlitCommandEncoder> createBlitEncoder(id<MTLFence>& outFence)
 	const EncoderSetup setup = prepareEncoder();
 	MTLBlitPassDescriptor* desc = [MTLBlitPassDescriptor blitPassDescriptor];
 	attachSamples(desc.sampleBufferAttachments[0], setup);
+	g_device->flushPendingMarkers();
 	id<MTLBlitCommandEncoder> encoder = [g_device->m_commandBuffer blitCommandEncoderWithDescriptor:desc];
 	finishEncoderSetup(encoder, setup, nullptr, [](id<MTLBlitCommandEncoder> e, id<MTLFence> f) { [e waitForFence:f]; });
 	outFence = setup.fence;
@@ -2825,6 +2867,7 @@ static id<MTLAccelerationStructureCommandEncoder> createAccelerationStructureEnc
 	const EncoderSetup setup = prepareEncoder();
 	MTLAccelerationStructurePassDescriptor* desc = [MTLAccelerationStructurePassDescriptor accelerationStructurePassDescriptor];
 	attachSamples(desc.sampleBufferAttachments[0], setup);
+	g_device->flushPendingMarkers();
 	id<MTLAccelerationStructureCommandEncoder> encoder =
 		[g_device->m_commandBuffer accelerationStructureCommandEncoderWithDescriptor:desc];
 	finishEncoderSetup(encoder, setup, nullptr,
@@ -2848,6 +2891,7 @@ void GfxContext::endComputeEncoder()
 	{
 		return;
 	}
+	g_device->suspendComputeMarkers(m_computeCommandEncoder);
 	endEncoder(m_computeCommandEncoder, m_computeCommandEncoderFence);
 	[m_computeCommandEncoder release];
 	m_computeCommandEncoder = nil;
@@ -3311,7 +3355,7 @@ void Gfx_EndPass(GfxContext* rc)
 	RUSH_ASSERT_MSG(rc->m_commandEncoder, "Gfx_EndPass without a render pass");
 
 	DynamicArray<GfxDevice::Marker>& markers = g_device->m_markers;
-	while (!markers.empty() && markers.back().onEncoder)
+	while (!markers.empty() && markers.back().place == GfxDevice::MarkerPlace::RenderEncoder)
 	{
 		RUSH_ASSERT_MSG(false, "Gfx_PushMarker inside a render pass without a matching Gfx_PopMarker");
 		[rc->m_commandEncoder popDebugGroup];
@@ -3792,19 +3836,16 @@ void Gfx_PushMarker(GfxContext* rc, const char* marker)
 {
 	GfxDevice::Marker entry;
 	entry.name = [[NSString alloc] initWithUTF8String:marker ? marker : ""];
-	entry.onEncoder = rc->m_commandEncoder != nil;
-
-	if (entry.onEncoder)
+	if (rc->m_commandEncoder)
 	{
+		entry.place = GfxDevice::MarkerPlace::RenderEncoder;
 		[rc->m_commandEncoder pushDebugGroup:entry.name];
 	}
-	else
+	else if (rc->m_computeCommandEncoder)
 	{
-		// No command buffer between Gfx_Present and Gfx_BeginFrame: the group is pushed when it is created
-		rc->endComputeEncoder();
-		[g_device->m_commandBuffer pushDebugGroup:entry.name];
+		entry.place = GfxDevice::MarkerPlace::ComputeEncoder;
+		[rc->m_computeCommandEncoder pushDebugGroup:entry.name];
 	}
-
 	g_device->m_markers.push_back(entry);
 }
 
@@ -3820,16 +3861,26 @@ void Gfx_PopMarker(GfxContext* rc)
 	const GfxDevice::Marker entry = markers.back();
 	markers.pop_back();
 
-	if (entry.onEncoder)
+	switch (entry.place)
 	{
+	case GfxDevice::MarkerPlace::RenderEncoder:
 		RUSH_ASSERT_MSG(rc->m_commandEncoder, "Marker pushed inside a render pass popped outside of it");
 		[rc->m_commandEncoder popDebugGroup];
-	}
-	else
-	{
+		break;
+	case GfxDevice::MarkerPlace::ComputeEncoder:
+		RUSH_ASSERT(rc->m_computeCommandEncoder);
+		[rc->m_computeCommandEncoder popDebugGroup];
+		break;
+	case GfxDevice::MarkerPlace::CommandBuffer:
+		// Popped between encoders. No command buffer between Gfx_Present and Gfx_BeginFrame:
+		// then the next one simply does not push it again.
 		RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Marker pushed outside a render pass popped inside of it");
 		rc->endComputeEncoder();
 		[g_device->m_commandBuffer popDebugGroup];
+		break;
+	case GfxDevice::MarkerPlace::Pending:
+		RUSH_ASSERT_MSG(!rc->m_commandEncoder, "Marker pushed outside a render pass popped inside of it");
+		break; // no work came while it was open
 	}
 	[entry.name release];
 }

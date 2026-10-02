@@ -703,6 +703,7 @@ rush_gfx_stats rush_gfx_get_stats()
 	rush_gfx_stats result = {};
 
 	result.draw_calls = stats.drawCalls;
+	result.display_wait_ns = stats.displayWaitNs;
 
 	return result;
 }

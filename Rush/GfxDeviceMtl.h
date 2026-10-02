@@ -290,16 +290,29 @@ public:
 	id<MTLFence> acquireIsolationFence();
 	void beginIsolationSegment();
 
-	// Debug groups. Outside render passes they go on the command buffer, so they survive
-	// encoder splits; they are popped before each commit and pushed again on the next buffer.
+	// Debug groups. Inside a render pass they go on its encoder. Outside, they wait until work
+	// comes: a compute encoder takes them as its own groups (a marker never splits one), any other
+	// encoder finds them pushed on the command buffer. Command buffer groups are popped before each
+	// commit and pushed again on the next buffer. Places stack: command buffer, then pending or
+	// compute encoder, then render encoder.
+	enum class MarkerPlace : u8
+	{
+		Pending,
+		CommandBuffer,
+		ComputeEncoder,
+		RenderEncoder,
+	};
 	struct Marker
 	{
 		NSString* name = nil; // retained
-		bool onEncoder = false;
+		MarkerPlace place = MarkerPlace::Pending;
 	};
 	DynamicArray<Marker> m_markers;
 	void popCommandBufferMarkers();
 	void pushCommandBufferMarkers();
+	void flushPendingMarkers(); // before an encoder other than compute
+	void pushPendingMarkers(id<MTLComputeCommandEncoder> encoder); // a new compute encoder
+	void suspendComputeMarkers(id<MTLComputeCommandEncoder> encoder); // the compute encoder ends
 
 #if !TARGET_OS_SIMULATOR
 	// Presented, not yet on screen. Shared: presented handlers may outlive the device.

@@ -487,6 +487,7 @@ typedef struct rush_gfx_capability
 typedef struct rush_gfx_stats
 {
 	uint32_t draw_calls;
+	uint64_t display_wait_ns; // CPU time blocked on the display since the last reset
 } rush_gfx_stats;
 
 typedef enum rush_gfx_timing_level

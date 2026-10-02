@@ -12,11 +12,24 @@ struct GfxShaderSource;
 class GfxContext;
 class GfxDevice;
 
+struct GfxCpuInterval
+{
+	u64 beginNs = 0; // std::chrono::steady_clock nanoseconds
+	u64 endNs   = 0;
+};
+
 struct GfxStats
 {
 	u32 drawCalls = 0;
 	u32 vertices  = 0;
 	u32 triangles = 0;
+
+	// CPU time blocked on the display since Gfx_ResetStats: Metal nextDrawable, Vulkan swapchain
+	// acquire and present. The first MaxDisplayWaits waits are kept, for timelines.
+	static constexpr u32 MaxDisplayWaits = 4;
+	u64            displayWaitNs    = 0;
+	u32            displayWaitCount = 0;
+	GfxCpuInterval displayWaits[MaxDisplayWaits];
 };
 
 

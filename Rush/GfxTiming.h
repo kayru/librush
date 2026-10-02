@@ -194,6 +194,16 @@ u32 Gfx_AllocateTimingSlots(
 	return slot;
 }
 
+inline void Gfx_RecordDisplayWait(GfxStats& stats, u64 beginNs, u64 endNs)
+{
+	stats.displayWaitNs += endNs - beginNs;
+	if (stats.displayWaitCount < GfxStats::MaxDisplayWaits)
+	{
+		stats.displayWaits[stats.displayWaitCount] = {beginNs, endNs};
+	}
+	++stats.displayWaitCount;
+}
+
 // Signed difference of two timestamps that wrap at validBits
 inline s64 Gfx_TimestampDelta(u64 a, u64 b, u32 validBits)
 {

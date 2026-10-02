@@ -1946,9 +1946,11 @@ void GfxDevice::beginFrame()
 	{
 		VkSemaphore presentCompleteSemaphore = allocSemaphore();
 
-		u32      nextSwapChainIndex = ~0u;
-		VkResult result             = vkAcquireNextImageKHR(
+		u32       nextSwapChainIndex = ~0u;
+		const u64 waitBegin          = Timer::nowNs();
+		VkResult  result             = vkAcquireNextImageKHR(
             m_vulkanDevice, m_swapChain, UINT64_MAX, presentCompleteSemaphore, VK_NULL_HANDLE, &nextSwapChainIndex);
+		Gfx_RecordDisplayWait(m_stats, waitBegin, Timer::nowNs());
 
 		bool success = false;
 		switch (result)
@@ -3716,7 +3718,9 @@ GfxProgressId Gfx_Present()
 		presentInfo.pSwapchains        = &g_device->m_swapChain;
 		presentInfo.pImageIndices      = &g_device->m_swapChainIndex;
 
-		VkResult result = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
+		const u64 waitBegin = Timer::nowNs();
+		VkResult  result    = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
+		Gfx_RecordDisplayWait(g_device->m_stats, waitBegin, Timer::nowNs());
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 		{
 			g_device->m_swapChainValid = false;
