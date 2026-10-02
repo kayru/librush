@@ -49,6 +49,9 @@
 	inline T    operator^(T a, T b) { return (T)(static_cast<S>(a) ^ static_cast<S>(b)); }                             \
 	inline T    operator&(T a, T b) { return (T)(static_cast<S>(a) & static_cast<S>(b)); }                             \
 	inline T    operator|(T a, T b) { return (T)(static_cast<S>(a) | static_cast<S>(b)); }                             \
+	inline T&   operator^=(T& a, T b) { return a = a ^ b; }                                                            \
+	inline T&   operator&=(T& a, T b) { return a = a & b; }                                                            \
+	inline T&   operator|=(T& a, T b) { return a = a | b; }                                                            \
 	inline bool operator!(T a) { return !static_cast<S>(a); }
 
 #if defined(_MSC_VER)
