@@ -499,7 +499,10 @@ inline void validateBufferUse(const BufferVK& buffer, bool allowTransientBuffers
 	}
 }
 
-struct TransientHostMemoryBlockVK : MemoryBlockVK {};
+struct TransientMemoryBlockVK : MemoryBlockVK
+{
+	MemoryAllocatorVK* allocator = nullptr;
+};
 
 struct DestructionQueueVK
 {
@@ -509,7 +512,7 @@ struct DestructionQueueVK
 	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
 
 	using Item = std::variant<VkPipeline, VkPipelineLayout, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
-	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientHostMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
+	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
 
 	DynamicArray<Item> items;
 
@@ -2015,18 +2018,20 @@ void GfxDevice::beginFrame()
 	}
 	m_currentFrame->descriptorPools.clear();
 
-	m_transientLocalAllocator.reset();
-
 	extendDescriptorPool(m_currentFrame);
 }
 
 void GfxDevice::endFrame() 
 {
-	for (MemoryBlockVK& block : m_transientHostAllocator.m_fullBlocks)
+	// Full blocks return to their allocator once the GPU is done with this frame
+	for (MemoryAllocatorVK* allocator : {&m_transientLocalAllocator, &m_transientHostAllocator})
 	{
-		m_pendingDestructionQueue->push(TransientHostMemoryBlockVK(block));
+		for (const MemoryBlockVK& block : allocator->m_fullBlocks)
+		{
+			m_pendingDestructionQueue->push(TransientMemoryBlockVK{block, allocator});
+		}
+		allocator->m_fullBlocks.clear();
 	}
-	m_transientHostAllocator.m_fullBlocks.clear();
 }
 
 u32 GfxDevice::memoryTypeFromProperties(u32 memoryTypeBits, VkFlags requiredFlags, VkFlags incompatibleFlags)
@@ -2093,21 +2098,6 @@ MemoryBlockVK MemoryAllocatorVK::alloc(u64 size, u64 alignment)
 
 		return result;
 	}
-}
-
-void MemoryAllocatorVK::reset()
-{
-	if (!m_availableBlocks.empty())
-	{
-		m_availableBlocks.back().offset = 0;
-	}
-
-	for (MemoryBlockVK& block : m_fullBlocks)
-	{
-		block.offset = 0;
-		m_availableBlocks.push_back(block);
-	}
-	m_fullBlocks.clear();
 }
 
 void MemoryAllocatorVK::addBlock(const MemoryBlockVK& block)
@@ -6647,10 +6637,10 @@ void DestructionQueueVK::flush(GfxDevice* device)
 		// Custom objects
 		void operator()(GfxContext* x) { device->m_freeContexts[u32(x->m_type)].push_back(x); };
 		void operator()(DescriptorPoolVK* x) { delete x; };
-		void operator()(TransientHostMemoryBlockVK& x)
+		void operator()(TransientMemoryBlockVK& x)
 		{
 			x.offset = 0;
-			device->m_transientHostAllocator.addBlock(x);
+			x.allocator->addBlock(x);
 		};
 	} dispatcher(device);
 

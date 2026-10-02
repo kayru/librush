@@ -231,7 +231,6 @@ public:
 
 	void          init(u32 memoryType, bool hostVisible);
 	MemoryBlockVK alloc(u64 size, u64 alignment);
-	void          reset();
 	void          releaseBlocks(bool immediate);
 
 	void addBlock(const MemoryBlockVK& block);
