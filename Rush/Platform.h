@@ -17,6 +17,8 @@ enum class GfxTimingLevel : u8;
 typedef void (*PlatformCallback_Startup)(void* userData);
 typedef void (*PlatformCallback_Update)(void* userData);
 typedef void (*PlatformCallback_Shutdown)(void* userData);
+typedef void (*PlatformCallback_Suspend)(void* userData);
+typedef void (*PlatformCallback_Resume)(void* userData);
 
 struct AppConfig
 {
@@ -51,6 +53,10 @@ struct AppConfig
 	PlatformCallback_Startup  onStartup = nullptr;
 	PlatformCallback_Update   onUpdate = nullptr;
 	PlatformCallback_Shutdown onShutdown = nullptr;
+
+	// iOS: the app left / returns to the foreground. No frames run in between.
+	PlatformCallback_Suspend onSuspend = nullptr;
+	PlatformCallback_Resume  onResume  = nullptr;
 };
 
 void Platform_Startup(const AppConfig& cfg);
@@ -66,6 +72,8 @@ class Application
 public:
 	virtual ~Application() = default;
 	virtual void update()  = 0;
+	virtual void suspend() {}
+	virtual void resume() {}
 };
 
 // Convenience wrappers over explicit startup/run/shutdown API
@@ -84,6 +92,8 @@ template <typename T> inline int Platform_Main(AppConfig cfg)
 	wrappedCfg.onStartup  = [](void* context) { reinterpret_cast<Context*>(context)->app = new T; };
 	wrappedCfg.onShutdown = [](void* context) { delete reinterpret_cast<Context*>(context)->app; };
 	wrappedCfg.onUpdate   = [](void* context) { reinterpret_cast<Context*>(context)->app->update(); };
+	wrappedCfg.onSuspend  = [](void* context) { reinterpret_cast<Context*>(context)->app->suspend(); };
+	wrappedCfg.onResume   = [](void* context) { reinterpret_cast<Context*>(context)->app->resume(); };
 
 	return Platform_Main(wrappedCfg);
 }

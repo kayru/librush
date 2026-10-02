@@ -294,6 +294,34 @@ static void shutdownIOS()
 	[g_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
 }
 
+// Metal rejects command buffers committed in the background
+- (void)sceneDidEnterBackground:(UIScene*)scene
+{
+	if (!g_displayLink)
+	{
+		return;
+	}
+	g_displayLink.paused = YES;
+	Gfx_QueryProgress(Gfx_GetPendingProgressId(), GfxProgressFlags::Wait);
+	if (g_appConfig.onSuspend)
+	{
+		g_appConfig.onSuspend(g_appConfig.userData);
+	}
+}
+
+- (void)sceneWillEnterForeground:(UIScene*)scene
+{
+	if (!g_displayLink || !g_displayLink.paused)
+	{
+		return;
+	}
+	if (g_appConfig.onResume)
+	{
+		g_appConfig.onResume(g_appConfig.userData);
+	}
+	g_displayLink.paused = NO;
+}
+
 - (void)renderFrame:(CADisplayLink*)displayLink
 {
 	@autoreleasepool
