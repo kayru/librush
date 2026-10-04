@@ -5,6 +5,7 @@
 #include "Platform.h"
 #include "WindowWin32.h"
 #include "UtilLog.h"
+#include "MathCommon.h"
 
 #include <stdio.h>
 #include <tchar.h>
@@ -13,10 +14,6 @@
 #ifndef WM_NCMOUSEHOVER
 #define WM_NCMOUSEHOVER 0x02A0
 #endif // WM_NCMOUSEHOVER
-
-#ifndef WM_NCMOUSELEAVE
-#define WM_NCMOUSELEAVE 0x02A2
-#endif // WM_NCMOUSELEAVE
 
 #ifndef WM_MOUSEHWHEEL
 #define WM_MOUSEHWHEEL 0x020E
@@ -261,7 +258,6 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_LBUTTONDBLCLK:
 	case WM_RBUTTONDBLCLK:
 	case WM_MBUTTONDBLCLK:
-	case WM_NCMOUSELEAVE:
 	case WM_MOUSEWHEEL:
 	case WM_MOUSEHWHEEL:
 		if (!m_osInputEnabled)
@@ -289,7 +285,17 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 
 	case WM_SETFOCUS: m_focused = true; break;
 
-	case WM_KILLFOCUS: m_focused = false; break;
+	case WM_KILLFOCUS:
+		m_focused = false;
+		releaseMouseButtons(0);
+		break;
+
+	case WM_CAPTURECHANGED:
+		if ((HWND)lparam != m_hwnd)
+		{
+			releaseMouseButtons(0);
+		}
+		break;
 
 	case WM_CLOSE:
 		RUSH_LOG("Closing: WM_CLOSE (close button, Alt+F4 or system)");
@@ -343,13 +349,7 @@ void WindowWin32::setMouseLock(bool state)
 
 void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
-	if (message == WM_NCMOUSELEAVE)
-	{
-		m_mouse.buttons[0] = false;
-		m_mouse.buttons[1] = false;
-		m_mouse.buttons[2] = false;
-	}
-	else if (message != WM_MOUSEWHEEL && message != WM_MOUSEHWHEEL)
+	if (message != WM_MOUSEWHEEL && message != WM_MOUSEHWHEEL)
 	{
 		const int xPos = GET_X_LPARAM(lparam);
 		const int yPos = GET_Y_LPARAM(lparam);
@@ -374,7 +374,8 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 		}
 		else
 		{
-			m_mouse.pos = Vec2((float)xPos, (float)yPos);
+			const Tuple2i size = getSize();
+			m_mouse.pos = Vec2(clamp((float)xPos, 0.0f, (float)size.x), clamp((float)yPos, 0.0f, (float)size.y));
 		}
 	}
 
@@ -382,50 +383,15 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	{
 	case WM_MOUSEMOVE: broadcast(WindowEvent::MouseMove(m_mouse.pos)); break;
 
-	case WM_LBUTTONDOWN:
-		m_mouse.buttons[0] = true;
-		broadcast(WindowEvent::MouseDown(m_mouse.pos, 0, false));
-		break;
-
-	case WM_LBUTTONUP:
-		m_mouse.buttons[0] = false;
-		broadcast(WindowEvent::MouseUp(m_mouse.pos, 0));
-		break;
-
-	case WM_LBUTTONDBLCLK:
-		m_mouse.buttons[0] = true;
-		broadcast(WindowEvent::MouseDown(m_mouse.pos, 0, true));
-		break;
-
-	case WM_RBUTTONDOWN:
-		m_mouse.buttons[1] = true;
-		broadcast(WindowEvent::MouseDown(m_mouse.pos, 1, false));
-		break;
-
-	case WM_RBUTTONUP:
-		m_mouse.buttons[1] = false;
-		broadcast(WindowEvent::MouseUp(m_mouse.pos, 1));
-		break;
-
-	case WM_RBUTTONDBLCLK:
-		m_mouse.buttons[1] = true;
-		broadcast(WindowEvent::MouseDown(m_mouse.pos, 1, true));
-		break;
-
-	case WM_MBUTTONDOWN:
-		m_mouse.buttons[2] = true;
-		broadcast(WindowEvent::MouseDown(m_mouse.pos, 2, false));
-		break;
-
-	case WM_MBUTTONUP:
-		m_mouse.buttons[2] = false;
-		broadcast(WindowEvent::MouseUp(m_mouse.pos, 2));
-		break;
-
-	case WM_MBUTTONDBLCLK:
-		m_mouse.buttons[2] = true;
-		broadcast(WindowEvent::MouseDown(m_mouse.pos, 2, true));
-		break;
+	case WM_LBUTTONDOWN: onMouseDown(0, false); break;
+	case WM_LBUTTONUP: onMouseUp(0); break;
+	case WM_LBUTTONDBLCLK: onMouseDown(0, true); break;
+	case WM_RBUTTONDOWN: onMouseDown(1, false); break;
+	case WM_RBUTTONUP: onMouseUp(1); break;
+	case WM_RBUTTONDBLCLK: onMouseDown(1, true); break;
+	case WM_MBUTTONDOWN: onMouseDown(2, false); break;
+	case WM_MBUTTONUP: onMouseUp(2); break;
+	case WM_MBUTTONDBLCLK: onMouseDown(2, true); break;
 
 	case WM_MOUSEHWHEEL:
 		m_mouse.wheelH += (int)GET_WHEEL_DELTA_WPARAM(wparam);
@@ -436,6 +402,31 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 		m_mouse.wheelV += (int)GET_WHEEL_DELTA_WPARAM(wparam);
 		broadcast(WindowEvent::Scroll(0.0f, (float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA));
 		break;
+	}
+}
+
+void WindowWin32::onMouseDown(u32 button, bool doubleClick)
+{
+	if (GetCapture() != m_hwnd)
+	{
+		SetCapture(m_hwnd);
+	}
+	m_mouse.buttons[button] = true;
+	m_mouse.doubleclick = doubleClick;
+	broadcast(WindowEvent::MouseDown(m_mouse.pos, button, doubleClick));
+}
+
+void WindowWin32::onMouseUp(u32 button)
+{
+	if (!m_mouse.buttons[button])
+	{
+		return;
+	}
+	m_mouse.buttons[button] = false;
+	broadcast(WindowEvent::MouseUp(m_mouse.pos, button));
+	if (!m_mouse.buttons[0] && !m_mouse.buttons[1] && !m_mouse.buttons[2] && GetCapture() == m_hwnd)
+	{
+		ReleaseCapture();
 	}
 }
 

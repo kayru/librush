@@ -206,6 +206,22 @@ void Window::injectInputEvent(const WindowEvent& injected)
 	broadcast(e);
 }
 
+void Window::releaseMouseButtons(u32 heldMask)
+{
+	if (!m_osInputEnabled)
+	{
+		return;
+	}
+	for (u32 i = 0; i < RUSH_COUNTOF(m_mouse.buttons); ++i)
+	{
+		if (m_mouse.buttons[i] && !(heldMask & (1u << i)))
+		{
+			m_mouse.buttons[i] = false;
+			broadcast(WindowEvent::MouseUp(m_mouse.pos, i));
+		}
+	}
+}
+
 void Window::retain() { m_refs++; }
 
 u32 Window::release()

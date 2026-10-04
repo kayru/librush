@@ -103,6 +103,8 @@ using namespace Rush;
 	CGSize frame = [layer frame].size;
 	window->parent->updateResolutionScale();
 	window->parent->processResize(frame.width, frame.height);
+	// Live resize eats the mouse-up
+	window->parent->releaseMouseButtons((u32)[NSEvent pressedMouseButtons]);
 }
 
 - (void)windowDidChangeBackingProperties:(NSNotification*)notification
@@ -121,6 +123,7 @@ using namespace Rush;
 {
 	RushWindow* window = notification.object;
 	window->parent->setFocused(false);
+	window->parent->releaseMouseButtons(0);
 }
 
 @end
@@ -536,6 +539,38 @@ bool WindowMac::setFullscreen(bool state)
 	return true;
 }
 
+bool WindowMac::isContentMouseDown(NSEvent* event) const
+{
+	if (m_mouseLocked)
+	{
+		return true;
+	}
+	if ([event window] != m_nativeWindow)
+	{
+		return false;
+	}
+	NSView* contentView = [m_nativeWindow contentView];
+	const NSPoint pos = [contentView convertPoint:[event locationInWindow] fromView:nil];
+	return NSPointInRect(pos, [contentView bounds]);
+}
+
+void WindowMac::onMouseDown(NSEvent* event, u32 button)
+{
+	const bool doubleClick = [event clickCount] >= 2;
+	m_mouse.buttons[button] = true;
+	m_mouse.doubleclick = doubleClick;
+	broadcast(WindowEvent::MouseDown(m_mouse.pos, button, doubleClick));
+}
+
+void WindowMac::onMouseUp(u32 button)
+{
+	if (m_mouse.buttons[button])
+	{
+		m_mouse.buttons[button] = false;
+		broadcast(WindowEvent::MouseUp(m_mouse.pos, button));
+	}
+}
+
 bool WindowMac::processEvent(NSEvent* event)
 {
 	NSEventType eventType = [event type];
@@ -600,52 +635,25 @@ bool WindowMac::processEvent(NSEvent* event)
 			return true;
 		}
 		case NSEventTypeLeftMouseDown:
+		case NSEventTypeRightMouseDown:
+		case NSEventTypeOtherMouseDown:
 		{
-			const bool doubleClick = [event clickCount] >= 2;
-			m_mouse.buttons[0] = true;
-			m_mouse.doubleclick = doubleClick;
-			broadcast(WindowEvent::MouseDown(m_mouse.pos, 0, doubleClick));
+			const NSInteger button = [event buttonNumber];
+			if (button < 0 || button >= (NSInteger)RUSH_COUNTOF(m_mouse.buttons) || !isContentMouseDown(event))
+			{
+				return false;
+			}
+			onMouseDown(event, (u32)button);
 			return true;
 		}
 		case NSEventTypeLeftMouseUp:
-		{
-			m_mouse.buttons[0] = false;
-			broadcast(WindowEvent::MouseUp(m_mouse.pos, 0));
-			return true;
-		}
-		case NSEventTypeRightMouseDown:
-		{
-			const bool doubleClick = [event clickCount] >= 2;
-			m_mouse.buttons[1] = true;
-			m_mouse.doubleclick = doubleClick;
-			broadcast(WindowEvent::MouseDown(m_mouse.pos, 1, doubleClick));
-			return true;
-		}
 		case NSEventTypeRightMouseUp:
-		{
-			m_mouse.buttons[1] = false;
-			broadcast(WindowEvent::MouseUp(m_mouse.pos, 1));
-			return true;
-		}
-		case NSEventTypeOtherMouseDown:
-		{
-			const int button = (int)[event buttonNumber];
-			if (button >= 0 && button < 10)
-			{
-				const bool doubleClick = [event clickCount] >= 2;
-				m_mouse.buttons[button] = true;
-				m_mouse.doubleclick = doubleClick;
-				broadcast(WindowEvent::MouseDown(m_mouse.pos, button, doubleClick));
-			}
-			return true;
-		}
 		case NSEventTypeOtherMouseUp:
 		{
-			const int button = (int)[event buttonNumber];
-			if (button >= 0 && button < 10)
+			const NSInteger button = [event buttonNumber];
+			if (button >= 0 && button < (NSInteger)RUSH_COUNTOF(m_mouse.buttons))
 			{
-				m_mouse.buttons[button] = false;
-				broadcast(WindowEvent::MouseUp(m_mouse.pos, button));
+				onMouseUp((u32)button);
 			}
 			return true;
 		}

@@ -80,6 +80,10 @@ public:
 	void updateResolutionScale();
 
 private:
+	bool isContentMouseDown(NSEvent* event) const;
+	void onMouseDown(NSEvent* event, u32 button);
+	void onMouseUp(u32 button);
+
 	NSWindow* m_nativeWindow = nullptr;
 	Vec2 m_preLockMousePos = Vec2(0.0f);
 	float m_scrollAccumH = 0.0f;

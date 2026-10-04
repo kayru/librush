@@ -273,6 +273,8 @@ public:
 	void setOsInputEnabled(bool enabled) { m_osInputEnabled = enabled; }
 	bool isOsInputEnabled() const { return m_osInputEnabled; }
 
+	void releaseMouseButtons(u32 heldMask);
+
 	// Reference counting
 
 	void retain();
