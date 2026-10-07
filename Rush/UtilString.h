@@ -45,7 +45,11 @@ public:
 
 	String& operator=(String&& other) noexcept
 	{
-		moveFrom((String&&)other);
+		if (this != &other)
+		{
+			delete[] m_data;
+			moveFrom((String&&)other);
+		}
 		return *this;
 	}
 
