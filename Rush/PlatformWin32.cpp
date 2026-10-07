@@ -114,10 +114,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 		Gfx_BeginFrame();
 
 		MSG msg;
-		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+		// Unicode variants: WM_CHAR arrives as UTF-16
+		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+			DispatchMessageW(&msg);
 		}
 		closeWindowOnTerminationSignal();
 

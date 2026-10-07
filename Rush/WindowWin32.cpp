@@ -8,7 +8,6 @@
 #include "MathCommon.h"
 
 #include <stdio.h>
-#include <tchar.h>
 #include <windowsx.h>
 
 #ifndef WM_NCMOUSEHOVER
@@ -122,6 +121,25 @@ static Key translateKeyWin32(int key)
 	}
 }
 
+namespace
+{
+	// UTF-8 to a NUL-terminated UTF-16 string
+	DynamicArray<wchar_t> toWide(const char* text)
+	{
+		if (!text)
+		{
+			text = "";
+		}
+		const int count = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+		DynamicArray<wchar_t> result(size_t(count > 0 ? count : 1), L'\0');
+		if (count > 0)
+		{
+			MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), count);
+		}
+		return result;
+	}
+}
+
 WindowWin32::WindowWin32(const WindowDesc& desc)
 : Window(desc), m_hwnd(0), m_pendingSize(m_size), m_windowedSize(m_size)
 {
@@ -129,13 +147,14 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 
 	// register window class
 
-	WNDCLASSEX wc = {0};
+	// A Unicode window: typed text comes as UTF-16 and the caption takes any character
+	WNDCLASSEXW wc = {};
 
 	HINSTANCE hInst = GetModuleHandle(nullptr);
 
 	// WNDPROC;
 
-	wc.cbSize        = sizeof(WNDCLASSEX);
+	wc.cbSize        = sizeof(WNDCLASSEXW);
 	wc.style         = CS_DBLCLKS | CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc   = windowProc;
 	wc.cbClsExtra    = 0;
@@ -145,10 +164,14 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOWFRAME);
 	wc.lpszMenuName  = nullptr;
-	wc.lpszClassName = _T("RushWindowWin32");
+	wc.lpszClassName = L"RushWindowWin32";
 	wc.hIconSm       = wc.hIcon;
 
-	RegisterClassEx(&wc);
+	// Registered once per process: windows after the first find it there
+	if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+	{
+		RUSH_LOG_FATAL("RegisterClassExW failed (%lu)", GetLastError());
+	}
 
 	m_windowStyle = WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
 
@@ -170,8 +193,8 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 
 	// create window
 
-	m_hwnd = CreateWindowA("RushWindowWin32",
-	    desc.caption ? desc.caption : "",
+	m_hwnd = CreateWindowW(L"RushWindowWin32",
+	    toWide(desc.caption).data(),
 	    m_windowStyle,
 	    clientRect.left,
 	    clientRect.top,
@@ -181,6 +204,10 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	    nullptr,
 	    hInst,
 	    nullptr);
+	if (!m_hwnd)
+	{
+		RUSH_LOG_FATAL("CreateWindowW failed (%lu)", GetLastError());
+	}
 
 	// setup window owner for message handling
 
@@ -227,7 +254,7 @@ LRESULT APIENTRY WindowWin32::windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
 	}
 	else
 	{
-		return (LRESULT)DefWindowProc(hwnd, msg, wparam, lparam);
+		return (LRESULT)DefWindowProcW(hwnd, msg, wparam, lparam);
 	}
 }
 
@@ -241,7 +268,7 @@ void WindowWin32::setCaption(const char* str)
 	}
 
 	m_caption = str;
-	SetWindowTextA(m_hwnd, str);
+	SetWindowTextW(m_hwnd, toWide(str).data());
 }
 
 bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
