@@ -231,7 +231,7 @@ LRESULT APIENTRY WindowWin32::windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
 	}
 }
 
-void* WindowWin32::nativeHandle() { return (void*)&m_hwnd; }
+void* WindowWin32::nativeHandle() { return m_hwnd; }
 
 void WindowWin32::setCaption(const char* str)
 {

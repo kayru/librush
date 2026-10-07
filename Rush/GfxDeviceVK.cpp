@@ -1694,7 +1694,7 @@ void GfxDevice::createSwapChain()
 #if defined(RUSH_PLATFORM_WINDOWS)
 		VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
 		surfaceCreateInfo.hinstance                   = (HINSTANCE)GetModuleHandle(nullptr);
-		surfaceCreateInfo.hwnd                        = *(HWND*)m_window->nativeHandle();
+		surfaceCreateInfo.hwnd                        = HWND(m_window->nativeHandle());
 		V(vkCreateWin32SurfaceKHR(m_vulkanInstance, &surfaceCreateInfo, g_allocationCallbacks, &m_swapChainSurface));
 #elif defined(RUSH_PLATFORM_LINUX)
 		VkXcbSurfaceCreateInfoKHR surfaceCreateInfo = {VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR};

@@ -211,7 +211,7 @@ public:
 	Window(const WindowDesc& desc);
 
 	virtual void* nativeConnection() { return nullptr; }
-	virtual void* nativeHandle()               = 0;
+	virtual void* nativeHandle()               = 0; // HWND, NSWindow*, UIWindow* or xcb_window_t
 	virtual void  setCaption(const char* str)  = 0;
 	virtual void  setSize(const Tuple2i& size) = 0;
 	virtual void  setPosition(const Tuple2i& position){};
