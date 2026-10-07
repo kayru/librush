@@ -27,11 +27,13 @@ public:
 		, m_size(N)
 	{
 	}
+	// Rvalue ranges only bind to views of const elements, like std::span.
 template <typename R>
 requires (requires(R& r) { r.data(); r.size(); })
     && (!std::is_same_v<std::remove_cvref_t<R>, ArrayView<T>>)
     && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
-	ArrayView(R& r)
+    && (std::is_const_v<T> || std::is_lvalue_reference_v<R>)
+	ArrayView(R&& r)
 		: m_data(r.data())
 		, m_size(r.size())
 	{
@@ -74,6 +76,15 @@ requires (requires(R& r) { r.data(); r.size(); })
 		return ArrayView<const T>::sliceFrom(*this, start, count);
 	}
 
+	ArrayView subspan(size_t offset) { return slice(offset, m_size - offset); }
+	ArrayView<const T> subspan(size_t offset) const { return slice(offset, m_size - offset); }
+	ArrayView subspan(size_t offset, size_t count) { return slice(offset, count); }
+	ArrayView<const T> subspan(size_t offset, size_t count) const { return slice(offset, count); }
+	ArrayView first(size_t count) { return slice(0, count); }
+	ArrayView<const T> first(size_t count) const { return slice(0, count); }
+	ArrayView last(size_t count) { return slice(m_size - count, count); }
+	ArrayView<const T> last(size_t count) const { return slice(m_size - count, count); }
+
 	size_t size() const { return m_size; }
 	T* data() { return m_data; }
 	const T* data() const { return m_data; }
@@ -108,6 +119,10 @@ private:
 	T*  m_data = nullptr;
 	size_t m_size = 0;
 };
+
+template <typename R>
+requires requires(R& r) { r.data(); r.size(); }
+ArrayView(R&&) -> ArrayView<std::remove_pointer_t<decltype(std::declval<R&>().data())>>;
 
 template <typename T>
 class DynamicArray
