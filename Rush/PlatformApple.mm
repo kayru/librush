@@ -86,6 +86,12 @@ const char* Platform_GetExecutableDirectory()
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
 {
 	RUSH_UNUSED(sender);
+	if (g_mainWindow && g_mainWindow->getDesc().closeBehavior == WindowCloseBehavior::Broadcast)
+	{
+		RUSH_LOG("Close requested: Cmd+Q, Quit menu or system");
+		g_mainWindow->requestClose();
+		return NSTerminateCancel;
+	}
 	if (!self->terminated)
 	{
 		RUSH_LOG("Closing: quit requested (close button, Cmd+Q, Quit menu or system)");

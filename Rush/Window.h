@@ -182,6 +182,13 @@ public:
 	virtual bool processEvent(const WindowEvent&) = 0;
 };
 
+// What a close request from the user (close button, Alt+F4, Cmd+Q, the window manager) does
+enum class WindowCloseBehavior : u8
+{
+	Close,     // the window closes
+	Broadcast, // a CloseRequest event; the app calls close() to accept it
+};
+
 struct WindowDesc
 {
 	const char* caption                  = nullptr;
@@ -193,6 +200,7 @@ struct WindowDesc
 	bool        handleShortcutQuit       = true;
 	bool        handleShortcutFullScreen = true;
 	bool        background               = false; // open without taking focus, behind other windows
+	WindowCloseBehavior closeBehavior     = WindowCloseBehavior::Close;
 };
 
 class Window
@@ -226,6 +234,7 @@ public:
 
 
 	void close() { m_closed = true; }
+	void requestClose(); // a close request from the user, see WindowCloseBehavior
 	bool isClosed() const { return m_closed; }
 	bool isFocused() const { return m_focused; }
 	bool isFullscreen() const { return m_fullScreen; }
@@ -324,6 +333,7 @@ enum WindowEventType : u32
 	WindowEventType_TouchBegin = RUSH_WINDOW_EVENT_TYPE_TOUCH_BEGIN,
 	WindowEventType_TouchMove  = RUSH_WINDOW_EVENT_TYPE_TOUCH_MOVE,
 	WindowEventType_TouchEnd   = RUSH_WINDOW_EVENT_TYPE_TOUCH_END,
+	WindowEventType_CloseRequest = RUSH_WINDOW_EVENT_TYPE_CLOSE_REQUEST,
 
 	WindowEventType_COUNT     = RUSH_WINDOW_EVENT_TYPE_COUNT
 };
@@ -341,6 +351,7 @@ enum WindowEventMask : u32
 	WindowEventMask_Key       = RUSH_WINDOW_EVENT_MASK_KEY,
 	WindowEventMask_Mouse     = RUSH_WINDOW_EVENT_MASK_MOUSE,
 	WindowEventMask_Touch     = RUSH_WINDOW_EVENT_MASK_TOUCH,
+	WindowEventMask_CloseRequest = RUSH_WINDOW_EVENT_MASK_CLOSE_REQUEST,
 	WindowEventMask_All       = RUSH_WINDOW_EVENT_MASK_ALL,
 };
 
@@ -429,6 +440,13 @@ struct WindowEvent
 		e.type     = WindowEventType_Scroll;
 		e.scroll.x = x;
 		e.scroll.y = y;
+		return e;
+	}
+
+	static WindowEvent CloseRequest()
+	{
+		WindowEvent e;
+		e.type = WindowEventType_CloseRequest;
 		return e;
 	}
 

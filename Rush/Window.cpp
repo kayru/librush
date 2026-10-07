@@ -23,6 +23,18 @@ Window::~Window()
 	// RUSH_ASSERT(m_refs == 0);
 }
 
+void Window::requestClose()
+{
+	if (m_desc.closeBehavior == WindowCloseBehavior::Broadcast)
+	{
+		broadcast(WindowEvent::CloseRequest());
+	}
+	else
+	{
+		close();
+	}
+}
+
 void Window::addListener(WindowEventListener* listener) { m_listeners.push_back(listener); }
 
 void Window::removeListener(WindowEventListener* listener)

@@ -102,6 +102,7 @@ void Platform_Startup(const AppConfig& cfg)
 		windowDesc.fullScreen = cfg.fullScreen;
 		windowDesc.maximized  = cfg.maximized;
 		windowDesc.background = cfg.background;
+		windowDesc.closeBehavior = cfg.closeBehavior;
 
 		window = Platform_CreateWindow(windowDesc);
 	}

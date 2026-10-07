@@ -76,6 +76,14 @@ using namespace Rush;
 {
 	RUSH_ASSERT(window);
 
+	Rush::Window* parent = ((RushWindow*)window)->parent;
+	if (parent->getDesc().closeBehavior == Rush::WindowCloseBehavior::Broadcast)
+	{
+		RUSH_LOG("Close requested: close button");
+		parent->requestClose();
+		return NO;
+	}
+
 	[window setDelegate:nil];
 
 	RUSH_ASSERT(self->windowCount);
