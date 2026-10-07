@@ -236,7 +236,16 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	UpdateWindow(m_hwnd);
 }
 
-WindowWin32::~WindowWin32() {}
+WindowWin32::~WindowWin32()
+{
+	if (m_mouseLocked)
+	{
+		setMouseLock(false);
+	}
+	// Messages sent during and after destruction must not reach this object
+	SetWindowLongPtrW(m_hwnd, GWLP_USERDATA, 0);
+	DestroyWindow(m_hwnd);
+}
 
 void WindowWin32::processChar(u32 unit)
 {
