@@ -86,6 +86,7 @@ requires (requires(R& r) { r.data(); r.size(); })
 	ArrayView<const T> last(size_t count) const { return slice(m_size - count, count); }
 
 	size_t size() const { return m_size; }
+	size_t size_bytes() const { return m_size * sizeof(T); }
 	T* data() { return m_data; }
 	const T* data() const { return m_data; }
 
