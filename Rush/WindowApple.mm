@@ -514,11 +514,10 @@ bool WindowMac::setFullscreen(bool state)
 
 	if (state)
 	{
-		m_windowedSize = m_size;
-
+		// The frame, title bar included: restoring the content size as a frame would lose the title bar's height
 		const NSRect frame = [m_nativeWindow frame];
-		m_windowedPos.x = (int)frame.origin.x;
-		m_windowedPos.y = (int)frame.origin.y;
+		m_windowedFrameOrigin = Vec2((float)frame.origin.x, (float)frame.origin.y);
+		m_windowedFrameSize = Vec2((float)frame.size.width, (float)frame.size.height);
 		m_windowedStyleMask = (u32)[m_nativeWindow styleMask];
 
 		NSScreen* screen = [m_nativeWindow screen] ?: [NSScreen mainScreen];
@@ -534,8 +533,8 @@ bool WindowMac::setFullscreen(bool state)
 		[m_nativeWindow setLevel:NSNormalWindowLevel];
 
 		const NSRect restoreFrame = NSMakeRect(
-			m_windowedPos.x, m_windowedPos.y,
-			m_windowedSize.x, m_windowedSize.y);
+			m_windowedFrameOrigin.x, m_windowedFrameOrigin.y,
+			m_windowedFrameSize.x, m_windowedFrameSize.y);
 		[m_nativeWindow setFrame:restoreFrame display:YES];
 	}
 

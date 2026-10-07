@@ -88,8 +88,8 @@ private:
 	Vec2 m_preLockMousePos = Vec2(0.0f);
 	float m_scrollAccumH = 0.0f;
 	float m_scrollAccumV = 0.0f;
-	Tuple2i m_windowedSize;
-	Tuple2i m_windowedPos;
+	Vec2 m_windowedFrameOrigin = Vec2(0.0f);
+	Vec2 m_windowedFrameSize = Vec2(0.0f);
 	u32 m_windowedStyleMask = 0;
 };
 
