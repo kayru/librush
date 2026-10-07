@@ -30,6 +30,7 @@ private:
 	void onMouseDown(u32 button, bool doubleClick);
 	void onMouseUp(u32 button);
 	bool processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam);
+	void processChar(u32 unit);
 	void processSizeEvent(WPARAM wparam, LPARAM lparam);
 
 	static LRESULT APIENTRY windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -51,6 +52,8 @@ private:
 	u32 m_windowStyle = 0;
 
 	Rush::Vec2 m_preLockMousePos;
+
+	u32 m_highSurrogate = 0; // the first half of a pair, until its second arrives
 };
 }
 

@@ -238,6 +238,27 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 
 WindowWin32::~WindowWin32() {}
 
+void WindowWin32::processChar(u32 unit)
+{
+	// Characters outside the BMP come as two WM_CHAR messages, a surrogate pair
+	if (unit >= 0xD800 && unit < 0xDC00)
+	{
+		m_highSurrogate = unit;
+		return;
+	}
+	const u32 high = m_highSurrogate;
+	m_highSurrogate = 0;
+	if (unit >= 0xDC00 && unit < 0xE000)
+	{
+		if (high)
+		{
+			broadcast(WindowEvent::Char(0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00)));
+		}
+		return;
+	}
+	broadcast(WindowEvent::Char(unit));
+}
+
 LRESULT APIENTRY WindowWin32::windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	WindowWin32* window = reinterpret_cast<WindowWin32*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
@@ -488,7 +509,7 @@ bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 		return true;
 
 	case WM_SYSCHAR:
-	case WM_CHAR: broadcast(WindowEvent::Char((u32)wparam)); return true;
+	case WM_CHAR: processChar(u32(wparam)); return true;
 	}
 
 	return false;
