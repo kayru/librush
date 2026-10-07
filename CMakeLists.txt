@@ -144,7 +144,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	# target_include_directories(Rush PRIVATE ${XCB_INCLUDE_DIRS})
 	# target_link_libraries(Rush INTERFACE ${XCB_LIBRARIES})
 	set_source_files_properties(${RUSH_PLATFORM_SOURCES_LINUX} PROPERTIES HEADER_FILE_ONLY FALSE)
-	target_link_libraries(Rush INTERFACE xcb xcb-keysyms pthread dl)
+	target_link_libraries(Rush INTERFACE xcb xcb-keysyms xcb-xkb xkbcommon xkbcommon-x11 pthread dl)
 
 	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_XCB_KHR)
 
