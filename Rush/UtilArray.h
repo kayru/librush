@@ -4,6 +4,7 @@
 #include "UtilBuffer.h"
 #include "UtilLog.h"
 #include <new>
+#include <string_view> // declares ranges::enable_borrowed_range/enable_view, lighter than <ranges>
 #include <type_traits>
 #include <utility>
 
@@ -15,14 +16,14 @@ class ArrayView
 {
 public:
 
-	ArrayView() = default;
-	ArrayView(T* ptr, size_t count)
+	constexpr ArrayView() = default;
+	constexpr ArrayView(T* ptr, size_t count)
 		: m_data(ptr)
 		, m_size(count)
 	{
 	}
 	template <size_t N>
-	ArrayView(T (&arr)[N])
+	constexpr ArrayView(T (&arr)[N])
 		: m_data(arr)
 		, m_size(N)
 	{
@@ -33,13 +34,13 @@ requires (requires(R& r) { r.data(); r.size(); })
     && (!std::is_same_v<std::remove_cvref_t<R>, ArrayView<T>>)
     && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
     && (std::is_const_v<T> || std::is_lvalue_reference_v<R>)
-	ArrayView(R&& r)
+	constexpr ArrayView(R&& r)
 		: m_data(r.data())
 		, m_size(r.size())
 	{
 	}
 
-	static ArrayView from(T* ptr, size_t count)
+	static constexpr ArrayView from(T* ptr, size_t count)
 	{
 		ArrayView view;
 		view.m_data = ptr;
@@ -59,7 +60,7 @@ requires (requires(R& r) { r.data(); r.size(); })
 template <typename R>
 requires (requires(R& r) { r.data(); r.size(); })
     && std::is_convertible_v<decltype(std::declval<R&>().data()), T*>
-	static ArrayView sliceFrom(R& r, size_t start, size_t count)
+	static constexpr ArrayView sliceFrom(R& r, size_t start, size_t count)
 	{
 		const size_t totalSize = size_t(r.size());
 		RUSH_ASSERT(start <= totalSize);
@@ -67,47 +68,51 @@ requires (requires(R& r) { r.data(); r.size(); })
 		return from(r.data() + start, count);
 	}
 
-	ArrayView slice(size_t start, size_t count)
+	constexpr ArrayView slice(size_t start, size_t count)
 	{
 		return sliceFrom(*this, start, count);
 	}
-	ArrayView<const T> slice(size_t start, size_t count) const
+	constexpr ArrayView<const T> slice(size_t start, size_t count) const
 	{
 		return ArrayView<const T>::sliceFrom(*this, start, count);
 	}
 
-	ArrayView subspan(size_t offset) { return slice(offset, m_size - offset); }
-	ArrayView<const T> subspan(size_t offset) const { return slice(offset, m_size - offset); }
-	ArrayView subspan(size_t offset, size_t count) { return slice(offset, count); }
-	ArrayView<const T> subspan(size_t offset, size_t count) const { return slice(offset, count); }
-	ArrayView first(size_t count) { return slice(0, count); }
-	ArrayView<const T> first(size_t count) const { return slice(0, count); }
-	ArrayView last(size_t count) { return slice(m_size - count, count); }
-	ArrayView<const T> last(size_t count) const { return slice(m_size - count, count); }
+	constexpr ArrayView subspan(size_t offset) { return slice(offset, m_size - offset); }
+	constexpr ArrayView<const T> subspan(size_t offset) const { return slice(offset, m_size - offset); }
+	constexpr ArrayView subspan(size_t offset, size_t count) { return slice(offset, count); }
+	constexpr ArrayView<const T> subspan(size_t offset, size_t count) const { return slice(offset, count); }
+	constexpr ArrayView first(size_t count) { return slice(0, count); }
+	constexpr ArrayView<const T> first(size_t count) const { return slice(0, count); }
+	constexpr ArrayView last(size_t count) { return slice(m_size - count, count); }
+	constexpr ArrayView<const T> last(size_t count) const { return slice(m_size - count, count); }
 
-	size_t size() const { return m_size; }
-	size_t size_bytes() const { return m_size * sizeof(T); }
-	T* data() { return m_data; }
-	const T* data() const { return m_data; }
+	constexpr size_t size() const { return m_size; }
+	constexpr size_t size_bytes() const { return m_size * sizeof(T); }
+	constexpr T* data() { return m_data; }
+	constexpr const T* data() const { return m_data; }
 
-	bool empty() const { return m_size == 0; }
-	T* dataOrNull() { return m_size == 0 ? nullptr : m_data; }
-	const T* dataOrNull() const { return m_size == 0 ? nullptr : m_data; }
-	T& operator[](size_t index)
+	constexpr bool empty() const { return m_size == 0; }
+	constexpr T* dataOrNull() { return m_size == 0 ? nullptr : m_data; }
+	constexpr const T* dataOrNull() const { return m_size == 0 ? nullptr : m_data; }
+	constexpr T& operator[](size_t index)
 	{
 		RUSH_ASSERT(index < m_size);
 		return m_data[index];
 	}
-	const T& operator[](size_t index) const
+	constexpr const T& operator[](size_t index) const
 	{
 		RUSH_ASSERT(index < m_size);
 		return m_data[index];
 	}
-	T* begin() { return m_data; }
-	T* end() { return m_data + m_size; }
-	const T* begin() const { return m_data; }
-	const T* end() const { return m_data + m_size; }
-	void fill(const T& value)
+	constexpr T& front() { return (*this)[0]; }
+	constexpr const T& front() const { return (*this)[0]; }
+	constexpr T& back() { return (*this)[m_size - 1]; }
+	constexpr const T& back() const { return (*this)[m_size - 1]; }
+	constexpr T* begin() { return m_data; }
+	constexpr T* end() { return m_data + m_size; }
+	constexpr const T* begin() const { return m_data; }
+	constexpr const T* end() const { return m_data + m_size; }
+	constexpr void fill(const T& value)
 	{
 		for (size_t i = 0; i < m_size; ++i)
 		{
@@ -408,3 +413,8 @@ struct alignas(alignof(T)) InlineDynamicArray
 };
 
 }
+
+template <typename T>
+constexpr bool std::ranges::enable_borrowed_range<Rush::ArrayView<T>> = true;
+template <typename T>
+constexpr bool std::ranges::enable_view<Rush::ArrayView<T>> = true;
