@@ -370,7 +370,7 @@ struct WindowEvent
 	u32  button      = 0;
 	bool doubleClick = false;
 
-	Vec2 scroll = Vec2(0.0f);
+	Vec2 scroll = Vec2(0.0f); // wheel steps: x > 0 left, y > 0 up, on every platform
 
 	u64 touchId = 0;
 

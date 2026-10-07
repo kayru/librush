@@ -451,8 +451,9 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	case WM_MBUTTONDBLCLK: onMouseDown(2, true); break;
 
 	case WM_MOUSEHWHEEL:
-		m_mouse.wheelH += (int)GET_WHEEL_DELTA_WPARAM(wparam);
-		broadcast(WindowEvent::Scroll((float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA, 0.0f));
+		// WM_MOUSEHWHEEL is > 0 for right: negated to the x > 0 left of the other platforms
+		m_mouse.wheelH -= (int)GET_WHEEL_DELTA_WPARAM(wparam);
+		broadcast(WindowEvent::Scroll(-(float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA, 0.0f));
 		break;
 
 	case WM_MOUSEWHEEL:
