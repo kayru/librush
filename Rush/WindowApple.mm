@@ -695,13 +695,28 @@ bool WindowMac::processEvent(NSEvent* event)
 			auto e = WindowEvent::KeyDown(key);
 			broadcast(e);
 
+			// One event can carry several characters (a dead key followed by one it does not combine with),
+			// and characters outside the BMP come as surrogate pairs
 			NSString* chars = [event characters];
-			if ([chars length] != 0)
+			const NSUInteger length = [chars length];
+			for (NSUInteger i = 0; i < length; ++i)
 			{
-				unichar ch = [chars characterAtIndex:0];
-				if (ch >= 32 && ch != 127 && ch < 0xF700)
+				u32 cp = [chars characterAtIndex:i];
+				if (cp >= 0xD800 && cp < 0xDC00 && i + 1 < length)
 				{
-					broadcast(WindowEvent::Char(ch));
+					const u32 low = [chars characterAtIndex:i + 1];
+					if (low >= 0xDC00 && low < 0xE000)
+					{
+						cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+						++i;
+					}
+				}
+				// Control characters and the function keys' private-use codes are keys, not text
+				const bool functionKey = cp >= 0xF700 && cp < 0xF900;
+				const bool loneSurrogate = cp >= 0xD800 && cp < 0xE000;
+				if (cp >= 32 && cp != 127 && !functionKey && !loneSurrogate)
+				{
+					broadcast(WindowEvent::Char(cp));
 				}
 			}
 
