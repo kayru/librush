@@ -60,15 +60,21 @@ bool Platform_IsDebuggerPresent()
 	return (info.kp_proc.p_flag & P_TRACED) != 0;
 }
 
+// Filled once: function-local static initialization is thread-safe
 const char* Platform_GetExecutableDirectory()
 {
-	static char result[4096] = {};
-	if (result[0] == 0)
+	struct Path
 	{
+		char text[4096] = {};
+	};
+	static const Path path = []
+	{
+		Path result;
 		NSString* bundlePath = [[NSBundle mainBundle] bundlePath];
-		strncpy(result, [bundlePath UTF8String], sizeof(result) - 1);
-	}
-	return result;
+		strncpy(result.text, [bundlePath UTF8String], sizeof(result.text) - 1);
+		return result;
+	}();
+	return path.text;
 }
 
 }

@@ -4,6 +4,7 @@
 
 #include "GfxCommon.h"
 #include "GfxDevice.h"
+#include "UtilLog.h"
 #include "WindowWin32.h"
 
 #include <debugapi.h>
@@ -79,32 +80,35 @@ String Platform_GetClipboardText()
 	return result;
 }
 
+// Filled once: function-local static initialization is thread-safe
 const char* Platform_GetExecutableDirectory()
 {
-	static char path[1024] = {};
-
-	if (!path[0])
+	struct Path
 	{
-		GetModuleFileNameA(nullptr, path, sizeof(path));
-
-		size_t pathLen  = strlen(path);
-		size_t slashIdx = (size_t)-1;
-		for (size_t i = pathLen - 1; i > 0; --i)
+		char text[1024] = {};
+	};
+	static const Path path = []
+	{
+		Path result;
+		const DWORD length = GetModuleFileNameA(nullptr, result.text, DWORD(sizeof(result.text)));
+		if (length == 0 || length >= sizeof(result.text))
 		{
-			if (path[i] == '/' || path[i] == '\\')
+			RUSH_LOG_ERROR("GetModuleFileNameA failed or the path is too long (%lu)", GetLastError());
+			result.text[0] = '.';
+			result.text[1] = 0;
+			return result;
+		}
+		for (DWORD i = length; i-- > 0;)
+		{
+			if (result.text[i] == '/' || result.text[i] == '\\')
 			{
-				slashIdx = i;
+				result.text[i] = 0;
 				break;
 			}
 		}
-
-		if (slashIdx != size_t(-1))
-		{
-			path[slashIdx] = 0;
-		}
-	}
-
-	return path;
+		return result;
+	}();
+	return path.text;
 }
 
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 

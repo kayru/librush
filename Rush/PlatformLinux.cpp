@@ -41,44 +41,44 @@ String Platform_GetClipboardText()
 	return g_mainWindow ? static_cast<WindowXCB*>(g_mainWindow)->getClipboardText() : String();
 }
 
+// Filled once: function-local static initialization is thread-safe
 const char* Platform_GetExecutableDirectory()
 {
-	static bool isInitialized = false;
-	static char path[4096] = {};
-
-	if (!isInitialized)
+	struct Path
 	{
-		ssize_t writtenBytes = readlink("/proc/self/exe", path, sizeof(path));
-
+		char text[4096] = {};
+	};
+	static const Path path = []
+	{
+		Path result;
+		const ssize_t writtenBytes = readlink("/proc/self/exe", result.text, sizeof(result.text));
 		if (writtenBytes < 0)
 		{
 			RUSH_LOG_ERROR("readlink(\"/proc/self/exe\") failed: %s (%d)", strerror(errno), errno);
-			strncpy(path, ".", 2);
+			result.text[0] = '.';
+			result.text[1] = 0;
+			return result;
 		}
-		else if (writtenBytes == sizeof(path))
+		if (size_t(writtenBytes) >= sizeof(result.text))
 		{
 			RUSH_LOG_ERROR("readlink(\"/proc/self/exe\") failed because output buffer is too small");
-			strncpy(path, ".", 2);
+			result.text[0] = '.';
+			result.text[1] = 0;
+			return result;
 		}
-		else
+		// readlink does not terminate the string
+		result.text[writtenBytes] = 0;
+		for (ssize_t i = writtenBytes; i-- > 1;)
 		{
-			size_t lastSlash = 0;
-			for (size_t i = 0; i < sizeof(path) && path[i]; ++i)
+			if (result.text[i] == '/')
 			{
-				if (path[i] == '/')
-					lastSlash = i;
-			}
-
-			if (lastSlash != 0)
-			{
-				path[lastSlash] = 0;
+				result.text[i] = 0;
+				break;
 			}
 		}
-
-		isInitialized = true;
-	}
-
-	return path;
+		return result;
+	}();
+	return path.text;
 }
 
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
