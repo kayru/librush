@@ -172,10 +172,10 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 			postNotificationName:NSApplicationDidFinishLaunchingNotification
 			object:NSApp];
 
-		id quitMenuItem = [[NSMenuItem new]
+		id quitMenuItem = [[[NSMenuItem alloc]
 			initWithTitle:@"Quit"
 			action:@selector(terminate:)
-			keyEquivalent:@"q"];
+			keyEquivalent:@"q"] autorelease];
 
 		id appMenu = [[NSMenu new] autorelease];
 		[appMenu addItem:quitMenuItem];
@@ -205,7 +205,7 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 				{
 					if (g_mainWindow)
 					{
-						WindowMac* window = reinterpret_cast<WindowMac*>(g_mainWindow);
+						WindowMac* window = static_cast<WindowMac*>(g_mainWindow);
 						window->processEvent(event);
 					}
 					[NSApp sendEvent:event];
