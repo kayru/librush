@@ -24,6 +24,33 @@ GfxDevice*  Platform_GetGfxDevice() { return g_mainGfxDevice; }
 GfxContext* Platform_GetGfxContext() { return g_mainGfxContext; }
 Window*     Platform_GetWindow() { return g_mainWindow; }
 
+void Platform_SetClipboardText(const char* text)
+{
+	NSString* str = [NSString stringWithUTF8String:text];
+	if (!str)
+	{
+		return;
+	}
+#if defined(RUSH_PLATFORM_IOS)
+	[UIPasteboard generalPasteboard].string = str;
+#else
+	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+	[pasteboard clearContents];
+	[pasteboard setString:str forType:NSPasteboardTypeString];
+#endif
+}
+
+String Platform_GetClipboardText()
+{
+#if defined(RUSH_PLATFORM_IOS)
+	NSString* str = [UIPasteboard generalPasteboard].string;
+#else
+	NSString* str = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+#endif
+	const char* utf8 = str ? [str UTF8String] : nullptr;
+	return utf8 && utf8[0] ? String(utf8) : String();
+}
+
 bool Platform_IsDebuggerPresent()
 {
 	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };

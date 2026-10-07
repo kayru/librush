@@ -24,6 +24,61 @@ GfxDevice*  Platform_GetGfxDevice() { return g_mainGfxDevice; }
 GfxContext* Platform_GetGfxContext() { return g_mainGfxContext; }
 Window*     Platform_GetWindow() { return g_mainWindow; }
 
+// The clipboard takes data only from a window that opened it: without one, nothing is copied
+void Platform_SetClipboardText(const char* text)
+{
+	HWND hwnd = g_mainWindow ? HWND(g_mainWindow->nativeHandle()) : nullptr;
+	const int wideCount = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+	if (!hwnd || wideCount <= 0 || !OpenClipboard(hwnd))
+	{
+		return;
+	}
+	EmptyClipboard();
+	if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, size_t(wideCount) * sizeof(wchar_t)))
+	{
+		if (wchar_t* wide = static_cast<wchar_t*>(GlobalLock(memory)))
+		{
+			MultiByteToWideChar(CP_UTF8, 0, text, -1, wide, wideCount);
+			GlobalUnlock(memory);
+			// The clipboard owns the memory once this succeeds
+			if (!SetClipboardData(CF_UNICODETEXT, memory))
+			{
+				GlobalFree(memory);
+			}
+		}
+		else
+		{
+			GlobalFree(memory);
+		}
+	}
+	CloseClipboard();
+}
+
+String Platform_GetClipboardText()
+{
+	String result;
+	HWND hwnd = g_mainWindow ? HWND(g_mainWindow->nativeHandle()) : nullptr;
+	if (!OpenClipboard(hwnd))
+	{
+		return result;
+	}
+	if (HANDLE data = GetClipboardData(CF_UNICODETEXT))
+	{
+		if (const wchar_t* wide = static_cast<const wchar_t*>(GlobalLock(data)))
+		{
+			const int count = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+			if (count > 1)
+			{
+				result.reset(size_t(count - 1));
+				WideCharToMultiByte(CP_UTF8, 0, wide, -1, result.data(), count, nullptr, nullptr);
+			}
+			GlobalUnlock(data);
+		}
+	}
+	CloseClipboard();
+	return result;
+}
+
 const char* Platform_GetExecutableDirectory()
 {
 	static char path[1024] = {};

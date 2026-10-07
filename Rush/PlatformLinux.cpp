@@ -27,6 +27,20 @@ GfxDevice*  Platform_GetGfxDevice() { return g_mainGfxDevice; }
 GfxContext* Platform_GetGfxContext() { return g_mainGfxContext; }
 Window*     Platform_GetWindow() { return g_mainWindow; }
 
+// X11 selections need a window to own them and its event loop to serve them
+void Platform_SetClipboardText(const char* text)
+{
+	if (g_mainWindow)
+	{
+		static_cast<WindowXCB*>(g_mainWindow)->setClipboardText(text);
+	}
+}
+
+String Platform_GetClipboardText()
+{
+	return g_mainWindow ? static_cast<WindowXCB*>(g_mainWindow)->getClipboardText() : String();
+}
+
 const char* Platform_GetExecutableDirectory()
 {
 	static bool isInitialized = false;

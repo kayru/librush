@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Rush.h"
+#include "UtilString.h"
 
 namespace Rush
 {
@@ -109,6 +110,10 @@ GfxDevice*  Platform_GetGfxDevice();
 GfxContext* Platform_GetGfxContext();
 Window*     Platform_GetWindow();
 Window*     Platform_CreateWindow(const WindowDesc& desc);
+
+// System clipboard text, UTF-8
+void   Platform_SetClipboardText(const char* text);
+String Platform_GetClipboardText();
 
 bool Platform_IsDebuggerPresent();
 
