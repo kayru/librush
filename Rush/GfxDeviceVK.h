@@ -280,7 +280,7 @@ class MemoryAllocatorVK
 {
 public:
 
-	void          init(u32 memoryType, bool hostVisible);
+	void          init(bool hostVisible);
 	MemoryBlockVK alloc(u64 size, u64 alignment);
 	void          releaseBlocks(bool immediate);
 
@@ -289,7 +289,6 @@ public:
 	MemoryBlockVK allocBlock(u64 blockSize);
 	void          freeBlock(MemoryBlockVK block, bool immediate);
 
-	u32                         m_memoryType = 0;
 	DynamicArray<MemoryBlockVK> m_availableBlocks;
 	DynamicArray<MemoryBlockVK> m_fullBlocks;
 	bool                        m_hostVisible = false;
@@ -346,6 +345,8 @@ public:
 	void endFrame();
 
 	u32 memoryTypeFromProperties(u32 memoryTypeBits, VkFlags requiredFlags, VkFlags incompatibleFlags = 0);
+	u32 uploadMemoryType(u32 memoryTypeBits);
+	u32 readbackMemoryType(u32 memoryTypeBits, bool* outNonCoherent);
 
 	void flushUploadContext(GfxContext* dependentContext = nullptr, bool waitForCompletion = false);
 
@@ -456,12 +457,6 @@ public:
 	VkPhysicalDeviceMeshShaderPropertiesNV m_nvMeshShaderProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV };
 	VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES };
 	DynamicArray<MemoryTraitsVK>      m_memoryTraits;
-
-	struct MemoryTypes
-	{
-		u32 local = ~0u;
-		u32 host  = ~0u;
-	} m_memoryTypes;
 
 	VkCommandPool m_graphicsCommandPool = VK_NULL_HANDLE;
 	VkCommandPool m_computeCommandPool  = VK_NULL_HANDLE;
@@ -638,6 +633,7 @@ public:
 		VkDeviceMemory memory = VK_NULL_HANDLE;
 		VkBuffer buffer = VK_NULL_HANDLE;
 		void* mapped = nullptr;
+		bool nonCoherent = false;
 		Tuple2u size = {};
 		GfxContext* context = nullptr;
 		bool active = false;

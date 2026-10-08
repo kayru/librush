@@ -962,26 +962,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	
 
-	m_memoryTypes.local = memoryTypeFromProperties(0xFFFFFFFF, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	RUSH_ASSERT(m_memoryTypes.local != 0xFFFFFFFF);
-
-	struct
-	{
-		VkFlags required;
-		VkFlags incompatible;
-	} hostMemoryProperties[] = {
-	    {VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0},
-	    {VK_MEMORY_PROPERTY_HOST_CACHED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT},
-		{VK_MEMORY_PROPERTY_HOST_CACHED_BIT, 0},
-	    {VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0},
-	    {VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 0},
-	};
-
-	for (u32 i = 0; i < RUSH_COUNTOF(hostMemoryProperties) && m_memoryTypes.host == 0xFFFFFFFF; ++i)
-	{
-		m_memoryTypes.host = memoryTypeFromProperties(0xFFFFFFFF, hostMemoryProperties[i].required, hostMemoryProperties[i].incompatible);
-	}
-	RUSH_ASSERT(m_memoryTypes.host != 0xFFFFFFFF);
 
 	// Swap chain
 
@@ -1120,8 +1100,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    m_caps.timestamps ? "yes" : "no", m_timestampValidBits[u32(GfxContextType::Graphics)], m_timestampPeriod,
 	    m_clockCalibrated ? "yes" : "no", m_hostQueryReset ? "yes" : "no", m_synchronization2 ? "yes" : "no");
 
-	m_transientLocalAllocator.init(m_memoryTypes.local, false);
-	m_transientHostAllocator.init(m_memoryTypes.host, true);
+	m_transientLocalAllocator.init(false);
+	m_transientHostAllocator.init(true);
 
 	m_currentFrame = &m_frameData[m_frameDataIndex];
 
@@ -2107,30 +2087,74 @@ u32 GfxDevice::memoryTypeFromProperties(u32 memoryTypeBits, VkFlags requiredFlag
 {
 	static_assert(VK_MAX_MEMORY_TYPES == 32,
 	    "VK_MAX_MEMORY_TYPES is expected to be 32 to match VkMemoryRequirements::memoryTypeBits");
-	for (u32 i = 0; i < 32; i++)
+	for (u32 i = 0; i < m_deviceMemoryProps.memoryTypeCount; i++)
 	{
-		if ((memoryTypeBits & 1) == 1)
+		const VkMemoryPropertyFlags flags = m_deviceMemoryProps.memoryTypes[i].propertyFlags;
+		if (((memoryTypeBits >> i) & 1) && !(flags & incompatibleFlags) && (flags & requiredFlags) == requiredFlags)
 		{
-			if (m_deviceMemoryProps.memoryTypes[i].propertyFlags & incompatibleFlags)
-			{
-				continue;
-			}
-
-			if ((m_deviceMemoryProps.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags)
-			{
-				return i;
-			}
+			return i;
 		}
-		memoryTypeBits >>= 1;
 	}
 
 	return 0xFFFFFFFF;
 }
 
-void MemoryAllocatorVK::init(u32 memoryType, bool hostVisible)
+// CPU-written staging and transient data. Coherent, so writes need no flush.
+u32 GfxDevice::uploadMemoryType(u32 memoryTypeBits)
+{
+	const VkFlags coherent = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	const VkFlags cached   = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+	const VkFlags local    = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+	const struct
+	{
+		VkFlags required;
+		VkFlags incompatible;
+	} preferences[] = {
+	    {coherent | cached | local, 0},
+	    {coherent | cached, local},
+	    {coherent | cached, 0},
+	    {coherent | local, 0},
+	    {coherent, 0},
+	};
+
+	for (const auto& preference : preferences)
+	{
+		const u32 type = memoryTypeFromProperties(memoryTypeBits, preference.required, preference.incompatible);
+		if (type != 0xFFFFFFFF)
+		{
+			return type;
+		}
+	}
+
+	return 0xFFFFFFFF;
+}
+
+// CPU readback wants cached memory: uncached (write-combined, or VRAM through
+// the BAR) reads crawl. Cached but not coherent must be invalidated before reads.
+u32 GfxDevice::readbackMemoryType(u32 memoryTypeBits, bool* outNonCoherent)
+{
+	const VkFlags visible  = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+	const VkFlags coherent = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	const VkFlags cached   = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+	for (const VkFlags required : {visible | cached | coherent, visible | cached, visible | coherent})
+	{
+		const u32 type = memoryTypeFromProperties(memoryTypeBits, required);
+		if (type != 0xFFFFFFFF)
+		{
+			*outNonCoherent = !(m_deviceMemoryProps.memoryTypes[type].propertyFlags & coherent);
+			return type;
+		}
+	}
+
+	*outNonCoherent = false;
+	return 0xFFFFFFFF;
+}
+
+void MemoryAllocatorVK::init(bool hostVisible)
 {
 	RUSH_ASSERT(m_availableBlocks.empty() && m_fullBlocks.empty());
-	m_memoryType  = memoryType;
 	m_hostVisible = hostVisible;
 }
 
@@ -2228,7 +2252,11 @@ MemoryBlockVK MemoryAllocatorVK::allocBlock(u64 blockSize)
 	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 	allocInfo.pNext = &allocFlags;
 	allocInfo.allocationSize       = memoryReq.size;
-	allocInfo.memoryTypeIndex      = m_memoryType;
+	allocInfo.memoryTypeIndex      = m_hostVisible
+	                                     ? g_device->uploadMemoryType(memoryReq.memoryTypeBits)
+	                                     : g_device->memoryTypeFromProperties(
+	                                           memoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	RUSH_ASSERT(allocInfo.memoryTypeIndex != 0xFFFFFFFF);
 
 	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &block.memory));
 	V(vkBindBufferMemory(g_vulkanDevice, block.buffer, block.memory, 0));
@@ -2589,6 +2617,14 @@ void GfxContext::beginBuild()
 void GfxContext::endBuild()
 {
 	flushBarriers();
+
+	// A fence wait makes device writes available but not visible to the host:
+	// CPU reads of mapped memory after it need this barrier (Vulkan spec, fences).
+	VkMemoryBarrier hostReadBarrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+	hostReadBarrier.srcAccessMask   = VK_ACCESS_MEMORY_WRITE_BIT;
+	hostReadBarrier.dstAccessMask   = VK_ACCESS_HOST_READ_BIT;
+	vkCmdPipelineBarrier(m_commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1,
+	    &hostReadBarrier, 0, nullptr, 0, nullptr);
 
 	RUSH_ASSERT(m_isActive);
 
@@ -3842,7 +3878,9 @@ void GfxDevice::captureScreenshot(VkSemaphore signalSemaphore)
 
 	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 	allocInfo.allocationSize       = memoryReq.size;
-	allocInfo.memoryTypeIndex      = m_memoryTypes.host;
+	bool nonCoherent               = false;
+	allocInfo.memoryTypeIndex      = readbackMemoryType(memoryReq.memoryTypeBits, &nonCoherent);
+	RUSH_ASSERT(allocInfo.memoryTypeIndex != 0xFFFFFFFF);
 
 	V(vkAllocateMemory(m_vulkanDevice, &allocInfo, g_allocationCallbacks, &memory));
 	V(vkBindBufferMemory(m_vulkanDevice, buffer, memory, 0));
@@ -3865,13 +3903,6 @@ void GfxDevice::captureScreenshot(VkSemaphore signalSemaphore)
 
 	m_resources.buffers.remove(stagingHandle);
 
-	// Makes the copy visible to the host read after the fence wait
-	VkMemoryBarrier hostReadBarrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
-	hostReadBarrier.srcAccessMask   = VK_ACCESS_TRANSFER_WRITE_BIT;
-	hostReadBarrier.dstAccessMask   = VK_ACCESS_HOST_READ_BIT;
-	vkCmdPipelineBarrier(context->m_commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
-	    1, &hostReadBarrier, 0, nullptr, 0, nullptr);
-
 	context->addImageBarrier(swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	context->endBuild();
@@ -3881,6 +3912,7 @@ void GfxDevice::captureScreenshot(VkSemaphore signalSemaphore)
 	m_pendingScreenshot.memory = memory;
 	m_pendingScreenshot.buffer = buffer;
 	m_pendingScreenshot.mapped = mappedBuffer;
+	m_pendingScreenshot.nonCoherent = nonCoherent;
 	m_pendingScreenshot.size = {m_swapChainExtent.width, m_swapChainExtent.height};
 	m_pendingScreenshot.context = context;
 	m_pendingScreenshot.active = true;
@@ -3982,6 +4014,13 @@ GfxProgressId Gfx_Present()
 	{
 		GfxDevice::PendingScreenshot& pending = g_device->m_pendingScreenshot;
 		V(vkWaitForFences(g_vulkanDevice, 1, &pending.context->m_fence, true, UINT64_MAX));
+		if (pending.nonCoherent)
+		{
+			VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+			range.memory              = pending.memory;
+			range.size                = VK_WHOLE_SIZE;
+			V(vkInvalidateMappedMemoryRanges(g_vulkanDevice, 1, &range));
+		}
 
 		if (g_device->m_pendingScreenshotCallback && pending.mapped)
 		{
@@ -5782,31 +5821,19 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		res.info.range  = bufferCreateInfo.size;
 	}
 
-	// Host-visible memory is coherent, except that CPU readback wants cached
-	// memory: uncached (write-combined, or VRAM through the BAR) reads crawl.
-	// Cached but not coherent is invalidated in Gfx_MapBuffer.
+	// Host-visible memory is coherent, except for CPU readback (invalidated in Gfx_MapBuffer)
 	auto chooseMemoryType = [&](u32 memoryTypeBits)
 	{
-		const VkFlags visible = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-		const VkFlags coherent = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-		const VkFlags cached = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 		if (!desc.hostVisible)
 		{
 			return g_device->memoryTypeFromProperties(memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 		}
 		if (!!(desc.flags & GfxBufferFlags::CpuRead))
 		{
-			for (const VkFlags required : {visible | cached | coherent, visible | cached})
-			{
-				const u32 type = g_device->memoryTypeFromProperties(memoryTypeBits, required);
-				if (type != 0xFFFFFFFF)
-				{
-					res.mappedNonCoherent = !(g_device->m_deviceMemoryProps.memoryTypes[type].propertyFlags & coherent);
-					return type;
-				}
-			}
+			return g_device->readbackMemoryType(memoryTypeBits, &res.mappedNonCoherent);
 		}
-		return g_device->memoryTypeFromProperties(memoryTypeBits, visible | coherent);
+		return g_device->memoryTypeFromProperties(
+		    memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	};
 
 	if (data || isStatic)
