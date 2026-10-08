@@ -6288,23 +6288,17 @@ void Gfx_SetViewport(GfxContext* rc, const GfxViewport& viewport)
 
 void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 {
+	// Offsets must be non-negative; an empty or inverted rect becomes zero-sized
+	const s32 left   = max(rect.left, 0);
+	const s32 top    = max(rect.top, 0);
+	const s32 right  = max(rect.right, left);
+	const s32 bottom = max(rect.bottom, top);
+
 	VkRect2D scissor      = {};
-	scissor.offset.x      = rect.left;
-	scissor.offset.y      = rect.top;
-	scissor.extent.width  = rect.right - rect.left;
-	scissor.extent.height = rect.bottom - rect.top;
-
-	if (scissor.offset.x < 0)
-	{
-		scissor.extent.width += scissor.offset.x;
-		scissor.offset.x = 0;
-	}
-
-	if (scissor.offset.y < 0)
-	{
-		scissor.extent.height += scissor.offset.y;
-		scissor.offset.y = 0;
-	}
+	scissor.offset.x      = left;
+	scissor.offset.y      = top;
+	scissor.extent.width  = u32(right - left);
+	scissor.extent.height = u32(bottom - top);
 
 	vkCmdSetScissor(rc->m_commandBuffer, 0, 1, &scissor);
 }

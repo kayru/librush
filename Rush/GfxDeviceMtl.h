@@ -460,6 +460,7 @@ public:
 	GfxRef<GfxAccelerationStructure> m_accelerationStructures[MaxAccelerationStructures];
 	GfxRef<GfxDescriptorSet> m_descriptorSets[MaxDescriptorSets];
 	GfxPassDesc m_passDesc;
+	Tuple2u     m_passSize = {}; // smallest attachment: scissor bound
 
 	GfxRef<GfxBuffer> m_vertexBuffers[MaxVertexStreams];
 	u32 m_vertexBufferOffsets[MaxVertexStreams] = {};

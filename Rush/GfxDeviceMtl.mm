@@ -3374,14 +3374,31 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	{
 		viewportTexture = passDescriptor.depthAttachment.texture;
 	}
+
+	rc->m_passSize = {};
 	if (viewportTexture)
 	{
+		rc->m_passSize = {u32(viewportTexture.width), u32(viewportTexture.height)};
+		const auto fitAttachment = [rc](id<MTLTexture> texture)
+		{
+			if (texture)
+			{
+				rc->m_passSize.x = min(rc->m_passSize.x, u32(texture.width));
+				rc->m_passSize.y = min(rc->m_passSize.y, u32(texture.height));
+			}
+		};
+		for (u32 i = 0; i < GfxPassDesc::MaxTargets; ++i)
+		{
+			fitAttachment(passDescriptor.colorAttachments[i].texture);
+		}
+		fitAttachment(passDescriptor.depthAttachment.texture);
+
 		const double width = static_cast<double>(viewportTexture.width);
 		const double height = static_cast<double>(viewportTexture.height);
 		MTLViewport metalViewport = { 0.0, 0.0, width, height, 0.0, 1.0 };
 		[rc->m_commandEncoder setViewport:metalViewport];
 
-		MTLScissorRect metalRect = { 0, 0, (NSUInteger)viewportTexture.width, (NSUInteger)viewportTexture.height };
+		MTLScissorRect metalRect = { 0, 0, rc->m_passSize.x, rc->m_passSize.y };
 		[rc->m_commandEncoder setScissorRect:metalRect];
 	}
 
@@ -3521,7 +3538,21 @@ void Gfx_SetViewport(GfxContext* rc, const GfxViewport& viewport)
 
 void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect)
 {
-	MTLScissorRect metalRect = { u32(rect.left), u32(rect.top), u32(rect.right-rect.left), u32(rect.bottom-rect.top) };
+	// Outside a pass there is no encoder to set it on; Gfx_BeginPass resets it
+	if (!rc->m_commandEncoder)
+	{
+		return;
+	}
+
+	// Metal requires the rect inside the attachments; an empty result stays empty
+	const s64 width  = rc->m_passSize.x;
+	const s64 height = rc->m_passSize.y;
+	const s64 left   = clamp<s64>(rect.left, 0, width);
+	const s64 top    = clamp<s64>(rect.top, 0, height);
+	const s64 right  = clamp<s64>(rect.right, left, width);
+	const s64 bottom = clamp<s64>(rect.bottom, top, height);
+
+	MTLScissorRect metalRect = {NSUInteger(left), NSUInteger(top), NSUInteger(right - left), NSUInteger(bottom - top)};
 	[rc->m_commandEncoder setScissorRect:metalRect];
 }
 
