@@ -69,8 +69,8 @@ add_library(Rush STATIC
 	Rush/GfxPrimitiveBatch.h
 	Rush/GfxTiming.cpp
 	Rush/GfxTiming.h
-	Rush/MathCommon.cpp
 	Rush/MathCommon.h
+	Rush/MathHalf.h
 	Rush/MathTypes.cpp
 	Rush/MathTypes.h
 	Rush/Platform.cpp
