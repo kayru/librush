@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MathTypes.h"
+#include <bit>
 #include <cstring>
 
 namespace Rush
@@ -63,7 +64,7 @@ struct ColorRGBA8
 		return ColorRGBA(rf, gf, bf, af);
 	}
 
-	operator u32() const { return *reinterpret_cast<const u32*>(this); }
+	operator u32() const { return std::bit_cast<u32>(*this); }
 
 	static ColorRGBA8 Black(u8 a = 0xFF) { return ColorRGBA8(0x00, 0x00, 0x00, a); }
 	static ColorRGBA8 White(u8 a = 0xFF) { return ColorRGBA8(0xFF, 0xFF, 0xFF, a); }

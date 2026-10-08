@@ -287,6 +287,8 @@ public:
 	DescriptorSetLayoutArray createDescriptorSetLayouts(const GfxShaderBindingDesc& desc, u32 resourceStageFlags);
 
 	void          createSwapChain();
+	void          acquireBackBuffer();
+	GfxTexture    backBufferTexture();
 
 	void beginFrame();
 	void endFrame();
@@ -379,7 +381,7 @@ public:
 	GfxConfig     m_cfg;
 	GfxCapability m_caps;
 
-	VkDebugReportCallbackEXT         m_debugReportCallbackExt;
+	VkDebugReportCallbackEXT         m_debugReportCallbackExt = VK_NULL_HANDLE;
 	VkInstance                       m_vulkanInstance = VK_NULL_HANDLE;
 	VkDevice                         m_vulkanDevice   = VK_NULL_HANDLE;
 	VkPhysicalDevice                 m_physicalDevice = VK_NULL_HANDLE;
@@ -454,11 +456,17 @@ public:
 	DynamicArray<VkSemaphore> m_renderCompleteSemaphores;
 	u32                   m_swapChainIndex = 0;
 	bool                  m_swapChainValid = false;
+	bool                  m_swapChainSuboptimal = false;
+	bool                  m_swapChainCopySupported = false;
+	// This frame owns m_swapChainIndex and must present it
+	bool                  m_backBufferAcquired = false;
 
 	DynamicArray<VkPresentModeKHR> m_availablePresentModes;
 
 	GfxOwn<GfxTexture>               m_depthBufferTexture;
 	DynamicArray<GfxOwn<GfxTexture>> m_swapChainTextures;
+	// Back buffer passes render here in frames without an acquired image (e.g. minimized)
+	GfxOwn<GfxTexture>               m_offscreenBackBuffer;
 
 	// resources
 
@@ -499,6 +507,7 @@ public:
 
 	DynamicArray<FrameData> m_frameData;
 	FrameData*              m_currentFrame = nullptr;
+	u32                     m_frameDataIndex = 0;
 
 	DynamicArray<DestructionEpoch> m_destructionEpochs;
 	UniquePtr<DestructionQueueVK>  m_pendingDestructionQueue;

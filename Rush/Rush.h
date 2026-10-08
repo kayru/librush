@@ -46,14 +46,14 @@
 #define RUSH_UNUSED( v ) { (void)sizeof(v); }
 #define RUSH_DISALLOW_COPY_AND_ASSIGN(T) T(const T&) = delete; void operator=(const T&) = delete;
 #define RUSH_IMPLEMENT_FLAG_OPERATORS(T, S)                                                                            \
-	inline T    operator^(T a, T b) { return (T)(static_cast<S>(a) ^ static_cast<S>(b)); }                             \
-	inline T    operator&(T a, T b) { return (T)(static_cast<S>(a) & static_cast<S>(b)); }                             \
-	inline T    operator|(T a, T b) { return (T)(static_cast<S>(a) | static_cast<S>(b)); }                             \
-	inline T&   operator^=(T& a, T b) { return a = a ^ b; }                                                            \
-	inline T&   operator&=(T& a, T b) { return a = a & b; }                                                            \
-	inline T&   operator|=(T& a, T b) { return a = a | b; }                                                            \
-	inline T    operator~(T a) { return (T)(static_cast<S>(~static_cast<S>(a))); }                                     \
-	inline bool operator!(T a) { return !static_cast<S>(a); }
+	constexpr T    operator^(T a, T b) { return (T)(static_cast<S>(a) ^ static_cast<S>(b)); }                             \
+	constexpr T    operator&(T a, T b) { return (T)(static_cast<S>(a) & static_cast<S>(b)); }                             \
+	constexpr T    operator|(T a, T b) { return (T)(static_cast<S>(a) | static_cast<S>(b)); }                             \
+	constexpr T&   operator^=(T& a, T b) { return a = a ^ b; }                                                            \
+	constexpr T&   operator&=(T& a, T b) { return a = a & b; }                                                            \
+	constexpr T&   operator|=(T& a, T b) { return a = a | b; }                                                            \
+	constexpr T    operator~(T a) { return (T)(static_cast<S>(~static_cast<S>(a))); }                                     \
+	constexpr bool operator!(T a) { return !static_cast<S>(a); }
 
 #if defined(_MSC_VER)
 #   define RUSH_ASSUME(x) __assume(x)

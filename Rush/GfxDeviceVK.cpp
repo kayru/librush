@@ -362,6 +362,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_R16_Uint: return VK_FORMAT_R16_UINT;
 	case GfxFormat_RG16_Float: return VK_FORMAT_R16G16_SFLOAT;
 	case GfxFormat_RGBA16_Float: return VK_FORMAT_R16G16B16A16_SFLOAT;
+	case GfxFormat_RGBA16_Unorm: return VK_FORMAT_R16G16B16A16_UNORM;
 	case GfxFormat_RGBA32_Float: return VK_FORMAT_R32G32B32A32_SFLOAT;
 	case GfxFormat_RGB32_Float: return VK_FORMAT_R32G32B32_SFLOAT;
 	case GfxFormat_BGRA8_Unorm: return VK_FORMAT_B8G8R8A8_UNORM;
@@ -987,10 +988,9 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	{
 		createSwapChain();
 	}
-	else
+	if (m_frameData.empty())
 	{
 		m_frameData.resize(1);
-		m_swapChainValid = false;
 	}
 
 	// Command pool
@@ -1121,7 +1121,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_transientLocalAllocator.init(m_memoryTypes.local, false);
 	m_transientHostAllocator.init(m_memoryTypes.host, true);
 
-	m_currentFrame = &m_frameData.back();
+	m_currentFrame = &m_frameData[m_frameDataIndex];
 
 	// Setup resize event notifications
 
@@ -1686,8 +1686,7 @@ VkFramebuffer GfxDevice::createFrameBuffer(const GfxPassDesc& desc, VkRenderPass
 void GfxDevice::createSwapChain()
 {
 	RUSH_ASSERT_MSG(!m_cfg.headless, "GfxDevice::createSwapChain called in headless mode.");
-
-	V(vkQueueWaitIdle(m_graphicsQueue));
+	RUSH_ASSERT(!m_backBufferAcquired);
 
 	if (!m_swapChainSurface)
 	{
@@ -1720,8 +1719,50 @@ void GfxDevice::createSwapChain()
 	VkSurfaceCapabilitiesKHR surfCaps = {};
 	V(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, m_swapChainSurface, &surfCaps));
 
-	// FIXME: handle VK_EXTENT2D_MAX and clamp to surface min/max when currentExtent is undefined.
-	m_swapChainExtent = surfCaps.currentExtent;
+	auto enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
+
+	size_t preferredFormatIndex = enumeratedSurfaceFormats.size();
+	for (size_t i = 0; i < enumeratedSurfaceFormats.size(); ++i)
+	{
+		if (enumeratedSurfaceFormats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
+		    enumeratedSurfaceFormats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
+		{
+			preferredFormatIndex = i;
+			break;
+		}
+	}
+	if (preferredFormatIndex == enumeratedSurfaceFormats.size())
+	{
+		RUSH_LOG_FATAL("Surface supports neither RGBA8 nor BGRA8 UNORM swap chain formats");
+	}
+
+	const VkFormat        swapChainColorFormat = enumeratedSurfaceFormats[preferredFormatIndex].format;
+	const VkColorSpaceKHR swapChainColorSpace  = enumeratedSurfaceFormats[preferredFormatIndex].colorSpace;
+	const GfxFormat       swapChainFormat =
+	    swapChainColorFormat == VK_FORMAT_B8G8R8A8_UNORM ? GfxFormat_BGRA8_Unorm : GfxFormat_RGBA8_Unorm;
+
+	// Back buffer passes need these even while no swap chain exists
+	m_caps.backBufferDesc.colorFormats[0] = swapChainFormat;
+	m_caps.backBufferDesc.depthFormat     = GfxFormat_D32_Float_S8_Uint;
+
+	VkExtent2D extent = surfCaps.currentExtent;
+	if (extent.width == 0xFFFFFFFF)
+	{
+		// The swap chain sets the surface size
+		const Tuple2i framebufferSize = m_window->getFramebufferSize();
+		extent.width  = clamp(u32(max(framebufferSize.x, 0)), surfCaps.minImageExtent.width, surfCaps.maxImageExtent.width);
+		extent.height = clamp(u32(max(framebufferSize.y, 0)), surfCaps.minImageExtent.height, surfCaps.maxImageExtent.height);
+	}
+	if (extent.width == 0 || extent.height == 0)
+	{
+		// Minimized: nothing can be presented until the surface has an area again
+		m_swapChainValid = false;
+		return;
+	}
+
+	V(vkQueueWaitIdle(m_graphicsQueue));
+
+	m_swapChainExtent = extent;
 
 	u32 presentModeCount = 0;
 	V(vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_swapChainSurface, &presentModeCount, nullptr));
@@ -1755,24 +1796,22 @@ void GfxDevice::createSwapChain()
 
 	RUSH_ASSERT(presentModeSupported(pendingPresentMode));
 
-	// FIXME: clamp desiredSwapChainImageCount to surfCaps.maxImageCount when maxImageCount > 0.
 	u32 desiredSwapChainImageCount = max<u32>(m_desiredSwapChainImageCount, surfCaps.minImageCount);
-
-	auto enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
-
-	size_t preferredFormatIndex = 0;
-	for (size_t i = 0; i < enumeratedSurfaceFormats.size(); ++i)
+	if (surfCaps.maxImageCount != 0)
 	{
-		if (enumeratedSurfaceFormats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
-		    enumeratedSurfaceFormats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
-		{
-			preferredFormatIndex = i;
-			break;
-		}
+		desiredSwapChainImageCount = min<u32>(desiredSwapChainImageCount, surfCaps.maxImageCount);
 	}
 
-	const VkFormat        swapChainColorFormat = enumeratedSurfaceFormats[preferredFormatIndex].format;
-	const VkColorSpaceKHR swapChainColorSpace  = enumeratedSurfaceFormats[preferredFormatIndex].colorSpace;
+	// Screenshots copy from the back buffer
+	m_swapChainCopySupported = (surfCaps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
+
+	VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	if (!(surfCaps.supportedCompositeAlpha & compositeAlpha))
+	{
+		// Exactly one bit is chosen: the lowest supported one
+		compositeAlpha = VkCompositeAlphaFlagBitsKHR(
+		    surfCaps.supportedCompositeAlpha & (~surfCaps.supportedCompositeAlpha + 1));
+	}
 
 	VkSwapchainCreateInfoKHR swapChainCreateInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
 	swapChainCreateInfo.surface                  = m_swapChainSurface;
@@ -1780,8 +1819,11 @@ void GfxDevice::createSwapChain()
 	swapChainCreateInfo.imageFormat              = swapChainColorFormat;
 	swapChainCreateInfo.imageColorSpace          = swapChainColorSpace;
 	swapChainCreateInfo.imageExtent              = m_swapChainExtent;
-	swapChainCreateInfo.imageUsage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	swapChainCreateInfo.preTransform          = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	swapChainCreateInfo.imageUsage =
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (m_swapChainCopySupported ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
+	swapChainCreateInfo.preTransform =
+	    (surfCaps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
+	                                                                          : surfCaps.currentTransform;
 	swapChainCreateInfo.imageArrayLayers      = 1;
 	swapChainCreateInfo.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
 	swapChainCreateInfo.queueFamilyIndexCount = 0;
@@ -1789,7 +1831,7 @@ void GfxDevice::createSwapChain()
 	swapChainCreateInfo.presentMode           = pendingPresentMode;
 	swapChainCreateInfo.oldSwapchain          = m_swapChain;
 	swapChainCreateInfo.clipped               = true;
-	swapChainCreateInfo.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapChainCreateInfo.compositeAlpha        = compositeAlpha;
 
 	GfxTextureDesc depthBufferDesc = GfxTextureDesc::make2D(
 	    m_swapChainExtent.width, m_swapChainExtent.height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil);
@@ -1809,9 +1851,7 @@ void GfxDevice::createSwapChain()
 	u32 swapChainImageCount = 0;
 	V(vkGetSwapchainImagesKHR(m_vulkanDevice, m_swapChain, &swapChainImageCount, nullptr));
 
-	RUSH_ASSERT(m_frameData.empty() || m_frameData.size() == swapChainImageCount);
-
-	m_frameData.resize(swapChainImageCount);
+	// The queue is idle, so no acquire semaphore has a pending wait. The count can change (e.g. present mode).
 	for (auto& it : m_frameData)
 	{
 		if (it.presentCompleteSemaphore)
@@ -1828,6 +1868,10 @@ void GfxDevice::createSwapChain()
 		}
 		it.presentCompleteSemaphoreWaited = false;
 	}
+
+	m_frameData.resize(swapChainImageCount);
+	m_frameDataIndex = min<u32>(m_frameDataIndex, swapChainImageCount - 1);
+	m_currentFrame   = &m_frameData[m_frameDataIndex];
 
 	m_swapChainImages.resize(swapChainImageCount);
 
@@ -1854,15 +1898,6 @@ void GfxDevice::createSwapChain()
 
 	for (u32 i = 0; i < swapChainImageCount; ++i)
 	{
-		GfxFormat swapChainFormat;
-		switch (swapChainColorFormat)
-		{
-		default: RUSH_BREAK;
-
-		case VK_FORMAT_B8G8R8A8_UNORM: swapChainFormat = GfxFormat_BGRA8_Unorm; break;
-		case VK_FORMAT_R8G8B8A8_UNORM: swapChainFormat = GfxFormat_RGBA8_Unorm; break;
-		}
-
 		GfxTextureDesc textureDesc = GfxTextureDesc::make2D(
 		    m_swapChainExtent.width, m_swapChainExtent.height, swapChainFormat, GfxUsageFlags::RenderTarget);
 		m_swapChainTextures[i] =
@@ -1872,10 +1907,79 @@ void GfxDevice::createSwapChain()
 	m_presentInterval      = m_desiredPresentInterval;
 	m_swapChainPresentMode = pendingPresentMode;
 
-	m_swapChainValid = true;
+	m_swapChainValid      = true;
+	m_swapChainSuboptimal = false;
+}
 
-	m_caps.backBufferDesc.colorFormats[0] = m_resources.textures[m_swapChainTextures[0].get()].desc.format;
-	m_caps.backBufferDesc.depthFormat     = m_resources.textures[m_depthBufferTexture.get()].desc.format;
+void GfxDevice::acquireBackBuffer()
+{
+	// One retry: a resize between the event pump and the acquire makes the new swap chain out of date
+	for (u32 attempt = 0; attempt < 2 && m_swapChainValid; ++attempt)
+	{
+		VkSemaphore presentCompleteSemaphore = allocSemaphore();
+
+		u32       nextSwapChainIndex = ~0u;
+		const u64 waitBegin          = Timer::nowNs();
+		VkResult  result             = vkAcquireNextImageKHR(
+            m_vulkanDevice, m_swapChain, UINT64_MAX, presentCompleteSemaphore, VK_NULL_HANDLE, &nextSwapChainIndex);
+		Gfx_RecordDisplayWait(m_stats, waitBegin, Timer::nowNs());
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			// Nothing will signal it, so it is reusable
+			freeSemaphore(presentCompleteSemaphore);
+			createSwapChain();
+			continue;
+		}
+		if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+		{
+			RUSH_LOG_FATAL("vkAcquireNextImageKHR returned code %d (%s)", result, toString(result));
+		}
+
+		FrameData& nextFrame = m_frameData[nextSwapChainIndex];
+		if (nextFrame.presentCompleteSemaphore)
+		{
+			RUSH_ASSERT(nextFrame.presentCompleteSemaphoreWaited);
+			freeSemaphore(nextFrame.presentCompleteSemaphore);
+		}
+
+		nextFrame.presentCompleteSemaphore       = presentCompleteSemaphore;
+		nextFrame.presentCompleteSemaphoreWaited = false;
+
+		// Presented anyway, then recreated
+		m_swapChainSuboptimal = result == VK_SUBOPTIMAL_KHR;
+		m_swapChainIndex      = nextSwapChainIndex;
+		m_backBufferAcquired  = true;
+		return;
+	}
+	m_swapChainValid = false;
+}
+
+GfxTexture GfxDevice::backBufferTexture()
+{
+	if (m_backBufferAcquired)
+	{
+		return m_swapChainTextures[m_swapChainIndex].get();
+	}
+
+	const u32 width  = max<u32>(m_swapChainExtent.width, 1);
+	const u32 height = max<u32>(m_swapChainExtent.height, 1);
+	const GfxFormat format = m_caps.backBufferDesc.colorFormats[0];
+
+	const GfxTextureDesc* current =
+	    m_offscreenBackBuffer.valid() ? &m_resources.textures[m_offscreenBackBuffer.get()].desc : nullptr;
+	if (!current || current->width != width || current->height != height || current->format != format)
+	{
+		m_offscreenBackBuffer = retainResource(m_resources.textures,
+		    TextureVK::create(GfxTextureDesc::make2D(width, height, format, GfxUsageFlags::RenderTarget), nullptr, 0, nullptr));
+	}
+	if (!m_depthBufferTexture.valid())
+	{
+		m_depthBufferTexture = retainResource(m_resources.textures,
+		    TextureVK::create(GfxTextureDesc::make2D(width, height, GfxFormat_D32_Float_S8_Uint, GfxUsageFlags::DepthStencil),
+		        nullptr, 0, nullptr));
+	}
+	return m_offscreenBackBuffer.get();
 }
 
 GfxDevice::FrameData::FrameData() {}
@@ -1940,61 +2044,23 @@ inline void recycleContext(GfxContext* context)
 
 void GfxDevice::beginFrame()
 {
-	if (!m_cfg.headless && !m_swapChainValid && m_window && m_window->isFocused())
+	RUSH_ASSERT(!m_backBufferAcquired);
+
+	if (!m_cfg.headless)
 	{
-		createSwapChain();
+		if (!m_swapChainValid)
+		{
+			createSwapChain();
+		}
+		acquireBackBuffer();
 	}
 
-	if (!m_cfg.headless && m_swapChainValid)
+	// Frames that acquire nothing reuse the last slot, which serializes them with the GPU
+	if (m_backBufferAcquired)
 	{
-		VkSemaphore presentCompleteSemaphore = allocSemaphore();
-
-		u32       nextSwapChainIndex = ~0u;
-		const u64 waitBegin          = Timer::nowNs();
-		VkResult  result             = vkAcquireNextImageKHR(
-            m_vulkanDevice, m_swapChain, UINT64_MAX, presentCompleteSemaphore, VK_NULL_HANDLE, &nextSwapChainIndex);
-		Gfx_RecordDisplayWait(m_stats, waitBegin, Timer::nowNs());
-
-		bool success = false;
-		switch (result)
-		{
-		default:
-			success = false;
-			break;
-		case VK_SUBOPTIMAL_KHR:
-			// TODO: re-create the swap chain next frame
-			success = true;
-			break;
-		case VK_SUCCESS:
-		//case VK_TIMEOUT:
-		//case VK_NOT_READY:
-			success = true;
-			break;
-		}
-
-		// FIXME: handle VK_ERROR_OUT_OF_DATE_KHR (recreate swapchain, release semaphore).
-
-		if (!success)
-		{
-			RUSH_LOG_FATAL("vkAcquireNextImageKHR returned code %d (%s)", result, toString(result));
-		}
-
-		FrameData& nextFrame = m_frameData[nextSwapChainIndex];
-		if (nextFrame.presentCompleteSemaphore)
-		{
-			RUSH_ASSERT(nextFrame.presentCompleteSemaphoreWaited);
-			freeSemaphore(nextFrame.presentCompleteSemaphore);
-			nextFrame.presentCompleteSemaphore = VK_NULL_HANDLE;
-		}
-
-		nextFrame.presentCompleteSemaphore = presentCompleteSemaphore;
-		nextFrame.presentCompleteSemaphoreWaited = false;
-
-		m_swapChainIndex = nextSwapChainIndex;
+		m_frameDataIndex = m_swapChainIndex;
 	}
-
-	u32 currentFrameIndex      = m_cfg.headless ? 0u : m_swapChainIndex;
-	m_currentFrame             = &m_frameData[currentFrameIndex];
+	m_currentFrame             = &m_frameData[m_frameDataIndex];
 	m_currentFrame->frameIndex = g_device->m_frameCount;
 
 	if (m_currentFrame->lastPresentProgressId)
@@ -3489,6 +3555,7 @@ void Gfx_Release(GfxDevice* dev)
 		return;
 
 	dev->m_depthBufferTexture.reset();
+	dev->m_offscreenBackBuffer.reset();
 	for (auto& it : dev->m_swapChainTextures)
 	{
 		it.reset();
@@ -3543,7 +3610,8 @@ void Gfx_BeginFrame()
 	if (!g_device->m_cfg.headless
 	    && (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval))
 	{
-		g_device->createSwapChain();
+		// beginFrame recreates it
+		g_device->m_swapChainValid = false;
 		g_device->m_resizeEvents.clear();
 	}
 
@@ -3645,7 +3713,7 @@ void Gfx_EndFrame()
 
 	g_device->m_timing.closeOpenScopes(GfxContextType::Graphics, []() { return g_device->timingBoundary(g_context); });
 
-	if (!g_device->m_cfg.headless && g_device->m_swapChainValid && !g_device->m_swapChainTextures.empty())
+	if (g_device->m_backBufferAcquired)
 	{
 		TextureVK& backBufferTexture =
 		    g_device->m_resources.textures[g_device->m_swapChainTextures[g_device->m_swapChainIndex].get()];
@@ -3669,10 +3737,10 @@ void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData)
 
 GfxProgressId Gfx_Present()
 {
-	const bool presenting = !g_device->m_cfg.headless && g_device->m_swapChainValid;
+	const bool presenting = g_device->m_backBufferAcquired;
 	const VkSemaphore renderComplete =
 	    presenting ? g_device->m_renderCompleteSemaphores[g_device->m_swapChainIndex] : VK_NULL_HANDLE;
-	const bool screenshot = presenting && g_device->m_pendingScreenshotCallback;
+	const bool screenshot = presenting && g_device->m_swapChainCopySupported && g_device->m_pendingScreenshotCallback;
 
 	if (presenting)
 	{
@@ -3700,12 +3768,13 @@ GfxProgressId Gfx_Present()
 		{
 			g_device->captureScreenshot(renderComplete);
 		}
-		else
+		else if (g_device->m_cfg.headless || (presenting && !g_device->m_swapChainCopySupported))
 		{
-			RUSH_LOG_WARNING("Gfx_RequestScreenshot is not supported in headless mode.");
+			RUSH_LOG_WARNING("Gfx_RequestScreenshot: the back buffer cannot be copied.");
 			g_device->m_pendingScreenshotCallback = nullptr;
 			g_device->m_pendingScreenshotUserData = nullptr;
 		}
+		// Otherwise kept for the next presented frame
 	}
 
 	if (presenting)
@@ -3720,13 +3789,13 @@ GfxProgressId Gfx_Present()
 		const u64 waitBegin = Timer::nowNs();
 		VkResult  result    = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
 		Gfx_RecordDisplayWait(g_device->m_stats, waitBegin, Timer::nowNs());
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-		{
-			g_device->m_swapChainValid = false;
-		}
-		else if (result != VK_SUCCESS)
+		if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
 		{
 			RUSH_LOG_FATAL("vkQueuePresentKHR returned code %d (%s)", result, toString(result));
+		}
+		if (result != VK_SUCCESS || g_device->m_swapChainSuboptimal)
+		{
+			g_device->m_swapChainValid = false;
 		}
 	}
 
@@ -3781,6 +3850,8 @@ GfxProgressId Gfx_Present()
 		g_device->m_pendingScreenshotCallback = nullptr;
 		g_device->m_pendingScreenshotUserData = nullptr;
 	}
+
+	g_device->m_backBufferAcquired = false;
 
 	if (GfxDevice::TimingFrame* frame = g_device->timingFrame())
 	{
@@ -6265,9 +6336,9 @@ void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc)
 	{
 		RUSH_ASSERT_MSG(!g_device->m_cfg.headless, "Headless mode has no back buffer. Bind explicit render targets.");
 
-		GfxTexture swapChainTexture = g_device->m_swapChainTextures[g_device->m_swapChainIndex].get();
+		const GfxTexture swapChainTexture = g_device->backBufferTexture();
 
-		if (g_device->m_swapChainValid)
+		if (g_device->m_backBufferAcquired)
 		{
 			GfxDevice::FrameData* currentFrame = g_device->m_currentFrame;
 			if (!currentFrame->presentCompleteSemaphoreWaited)

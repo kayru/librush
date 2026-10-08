@@ -408,7 +408,7 @@ enum GfxFormat : u32
 	GfxFormat_RGB32_Float  = RUSH_GFX_FORMAT(RGB32, Float, RGB),
 	GfxFormat_RGB8_Unorm   = RUSH_GFX_FORMAT(RGB8, Unorm, RGB),
 	GfxFormat_RGBA16_Float = RUSH_GFX_FORMAT(RGBA16, Float, RGBA),
-	GfxFormat_RGBA16_Unorm = RUSH_GFX_FORMAT(RGB16, Unorm, RGBA),
+	GfxFormat_RGBA16_Unorm = RUSH_GFX_FORMAT(RGBA16, Unorm, RGBA),
 	GfxFormat_RGBA32_Float = RUSH_GFX_FORMAT(RGBA32, Float, RGBA),
 	GfxFormat_RGBA8_Unorm  = RUSH_GFX_FORMAT(RGBA8, Unorm, RGBA),
 	GfxFormat_RGBA8_sRGB   = RUSH_GFX_FORMAT(RGBA8, sRGB, RGBA),
