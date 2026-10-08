@@ -1,11 +1,14 @@
-#include "MathCommon.h"
+#pragma once
+
+#include "Rush.h"
 
 #include <bit>
 
 namespace Rush
 {
 
-u16 floatToHalf(float value)
+// IEEE 754 binary16, rounded to nearest even; beyond the largest half gives infinity
+inline u16 floatToHalf(float value)
 {
 	const u32 f = std::bit_cast<u32>(value);
 	const u32 sign = (f >> 16) & 0x8000u;
@@ -44,7 +47,7 @@ u16 floatToHalf(float value)
 	return u16(sign | half);
 }
 
-float halfToFloat(u16 h)
+inline float halfToFloat(u16 h)
 {
 	const u32 sign = u32(h & 0x8000u) << 16;
 	const u32 exponent = (h >> 10) & 0x1Fu;

@@ -93,8 +93,4 @@ inline u32 bitCount(u32 mask)
 	return __builtin_popcount(mask);
 #endif
 }
-
-// IEEE 754 binary16, rounded to nearest even; beyond the largest half gives infinity
-u16 floatToHalf(float value);
-float halfToFloat(u16 h);
 }
