@@ -8,6 +8,7 @@
 #include "UtilImage.h"
 
 #include <algorithm>
+#include <bit>
 #include <variant>
 
 #if defined(RUSH_PLATFORM_WINDOWS)
@@ -513,7 +514,8 @@ struct DestructionQueueVK
 	~DestructionQueueVK() { RUSH_ASSERT(items.empty()); }
 
 	using Item = std::variant<VkPipeline, VkPipelineLayout, VkDeviceMemory, VkBuffer, VkImage, VkImageView, VkBufferView, VkSampler,
-	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientMemoryBlockVK, GfxContext*, DescriptorPoolVK*>;
+	    VkAccelerationStructureKHR, VkQueryPool, VkSemaphore, TransientMemoryBlockVK, DeviceAllocationVK, GfxContext*,
+	    DescriptorPoolVK*>;
 
 	DynamicArray<Item> items;
 
@@ -1330,6 +1332,7 @@ GfxDevice::~GfxDevice()
 
 	m_transientLocalAllocator.releaseBlocks(true);
 	m_transientHostAllocator.releaseBlocks(true);
+	m_deviceMemory.release();
 
 	for (auto& it : m_renderPasses)
 	{
@@ -2266,6 +2269,182 @@ void MemoryAllocatorVK::freeBlock(MemoryBlockVK block, bool immediate)
 		enqueueDestroy(block.buffer);
 		enqueueDestroy(block.memory);
 	}
+}
+
+DeviceAllocationVK DeviceMemoryVK::allocate(const Request& request)
+{
+	RUSH_ASSERT(request.memoryType < VK_MAX_MEMORY_TYPES);
+	const VkMemoryType& type = g_device->m_deviceMemoryProps.memoryTypes[request.memoryType];
+	const bool nonCoherent   = (type.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+	                         !(type.propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	// Non-coherent ranges are flushed and invalidated whole atoms at a time
+	const u64 atom = nonCoherent ? g_device->m_physicalDeviceProps.limits.nonCoherentAtomSize : 1;
+	RUSH_ASSERT(std::has_single_bit(atom) && std::has_single_bit(u64(request.requirements.alignment)));
+	const auto alignUp = [](u64 x, u64 alignment) { return (x + alignment - 1) & ~(alignment - 1); };
+
+	DeviceAllocationVK result;
+	result.size = alignUp(request.requirements.size, atom);
+	if (request.dedicated || result.size > MaxBlockSize / 2)
+	{
+		result.memory = allocateMemory(request, result.size, &result.mapped);
+		return result;
+	}
+
+	const u32           poolIndex = request.memoryType * 2 + u32(request.kind);
+	std::vector<Block>& pool      = m_pools[poolIndex];
+	const u64           alignment = max<u64>(request.requirements.alignment, atom);
+	result.pool                   = poolIndex;
+	for (Block& block : pool)
+	{
+		result.range = block.ranges.allocate(result.size, alignment);
+		if (result.range.valid())
+		{
+			result.memory = block.memory;
+			result.offset = result.range.offset;
+			result.mapped = block.mapped ? block.mapped + result.offset : nullptr;
+			return result;
+		}
+	}
+
+	// Blocks grow from 1/8 of the maximum, so small apps reserve little
+	const u64 heapSize     = g_device->m_deviceMemoryProps.memoryHeaps[type.heapIndex].size;
+	const u64 maxBlockSize = min(MaxBlockSize, heapSize / 8);
+	const u64 growthSize   = maxBlockSize >> (3 - min<size_t>(pool.size(), 3));
+	const u64 blockSize    = alignUp(max(min(maxBlockSize, max(growthSize, std::bit_ceil(result.size))), result.size), atom);
+
+	Request blockRequest   = request;
+	blockRequest.dedicated = false;
+	Block& block           = pool.emplace_back();
+	block.memory           = allocateMemory(blockRequest, blockSize, &block.mapped);
+	block.ranges.reset(blockSize);
+
+	result.range  = block.ranges.allocate(result.size, alignment);
+	result.memory = block.memory;
+	result.offset = result.range.offset;
+	result.mapped = block.mapped ? block.mapped + result.offset : nullptr;
+	RUSH_ASSERT(result.range.valid());
+	return result;
+}
+
+void DeviceMemoryVK::free(const DeviceAllocationVK& allocation)
+{
+	if (allocation.pool == ~0u)
+	{
+		freeMemory(allocation.memory, allocation.mapped);
+		return;
+	}
+
+	std::vector<Block>& pool = m_pools[allocation.pool];
+	const auto it = std::find_if(pool.begin(), pool.end(), [&](const Block& b) { return b.memory == allocation.memory; });
+	RUSH_ASSERT(it != pool.end());
+	it->ranges.free(allocation.range);
+	if (it->ranges.freeSize() != it->ranges.size())
+	{
+		return;
+	}
+
+	// Keep one empty block per pool, so resources created every frame do not reallocate blocks
+	for (const Block& other : pool)
+	{
+		if (&other != &*it && other.ranges.freeSize() == other.ranges.size())
+		{
+			freeMemory(it->memory, it->mapped);
+			pool.erase(it);
+			return;
+		}
+	}
+}
+
+void DeviceMemoryVK::release()
+{
+	for (std::vector<Block>& pool : m_pools)
+	{
+		for (const Block& block : pool)
+		{
+			freeMemory(block.memory, block.mapped);
+		}
+		pool.clear();
+	}
+}
+
+VkDeviceMemory DeviceMemoryVK::allocateMemory(const Request& request, u64 size, u8** outMapped)
+{
+	VkMemoryDedicatedAllocateInfo dedicatedInfo = {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
+	dedicatedInfo.image                         = request.image;
+	dedicatedInfo.buffer                        = request.buffer;
+
+	VkMemoryAllocateFlagsInfo flagsInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+	flagsInfo.pNext                     = request.dedicated ? &dedicatedInfo : nullptr;
+	if (request.kind == Kind::Buffer && g_device->m_bufferDeviceAddressFeatures.bufferDeviceAddress)
+	{
+		flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+	}
+
+	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+	allocInfo.pNext                = &flagsInfo;
+	allocInfo.allocationSize       = size;
+	allocInfo.memoryTypeIndex      = request.memoryType;
+
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &memory));
+
+	*outMapped = nullptr;
+	if (g_device->m_deviceMemoryProps.memoryTypes[request.memoryType].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+	{
+		void* mapped = nullptr;
+		V(vkMapMemory(g_vulkanDevice, memory, 0, VK_WHOLE_SIZE, 0, &mapped));
+		*outMapped = static_cast<u8*>(mapped);
+	}
+	return memory;
+}
+
+void DeviceMemoryVK::freeMemory(VkDeviceMemory memory, u8* mapped)
+{
+	if (mapped)
+	{
+		vkUnmapMemory(g_vulkanDevice, memory);
+	}
+	vkFreeMemory(g_vulkanDevice, memory, g_allocationCallbacks);
+}
+
+// Allocates memory for a buffer or an image and binds it
+template <typename ChooseType>
+static DeviceAllocationVK allocateAndBind(VkBuffer buffer, VkImage image, ChooseType&& chooseType)
+{
+	VkMemoryDedicatedRequirements dedicated = {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+	VkMemoryRequirements2         reqs      = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, &dedicated};
+
+	DeviceMemoryVK::Request request;
+	request.buffer = buffer;
+	request.image  = image;
+	if (image)
+	{
+		VkImageMemoryRequirementsInfo2 info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2};
+		info.image                          = image;
+		vkGetImageMemoryRequirements2(g_vulkanDevice, &info, &reqs);
+		request.kind = DeviceMemoryVK::Kind::Image;
+	}
+	else
+	{
+		VkBufferMemoryRequirementsInfo2 info = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+		info.buffer                          = buffer;
+		vkGetBufferMemoryRequirements2(g_vulkanDevice, &info, &reqs);
+		request.kind = DeviceMemoryVK::Kind::Buffer;
+	}
+	request.requirements = reqs.memoryRequirements;
+	request.memoryType   = chooseType(reqs.memoryRequirements.memoryTypeBits);
+	request.dedicated    = dedicated.requiresDedicatedAllocation || dedicated.prefersDedicatedAllocation;
+
+	const DeviceAllocationVK allocation = g_device->m_deviceMemory.allocate(request);
+	if (image)
+	{
+		V(vkBindImageMemory(g_vulkanDevice, image, allocation.memory, allocation.offset));
+	}
+	else
+	{
+		V(vkBindBufferMemory(g_vulkanDevice, buffer, allocation.memory, allocation.offset));
+	}
+	return allocation;
 }
 
 inline VkCommandPool getCommandPoolByContextType(GfxDevice* device, GfxContextType contextType)
@@ -5296,18 +5475,8 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, const GfxTextureData* da
 
 	res.ownsImage = true;
 
-	VkMemoryRequirements memoryReq = {};
-	vkGetImageMemoryRequirements(g_vulkanDevice, res.image, &memoryReq);
-
-	VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-	allocInfo.allocationSize       = memoryReq.size;
-	allocInfo.memoryTypeIndex =
-	    g_device->memoryTypeFromProperties(memoryReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
-	res.ownsMemory = true;
-
-	V(vkBindImageMemory(g_vulkanDevice, res.image, res.memory, 0));
+	res.allocation = allocateAndBind(VK_NULL_HANDLE, res.image, [](u32 memoryTypeBits)
+	    { return g_device->memoryTypeFromProperties(memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); });
 
 	res.aspectFlags = aspectFlagsFromFormat(desc.format);
 
@@ -5413,9 +5582,6 @@ TextureVK TextureVK::create(const GfxTextureDesc& desc, VkImage image, VkImageLa
 
 	res.desc = desc;
 
-	res.ownsMemory = false;
-	res.memory     = VK_NULL_HANDLE;
-
 	res.image     = image;
 	res.ownsImage = false;
 
@@ -5477,10 +5643,10 @@ void TextureVK::destroy()
 		image = VK_NULL_HANDLE;
 	}
 
-	if (memory && ownsMemory)
+	if (allocation.memory)
 	{
-		enqueueDestroy(memory);
-		memory = VK_NULL_HANDLE;
+		enqueueDestroy(allocation);
+		allocation = {};
 	}
 }
 
@@ -5596,10 +5762,8 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 	const bool isStatic = !(desc.flags & GfxBufferFlags::Transient);
 
 	const bool needDeviceAddress = g_device->m_bufferDeviceAddressFeatures.bufferDeviceAddress;
-	VkMemoryAllocateFlagsInfo allocFlags = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
 	if (needDeviceAddress)
 	{
-		allocFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
 		bufferCreateInfo.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	}
 
@@ -5645,32 +5809,17 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 		return g_device->memoryTypeFromProperties(memoryTypeBits, visible | coherent);
 	};
 
+	if (data || isStatic)
+	{
+		res.allocation = allocateAndBind(res.info.buffer, VK_NULL_HANDLE, chooseMemoryType);
+		RUSH_ASSERT(!desc.hostVisible || res.allocation.mapped);
+	}
+
 	if (data)
 	{
 		MemoryBlockVK stagingBlock = g_device->m_transientHostAllocator.alloc(bufferCreateInfo.size, 16);
 
 		memcpy(stagingBlock.mappedBuffer, data, bufferCreateInfo.size);
-
-		RUSH_ASSERT(res.info.buffer != VK_NULL_HANDLE);
-
-		VkMemoryRequirements memoryReq = {};
-		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
-
-		VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-		allocInfo.pNext = &allocFlags;
-		allocInfo.allocationSize = memoryReq.size;
-		allocInfo.memoryTypeIndex = chooseMemoryType(memoryReq.memoryTypeBits);
-
-		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
-		res.ownsMemory = true;
-
-		V(vkBindBufferMemory(g_vulkanDevice, res.info.buffer, res.memory, 0));
-
-		if (desc.hostVisible)
-		{
-			V(vkMapMemory(g_vulkanDevice, res.memory, 0, allocInfo.allocationSize, 0, &res.mappedMemory));
-			RUSH_ASSERT(res.mappedMemory);
-		}
 
 		GfxContext*  uploadContext = getUploadContext();
 		VkBufferCopy region        = {};
@@ -5681,29 +5830,8 @@ static BufferVK createBuffer(const GfxBufferDesc& desc, const void* data)
 
 		res.lastUpdateFrame = g_device->m_frameCount;
 	}
-	else if (isStatic)
-	{
-		VkMemoryRequirements memoryReq = {};
-		vkGetBufferMemoryRequirements(g_vulkanDevice, res.info.buffer, &memoryReq);
 
-		VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-		allocInfo.pNext = &allocFlags;
-		allocInfo.allocationSize = max(memoryReq.size, bufferCreateInfo.size);
-		allocInfo.memoryTypeIndex = chooseMemoryType(memoryReq.memoryTypeBits);
-
-		V(vkAllocateMemory(g_vulkanDevice, &allocInfo, g_allocationCallbacks, &res.memory));
-		res.ownsMemory = true;
-
-		V(vkBindBufferMemory(g_vulkanDevice, res.info.buffer, res.memory, 0));
-
-		if (desc.hostVisible)
-		{
-			V(vkMapMemory(g_vulkanDevice, res.memory, 0, allocInfo.allocationSize, 0, &res.mappedMemory));
-			RUSH_ASSERT(res.mappedMemory);
-		}
-	}
-
-	if (needDeviceAddress && res.ownsMemory)
+	if (needDeviceAddress && res.allocation.memory)
 	{
 		VkBufferDeviceAddressInfo deviceAddressInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
 		deviceAddressInfo.buffer = res.info.buffer;
@@ -5788,16 +5916,24 @@ void Gfx_vkBufferMemoryBarrier(GfxContext* ctx, GfxBuffer h, VkAccessFlagBits sr
 	ctx->addBufferBarrier(h, srcAccess, dstAccess, srcStage, dstStage);
 }
 
+static VkMappedMemoryRange mappedRange(const BufferVK& buffer)
+{
+	VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+	range.memory              = buffer.allocation.memory;
+	range.offset              = buffer.allocation.offset;
+	range.size                = buffer.allocation.size;
+	return range;
+}
+
 void Gfx_vkFlushMappedBuffer(GfxBuffer h)
 {
-	auto& buffer = g_device->m_resources.buffers[h];
-
-	VkMappedMemoryRange memoryRange = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-	memoryRange.memory              = buffer.memory;
-	memoryRange.offset              = buffer.info.offset;
-	memoryRange.size                = buffer.info.range;
-	// FIXME: use vkFlushMappedMemoryRanges for CPU writes; invalidate is for GPU->CPU visibility.
-	vkInvalidateMappedMemoryRanges(g_vulkanDevice, 1, &memoryRange);
+	const BufferVK& buffer = g_device->m_resources.buffers[h];
+	RUSH_ASSERT(buffer.allocation.mapped);
+	if (buffer.mappedNonCoherent)
+	{
+		const VkMappedMemoryRange range = mappedRange(buffer);
+		V(vkFlushMappedMemoryRanges(g_vulkanDevice, 1, &range));
+	}
 }
 
 GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
@@ -5813,15 +5949,12 @@ GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg vb, u32 offset, u32 size)
 	BufferVK& buffer = g_device->m_resources.buffers[vb];
 	if (buffer.mappedNonCoherent)
 	{
-		VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-		range.memory = buffer.memory;
-		range.offset = 0;
-		range.size = VK_WHOLE_SIZE;
+		const VkMappedMemoryRange range = mappedRange(buffer);
 		V(vkInvalidateMappedMemoryRanges(g_vulkanDevice, 1, &range));
 	}
 
 	GfxMappedBuffer result;
-	result.data   = buffer.mappedMemory;
+	result.data   = buffer.allocation.mapped;
 	result.size   = desc.stride * desc.count;
 	result.handle = vb;
 
@@ -5943,20 +6076,18 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 			enqueueDestroy(buffer.bufferView);
 		}
 
-		if (buffer.memory && buffer.ownsMemory)
-		{
-			enqueueDestroy(buffer.memory);
-		}
-
 		if (buffer.info.buffer && buffer.ownsBuffer)
 		{
 			enqueueDestroy(buffer.info.buffer);
 		}
 
-		MemoryBlockVK block = g_device->m_transientLocalAllocator.alloc(size, alignment);
+		if (buffer.allocation.memory)
+		{
+			enqueueDestroy(buffer.allocation);
+			buffer.allocation = {};
+		}
 
-		buffer.memory     = block.memory;
-		buffer.ownsMemory = false;
+		MemoryBlockVK block = g_device->m_transientLocalAllocator.alloc(size, alignment);
 
 		buffer.ownsBuffer  = false;
 		buffer.info.buffer = block.buffer;
@@ -6661,16 +6792,10 @@ void BufferVK::destroy()
 		info.buffer = VK_NULL_HANDLE;
 	}
 
-	if (mappedMemory)
+	if (allocation.memory)
 	{
-		vkUnmapMemory(g_vulkanDevice, memory);
-		mappedMemory = nullptr;
-	}
-
-	if (memory && ownsMemory)
-	{
-		enqueueDestroy(memory);
-		memory = VK_NULL_HANDLE;
+		enqueueDestroy(allocation);
+		allocation = {};
 	}
 
 	if (bufferView)
@@ -6714,6 +6839,7 @@ void DestructionQueueVK::flush(GfxDevice* device)
 		// Custom objects
 		void operator()(GfxContext* x) { device->m_freeContexts[u32(x->m_type)].push_back(x); };
 		void operator()(DescriptorPoolVK* x) { delete x; };
+		void operator()(const DeviceAllocationVK& x) { device->m_deviceMemory.free(x); };
 		void operator()(TransientMemoryBlockVK& x)
 		{
 			x.offset = 0;

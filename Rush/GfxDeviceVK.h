@@ -13,9 +13,11 @@
 #include "UtilArray.h"
 #include "UtilHash.h"
 #include "UtilMemory.h"
+#include "UtilRangeAllocator.h"
 #include "UtilString.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include <volk.h>
 
@@ -106,15 +108,24 @@ struct ComputePipelineVK : PipelineBaseVK
 	void destroy();
 };
 
+// Memory owned by one buffer or image: a range of a pooled block, or a dedicated allocation
+struct DeviceAllocationVK
+{
+	VkDeviceMemory  memory = VK_NULL_HANDLE;
+	u64             offset = 0;
+	u64             size   = 0; // nonCoherentAtomSize multiple in non-coherent memory
+	u8*             mapped = nullptr;
+	u32             pool   = ~0u; // ~0u: dedicated
+	RangeAllocation range;
+};
+
 struct BufferVK : GfxResourceBase
 {
 	GfxBufferDesc             desc;
-	VkDeviceMemory            memory          = VK_NULL_HANDLE;
+	DeviceAllocationVK        allocation; // none for renamed transient buffers
 	VkDescriptorBufferInfo    info            = {};
 	VkBufferView              bufferView      = VK_NULL_HANDLE;
 	bool                      ownsBuffer      = false;
-	bool                      ownsMemory      = false;
-	void*                     mappedMemory    = nullptr;
 	bool                      mappedNonCoherent = false; // invalidate before the CPU reads
 	u32                       size            = 0;
 	u32                       lastUpdateFrame = ~0u;
@@ -128,8 +139,7 @@ struct TextureVK : GfxResourceBase
 	GfxTextureDesc desc;
 	u32            aspectFlags = 0;
 
-	bool           ownsMemory = false;
-	VkDeviceMemory memory     = VK_NULL_HANDLE;
+	DeviceAllocationVK allocation;
 
 	VkImage image     = VK_NULL_HANDLE;
 	bool    ownsImage = false;
@@ -222,6 +232,48 @@ struct MemoryBlockVK
 	VkBuffer       buffer       = VK_NULL_HANDLE;
 	void*          mappedBuffer = nullptr;
 	u64            deviceAddress = 0;
+};
+
+// Buffer and image memory: blocks per memory type, sub-allocated with RangeAllocator.
+// Buffers and images never share a block, so bufferImageGranularity does not apply.
+// Host-visible blocks stay mapped.
+class DeviceMemoryVK
+{
+public:
+	enum class Kind : u8
+	{
+		Buffer,
+		Image
+	};
+
+	struct Request
+	{
+		VkMemoryRequirements requirements = {};
+		u32                  memoryType   = 0;
+		Kind                 kind         = Kind::Buffer;
+		bool                 dedicated    = false; // driver requires or prefers it
+		VkBuffer             buffer       = VK_NULL_HANDLE;
+		VkImage              image        = VK_NULL_HANDLE;
+	};
+
+	DeviceAllocationVK allocate(const Request& request);
+	void               free(const DeviceAllocationVK& allocation); // after the GPU is done with it
+	void               release();
+
+private:
+	struct Block
+	{
+		VkDeviceMemory memory = VK_NULL_HANDLE;
+		u8*            mapped = nullptr;
+		RangeAllocator ranges;
+	};
+
+	static constexpr u64 MaxBlockSize = 64ull << 20;
+
+	VkDeviceMemory allocateMemory(const Request& request, u64 size, u8** outMapped);
+	void           freeMemory(VkDeviceMemory memory, u8* mapped);
+
+	std::vector<Block> m_pools[VK_MAX_MEMORY_TYPES * 2];
 };
 
 class MemoryAllocatorVK
@@ -514,6 +566,7 @@ public:
 
 	MemoryAllocatorVK m_transientLocalAllocator;
 	MemoryAllocatorVK m_transientHostAllocator;
+	DeviceMemoryVK    m_deviceMemory;
 
 	u32 m_uniqueResourceCounter = 1;
 	u32 m_frameCount            = 0;
