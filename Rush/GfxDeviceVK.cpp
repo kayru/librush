@@ -171,14 +171,8 @@ static void debugRegister(VkFence p, const char* name) { debugRegister((u64)p, V
 static void debugRegister(VkSemaphore p, const char* name) { debugRegister((u64)p, VK_OBJECT_TYPE_SEMAPHORE, name); }
 
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
-    VkDebugReportObjectTypeEXT                                           objectType,
-    uint64_t                                                             object,
-    size_t                                                               location,
-    int32_t                                                              messageCode,
-    const char*                                                          pLayerPrefix,
-    const char*                                                          pMessage,
-    void*                                                                pUserData)
+VKAPI_ATTR VkBool32 VKAPI_CALL debugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severityFlags,
+    VkDebugUtilsMessageTypeFlagsEXT types, const VkDebugUtilsMessengerCallbackDataEXT* data, void* userData)
 {
 	enum Severity
 	{
@@ -188,40 +182,36 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
 		Severity_Error,
 	};
 
-	Severity severity = Severity_Ignore;
+	const char* id      = data->pMessageIdName ? data->pMessageIdName : "";
+	const char* message = data->pMessage ? data->pMessage : "";
 
-	if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
+	Severity severity = Severity_Ignore;
+	if (severityFlags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+	{
+		severity = Severity_Error;
+	}
+	else if (severityFlags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+	{
+		severity = Severity_Warning;
+	}
+	else if (severityFlags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
 	{
 		severity = Severity_Message;
 	}
-	else if (flags & (VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT))
+
+	// Unread vertex attributes and stage outputs: shared formats and shaders, harmless
+	if (strstr(id, "Shader-OutputNotConsumed"))
 	{
-		severity = Severity_Warning;
-		if ((flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) &&
-			(strstr(pMessage, "but no vertex buffers are attached to this Pipeline State Object") ||
-				strstr(pMessage, "UNASSIGNED-CoreValidation-Shader-OutputNotConsumed")))
-		{
-			severity = Severity_Ignore;
-		}
-	}
-	else
-	{
-		severity = Severity_Error;
-		if (strstr(pMessage, "SPIR-V module not valid: OpStore Pointer <id>") ||
-		    strstr(pMessage, "SPIR-V module not valid: OpReturnValue Value <id>") ||
-		    strstr(pMessage, "MemberDecorate requires one of these capabilities: ClipDistance"))
-		{
-			severity = Severity_Warning;
-		}
+		severity = Severity_Ignore;
 	}
 
 	switch (severity)
 	{
 	default:
 	case Severity_Ignore: break;
-	case Severity_Message: RUSH_LOG("Vulkan debug: %s", pMessage); break;
-	case Severity_Warning: RUSH_LOG_WARNING("Vulkan debug: %s", pMessage); break;
-	case Severity_Error: RUSH_LOG_ERROR("Vulkan debug: %s", pMessage); break;
+	case Severity_Message: RUSH_LOG("Vulkan debug: [%s] %s", id, message); break;
+	case Severity_Warning: RUSH_LOG_WARNING("Vulkan debug: [%s] %s", id, message); break;
+	case Severity_Error: RUSH_LOG_ERROR("Vulkan debug: [%s] %s", id, message); break;
 	}
 
 	return VK_FALSE;
@@ -589,11 +579,11 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	if (cfg.debug)
 	{
 		enableLayer(enabledInstanceLayers, enumeratedInstanceLayers, "VK_LAYER_KHRONOS_validation", false);
-		enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME, false);
 	}
 
-	// Command buffer labels for capture and profiling tools, in every build
-	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
+	// Command buffer labels for capture and profiling tools in every build; validation messages
+	const bool debugUtils =
+	    enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
 
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_KHR_get_physical_device_properties2");
 
@@ -624,21 +614,16 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 		vkGetInstanceProcAddr(m_vulkanInstance, "vkCreateMetalSurfaceEXT"));
 #endif
 
-	/*
-	PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
-	    reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(
-	        vkGetInstanceProcAddr(m_vulkanInstance, "vkCreateDebugReportCallbackEXT"));
-	*/
-
-	if (vkCreateDebugReportCallbackEXT)
+	if (cfg.debug && debugUtils)
 	{
-		VkDebugReportCallbackCreateInfoEXT callbackCreateInfo = {VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT};
-		callbackCreateInfo.pNext                              = nullptr;
-		callbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-		                           VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-		callbackCreateInfo.pfnCallback = &debugReportCallback;
-		callbackCreateInfo.pUserData   = nullptr;
-		V(vkCreateDebugReportCallbackEXT(m_vulkanInstance, &callbackCreateInfo, g_allocationCallbacks, &m_debugReportCallbackExt));
+		VkDebugUtilsMessengerCreateInfoEXT messengerInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+		messengerInfo.messageSeverity =
+		    VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+		messengerInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+		                            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+		                            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		messengerInfo.pfnUserCallback = &debugMessengerCallback;
+		V(vkCreateDebugUtilsMessengerEXT(m_vulkanInstance, &messengerInfo, g_allocationCallbacks, &m_debugMessenger));
 	}
 
 	u32 gpuCount = 0;
@@ -1359,18 +1344,9 @@ GfxDevice::~GfxDevice()
 	}
 	vkDestroyDevice(m_vulkanDevice, g_allocationCallbacks);
 
-	if (m_debugReportCallbackExt)
+	if (m_debugMessenger)
 	{
-		/*
-		PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
-		    reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
-		        vkGetInstanceProcAddr(m_vulkanInstance, "vkDestroyDebugReportCallbackEXT"));
-		*/
-
-		if (vkDestroyDebugReportCallbackEXT)
-		{
-			vkDestroyDebugReportCallbackEXT(m_vulkanInstance, m_debugReportCallbackExt, g_allocationCallbacks);
-		}
+		vkDestroyDebugUtilsMessengerEXT(m_vulkanInstance, m_debugMessenger, g_allocationCallbacks);
 	}
 
 	vkDestroyInstance(m_vulkanInstance, g_allocationCallbacks);

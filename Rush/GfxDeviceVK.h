@@ -434,7 +434,7 @@ public:
 	GfxConfig     m_cfg;
 	GfxCapability m_caps;
 
-	VkDebugReportCallbackEXT         m_debugReportCallbackExt = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT         m_debugMessenger = VK_NULL_HANDLE;
 	VkInstance                       m_vulkanInstance = VK_NULL_HANDLE;
 	VkDevice                         m_vulkanDevice   = VK_NULL_HANDLE;
 	VkPhysicalDevice                 m_physicalDevice = VK_NULL_HANDLE;
