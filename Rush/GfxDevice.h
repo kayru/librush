@@ -608,7 +608,7 @@ inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h) {}
 inline void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h) {}
 inline void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset) {}
 inline void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) {}
-inline GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat, Tuple3u) { return {}; }
+inline GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat format, Tuple3u size) { return {size.x * getBitsPerPixel(format) / 8, size.y}; }
 inline GfxImageCopyInfo Gfx_CopyTextureToBuffer(GfxContext*, GfxTextureArg, const GfxImageRegion&, GfxBufferArg, u64) { return {}; }
 inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ) {}
 inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize) {}
