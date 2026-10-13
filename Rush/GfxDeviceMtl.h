@@ -19,6 +19,7 @@
 #endif
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <QuartzCore/CAEDRMetadata.h>
 #import <Metal/Metal.h>
 #import <dispatch/dispatch.h>
 
@@ -195,12 +196,16 @@ public:
 	u32 generateId();
 
 	void beginFrame();
+	void applyOutputMode();
 	bool acquireBackBuffer(); // current frame's drawable (offscreen when skipping present); false when headless or none is available
 	void createDefaultDepthBuffer(u32 width, u32 height);
 
 	id<MTLDevice> m_metalDevice = nil;
 	id<MTLCommandQueue> m_commandQueue = nil;
 	CAMetalLayer* m_metalLayer = nil;
+	GfxOutputMode m_outputMode = GfxOutputMode::SDR;
+	GfxOutputMode m_desiredOutputMode = GfxOutputMode::SDR;
+	float m_hdrMaxLuminanceNits = 1000.0f;
 
 	id<MTLSharedEvent> m_progressEvent = nil;
 	u64                m_nextProgressId = 1;

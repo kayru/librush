@@ -360,6 +360,7 @@ static VkFormat convertFormat(GfxFormat format)
 	case GfxFormat_RGBA8_Unorm: return VK_FORMAT_R8G8B8A8_UNORM;
 	case GfxFormat_BGRA8_sRGB: return VK_FORMAT_B8G8R8A8_SRGB;
 	case GfxFormat_RGBA8_sRGB: return VK_FORMAT_R8G8B8A8_SRGB;
+	case GfxFormat_RGB10A2_Unorm: return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	case GfxFormat_D32_Float_S8_Uint: return VK_FORMAT_D32_SFLOAT_S8_UINT;
 	case GfxFormat_D24_Unorm_S8_Uint:
 		// return VK_FORMAT_D24_UNORM_S8_UINT;
@@ -586,6 +587,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	    enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
 
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_KHR_get_physical_device_properties2");
+	m_supportedExtensions.EXT_swapchain_colorspace = useSwapChain
+	    && enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME, false);
 
 	VkApplicationInfo appInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
 	appInfo.pApplicationName  = "Rush";
@@ -808,6 +811,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_supportedExtensions.EXT_sample_locations = enableDeviceExtension(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
 
 	m_supportedExtensions.KHR_maintenance1 = enableDeviceExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME, false);
+	m_supportedExtensions.EXT_hdr_metadata = useSwapChain && enableDeviceExtension(VK_EXT_HDR_METADATA_EXTENSION_NAME, false);
 
 	const bool calibratedTimestampsKHR = enableDeviceExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, false);
 	const bool calibratedTimestampsEXT =
@@ -951,6 +955,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	// Swap chain
 
 	m_desiredSwapChainImageCount = cfg.minimizeLatency ? 1 : 2;
+	m_desiredOutputMode = cfg.outputMode;
 	if (useSwapChain)
 	{
 		createSwapChain();
@@ -1680,25 +1685,78 @@ void GfxDevice::createSwapChain()
 
 	auto enumeratedSurfaceFormats = enumerateSurfaceFormats(m_physicalDevice, m_swapChainSurface);
 
-	size_t preferredFormatIndex = enumeratedSurfaceFormats.size();
+	const size_t none = enumeratedSurfaceFormats.size();
+	size_t sdrIndex = none;
+	size_t hdr10Index = none;
+	size_t scrgbIndex = none;
 	for (size_t i = 0; i < enumeratedSurfaceFormats.size(); ++i)
 	{
-		if (enumeratedSurfaceFormats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
-		    enumeratedSurfaceFormats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
+		const VkSurfaceFormatKHR& it = enumeratedSurfaceFormats[i];
+		if (sdrIndex == none && (it.format == VK_FORMAT_R8G8B8A8_UNORM || it.format == VK_FORMAT_B8G8R8A8_UNORM)
+		    && it.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 		{
-			preferredFormatIndex = i;
-			break;
+			sdrIndex = i;
+		}
+		if (hdr10Index == none && it.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32
+		    && it.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+		{
+			hdr10Index = i;
+		}
+		if (scrgbIndex == none && it.format == VK_FORMAT_R16G16B16A16_SFLOAT
+		    && it.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT)
+		{
+			scrgbIndex = i;
 		}
 	}
-	if (preferredFormatIndex == enumeratedSurfaceFormats.size())
+	for (size_t i = 0; i < enumeratedSurfaceFormats.size() && sdrIndex == none; ++i)
+	{
+		const VkFormat format = enumeratedSurfaceFormats[i].format;
+		if (format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_B8G8R8A8_UNORM)
+		{
+			sdrIndex = i;
+		}
+	}
+	if (sdrIndex == none)
 	{
 		RUSH_LOG_FATAL("Surface supports neither RGBA8 nor BGRA8 UNORM swap chain formats");
 	}
+	m_caps.hdrOutputSupported = hdr10Index != none || scrgbIndex != none;
+
+	size_t preferredFormatIndex = sdrIndex;
+	GfxOutputMode outputMode = GfxOutputMode::SDR;
+	if (m_desiredOutputMode != GfxOutputMode::SDR)
+	{
+		const bool preferScrgb = m_desiredOutputMode == GfxOutputMode::ScRGB;
+		if (preferScrgb ? scrgbIndex != none : hdr10Index == none && scrgbIndex != none)
+		{
+			preferredFormatIndex = scrgbIndex;
+			outputMode = GfxOutputMode::ScRGB;
+		}
+		else if (hdr10Index != none)
+		{
+			preferredFormatIndex = hdr10Index;
+			outputMode = GfxOutputMode::HDR10;
+		}
+	}
+	if (outputMode != m_desiredOutputMode)
+	{
+		RUSH_LOG("Output mode %u unavailable on this surface, using %u", u32(m_desiredOutputMode), u32(outputMode));
+	}
+	m_outputMode = outputMode;
+	m_desiredOutputMode = outputMode;
+	m_caps.outputMode = outputMode;
+	m_caps.displayHeadroom = 0.0f;
 
 	const VkFormat        swapChainColorFormat = enumeratedSurfaceFormats[preferredFormatIndex].format;
 	const VkColorSpaceKHR swapChainColorSpace  = enumeratedSurfaceFormats[preferredFormatIndex].colorSpace;
-	const GfxFormat       swapChainFormat =
-	    swapChainColorFormat == VK_FORMAT_B8G8R8A8_UNORM ? GfxFormat_BGRA8_Unorm : GfxFormat_RGBA8_Unorm;
+	GfxFormat swapChainFormat = GfxFormat_RGBA8_Unorm;
+	switch (swapChainColorFormat)
+	{
+	case VK_FORMAT_B8G8R8A8_UNORM: swapChainFormat = GfxFormat_BGRA8_Unorm; break;
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32: swapChainFormat = GfxFormat_RGB10A2_Unorm; break;
+	case VK_FORMAT_R16G16B16A16_SFLOAT: swapChainFormat = GfxFormat_RGBA16_Float; break;
+	default: break;
+	}
 
 	// Back buffer passes need these even while no swap chain exists
 	m_caps.backBufferDesc.colorFormats[0] = swapChainFormat;
@@ -1806,6 +1864,7 @@ void GfxDevice::createSwapChain()
 	{
 		vkDestroySwapchainKHR(m_vulkanDevice, oldSwapChain, g_allocationCallbacks);
 	}
+	applyHdrMetadata();
 
 	u32 swapChainImageCount = 0;
 	V(vkGetSwapchainImagesKHR(m_vulkanDevice, m_swapChain, &swapChainImageCount, nullptr));
@@ -1868,6 +1927,24 @@ void GfxDevice::createSwapChain()
 
 	m_swapChainValid      = true;
 	m_swapChainSuboptimal = false;
+}
+
+void GfxDevice::applyHdrMetadata()
+{
+	if (!m_swapChain || m_outputMode != GfxOutputMode::HDR10 || !m_supportedExtensions.EXT_hdr_metadata || !vkSetHdrMetadataEXT)
+	{
+		return;
+	}
+	VkHdrMetadataEXT metadata            = {VK_STRUCTURE_TYPE_HDR_METADATA_EXT};
+	metadata.displayPrimaryRed           = {0.708f, 0.292f};
+	metadata.displayPrimaryGreen         = {0.170f, 0.797f};
+	metadata.displayPrimaryBlue          = {0.131f, 0.046f};
+	metadata.whitePoint                  = {0.3127f, 0.3290f};
+	metadata.maxLuminance                = m_hdrMaxLuminanceNits;
+	metadata.minLuminance                = 0.001f;
+	metadata.maxContentLightLevel        = m_hdrMaxLuminanceNits;
+	metadata.maxFrameAverageLightLevel   = m_hdrMaxFrameAverageNits;
+	vkSetHdrMetadataEXT(m_vulkanDevice, 1, &m_swapChain, &metadata);
 }
 
 void GfxDevice::acquireBackBuffer()
@@ -3799,7 +3876,8 @@ void GfxDevice::flushUploadContext(GfxContext* dependentContext, bool waitForCom
 void Gfx_BeginFrame()
 {
 	if (!g_device->m_cfg.headless
-	    && (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval))
+	    && (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval
+	        || g_device->m_desiredOutputMode != g_device->m_outputMode))
 	{
 		// beginFrame recreates it
 		g_device->m_swapChainValid = false;
@@ -3837,7 +3915,8 @@ void GfxDevice::captureScreenshot(VkSemaphore signalSemaphore)
 		return;
 	}
 
-	const size_t screenshotSizeInBytes = 4 * m_swapChainExtent.width * m_swapChainExtent.height; // assume 8888 format
+	const u32    bytesPerPixel         = getBitsPerPixel(m_caps.backBufferDesc.colorFormats[0]) / 8;
+	const size_t screenshotSizeInBytes = size_t(bytesPerPixel) * m_swapChainExtent.width * m_swapChainExtent.height;
 
 	VkDeviceMemory memory       = VK_NULL_HANDLE;
 	VkBuffer       buffer       = VK_NULL_HANDLE;
@@ -4002,30 +4081,19 @@ GfxProgressId Gfx_Present()
 		{
 			GfxTexture swapChainTexture = g_device->m_swapChainTextures[g_device->m_swapChainIndex].get();
 			GfxFormat swapChainFormat = g_device->m_resources.textures[swapChainTexture].desc.format;
-			if (swapChainFormat == GfxFormat_BGRA8_Unorm)
-			{
-				const u8* src = reinterpret_cast<const u8*>(pending.mapped);
-				const size_t pixelCount = static_cast<size_t>(pending.size.x) * pending.size.y;
-				DynamicArray<ColorRGBA8> pixels(pixelCount);
-				ImageView imageView;
-				imageView.data = src;
-				imageView.width = pending.size.x;
-				imageView.height = pending.size.y;
-				imageView.bytesPerRow = pending.size.x * 4;
-				imageView.format = GfxFormat_BGRA8_Unorm;
-				convertToRGBA8(imageView, ArrayView<ColorRGBA8>(pixels));
-				g_device->m_pendingScreenshotCallback(
-				    pixels.data(),
-				    pending.size,
-				    g_device->m_pendingScreenshotUserData);
-			}
-			else
-			{
-				g_device->m_pendingScreenshotCallback(
-				    reinterpret_cast<ColorRGBA8*>(pending.mapped),
-				    pending.size,
-				    g_device->m_pendingScreenshotUserData);
-			}
+			const size_t pixelCount = static_cast<size_t>(pending.size.x) * pending.size.y;
+			DynamicArray<ColorRGBA8> pixels(pixelCount);
+			ImageView imageView;
+			imageView.data = reinterpret_cast<const u8*>(pending.mapped);
+			imageView.width = pending.size.x;
+			imageView.height = pending.size.y;
+			imageView.bytesPerRow = pending.size.x * getBitsPerPixel(swapChainFormat) / 8;
+			imageView.format = swapChainFormat;
+			convertToRGBA8(imageView, ArrayView<ColorRGBA8>(pixels));
+			g_device->m_pendingScreenshotCallback(
+			    pixels.data(),
+			    pending.size,
+			    g_device->m_pendingScreenshotUserData);
 		}
 
 		Gfx_Release(pending.context);
@@ -4059,6 +4127,15 @@ GfxProgressId Gfx_Present()
 }
 
 void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval = interval; }
+
+void Gfx_SetOutputMode(GfxOutputMode mode) { g_device->m_desiredOutputMode = mode; }
+
+void Gfx_SetHdrMetadata(float maxLuminanceNits, float maxFrameAverageNits)
+{
+	g_device->m_hdrMaxLuminanceNits    = maxLuminanceNits;
+	g_device->m_hdrMaxFrameAverageNits = maxFrameAverageNits;
+	g_device->applyHdrMetadata();
+}
 
 // The swapchain image is acquired at frame start and must be presented
 void Gfx_SkipPresent() {}

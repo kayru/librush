@@ -34,6 +34,7 @@ u32 getBitsPerPixel(GfxFormatStorage fmt)
 	case GfxFormatStorage_RGBA8: return 32;
 	case GfxFormatStorage_BGRA8: return 32;
 	case GfxFormatStorage_ASTC_4x4: return 8;
+	case GfxFormatStorage_RGB10A2: return 32;
 
 	default: RUSH_BREAK; return 0;
 	}
@@ -64,6 +65,7 @@ const char* toString(GfxFormat fmt)
 	case GfxFormat_RGBA8_sRGB: return "GfxFormat_RGBA8_sRGB";
 	case GfxFormat_BGRA8_Unorm: return "GfxFormat_BGRA8_Unorm";
 	case GfxFormat_BGRA8_sRGB: return "GfxFormat_BGRA8_sRGB";
+	case GfxFormat_RGB10A2_Unorm: return "GfxFormat_RGB10A2_Unorm";
 	case GfxFormat_BC1_Unorm: return "GfxFormat_BC1_Unorm";
 	case GfxFormat_BC1_Unorm_sRGB: return "GfxFormat_BC1_Unorm_sRGB";
 	case GfxFormat_BC2_Unorm: return "GfxFormat_BC2_Unorm";
@@ -257,8 +259,8 @@ GfxBlendStateDesc GfxBlendStateDesc::makeLerp()
 	res.src           = GfxBlendParam::SrcAlpha;
 	res.dst           = GfxBlendParam::InvSrcAlpha;
 	res.op            = GfxBlendOp::Add;
-	res.alphaSeparate = false;
-	res.alphaSrc      = GfxBlendParam::SrcAlpha;
+	res.alphaSeparate = true;
+	res.alphaSrc      = GfxBlendParam::One;
 	res.alphaDst      = GfxBlendParam::InvSrcAlpha;
 	res.alphaOp       = GfxBlendOp::Add;
 
@@ -291,7 +293,7 @@ GfxBlendStateDesc GfxBlendStateDesc::makePremultiplied()
 	res.op            = GfxBlendOp::Add;
 	res.alphaSeparate = true;
 	res.alphaSrc      = GfxBlendParam::One;
-	res.alphaDst      = GfxBlendParam::One;
+	res.alphaDst      = GfxBlendParam::InvSrcAlpha;
 	res.alphaOp       = GfxBlendOp::Add;
 
 	return res;

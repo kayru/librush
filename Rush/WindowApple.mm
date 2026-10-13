@@ -440,6 +440,26 @@ void WindowMac::processResize(float newWidth, float newHeight)
 	}
 }
 
+float WindowMac::displayHeadroom() const
+{
+	NSScreen* screen = m_nativeWindow ? [m_nativeWindow screen] : nil;
+	if (!screen)
+	{
+		screen = [NSScreen mainScreen];
+	}
+	return screen ? (float)[screen maximumExtendedDynamicRangeColorComponentValue] : 1.0f;
+}
+
+float WindowMac::displayHeadroomPotential() const
+{
+	NSScreen* screen = m_nativeWindow ? [m_nativeWindow screen] : nil;
+	if (!screen)
+	{
+		screen = [NSScreen mainScreen];
+	}
+	return screen ? (float)[screen maximumPotentialExtendedDynamicRangeColorComponentValue] : 1.0f;
+}
+
 void WindowMac::updateResolutionScale()
 {
 	if (!m_nativeWindow)
@@ -1108,6 +1128,26 @@ void WindowIOS::touchEnded(void* nativeId, const Vec2& pos)
 	m_nativeTouches[idx] = m_nativeTouches.back();
 	m_nativeTouches.pop_back();
 	processTouchEvent(WindowEvent::Touch(WindowEventType_TouchEnd, id, pos));
+}
+
+float WindowIOS::displayHeadroom() const
+{
+	UIScreen* screen = m_viewController ? m_viewController.view.window.screen : nil;
+	if (!screen)
+	{
+		screen = [UIScreen mainScreen];
+	}
+	return screen ? (float)screen.currentEDRHeadroom : 1.0f;
+}
+
+float WindowIOS::displayHeadroomPotential() const
+{
+	UIScreen* screen = m_viewController ? m_viewController.view.window.screen : nil;
+	if (!screen)
+	{
+		screen = [UIScreen mainScreen];
+	}
+	return screen ? (float)screen.potentialEDRHeadroom : 1.0f;
 }
 
 void WindowIOS::updateResolutionScale()

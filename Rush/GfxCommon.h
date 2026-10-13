@@ -363,6 +363,7 @@ enum GfxFormatStorage : u32
 	GfxFormatStorage_RGBA8    = 21 << 8,
 	GfxFormatStorage_BGRA8    = 22 << 8,
 	GfxFormatStorage_ASTC_4x4 = 23 << 8,
+	GfxFormatStorage_RGB10A2  = 24 << 8,
 };
 
 enum GfxFormatComponent : u32
@@ -414,6 +415,7 @@ enum GfxFormat : u32
 	GfxFormat_RGBA8_sRGB   = RUSH_GFX_FORMAT(RGBA8, sRGB, RGBA),
 	GfxFormat_BGRA8_Unorm  = RUSH_GFX_FORMAT(BGRA8, Unorm, RGBA),
 	GfxFormat_BGRA8_sRGB   = RUSH_GFX_FORMAT(BGRA8, sRGB, RGBA),
+	GfxFormat_RGB10A2_Unorm = RUSH_GFX_FORMAT(RGB10A2, Unorm, RGBA),
 
 	// Block-compressed formats
 	GfxFormat_BC1_Unorm      = RUSH_GFX_FORMAT(BC1, Unorm, RGBA),

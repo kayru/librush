@@ -55,6 +55,9 @@ public:
 
 	CAMetalLayer* getMetalLayer() const { return m_metalLayer; }
 
+	virtual float displayHeadroom() const = 0;
+	virtual float displayHeadroomPotential() const = 0;
+
 protected:
 	CAMetalLayer* m_metalLayer = nullptr;
 };
@@ -74,6 +77,9 @@ public:
 	virtual void           setMouseLock(bool state) override;
 	virtual bool           setFullscreen(bool state) override;
 	virtual Box2 getSafeArea() const override;
+
+	virtual float displayHeadroom() const override;
+	virtual float displayHeadroomPotential() const override;
 
 	bool processEvent(NSEvent* event);
 	void processResize(float newWidth, float newHeight);
@@ -108,6 +114,9 @@ public:
 	virtual void           setMouseLock(bool) override {}
 	virtual bool           setFullscreen(bool) override { return true; }
 	virtual Box2 getSafeArea() const override;
+
+	virtual float displayHeadroom() const override;
+	virtual float displayHeadroomPotential() const override;
 
 	void setUIWindow(UIWindow* window) { m_uiWindow = window; }
 	void setViewController(RushViewController* vc);

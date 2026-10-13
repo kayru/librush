@@ -96,6 +96,13 @@ struct GfxMappedTexture
 	GfxTexture handle;
 };
 
+enum class GfxOutputMode : u8
+{
+	SDR,
+	HDR10,
+	ScRGB,
+};
+
 struct GfxConfig
 {
 	GfxConfig() = default;
@@ -122,6 +129,7 @@ struct GfxConfig
 	bool headless         = false;
 
 	GfxTimingLevel timingLevel = GfxTimingLevel::Frame;
+	GfxOutputMode  outputMode  = GfxOutputMode::SDR;
 };
 
 struct GfxCapability
@@ -171,6 +179,10 @@ struct GfxCapability
 	double timestampPeriodNs    = 0.0;
 
 	GfxRenderTargetDesc backBufferDesc;
+
+	GfxOutputMode outputMode         = GfxOutputMode::SDR;
+	bool          hdrOutputSupported = false;
+	float         displayHeadroom    = 0.0f; // ScRGB peak relative to SDR white (Apple EDR), 0 unknown
 
 	bool shaderTypeSupported(GfxShaderSourceType type) const { return (shaderTypeMask & (1 << type)) != 0; }
 };
@@ -241,6 +253,8 @@ void                 Gfx_BeginFrame();
 void                 Gfx_EndFrame();
 GfxProgressId        Gfx_Present();                // submit commands + present swapchain, return progress ID
 void                 Gfx_SetPresentInterval(u32 interval);
+void                 Gfx_SetOutputMode(GfxOutputMode mode);
+void                 Gfx_SetHdrMetadata(float maxLuminanceNits, float maxFrameAverageNits);
 // The current frame renders as usual but is not shown: back buffer passes land
 // in an offscreen texture. Call before the frame's first back buffer pass.
 // A hint: backends that cannot skip present the frame.
@@ -554,6 +568,8 @@ inline void Gfx_BeginFrame() {}
 inline void Gfx_EndFrame() {}
 inline GfxProgressId Gfx_Present() { return {}; }
 inline void Gfx_SetPresentInterval(u32 interval) {}
+inline void Gfx_SetOutputMode(GfxOutputMode) {}
+inline void Gfx_SetHdrMetadata(float, float) {}
 inline void Gfx_SkipPresent() {}
 inline bool Gfx_PresentWouldWait() { return false; }
 inline GfxProgressId Gfx_Submit() { return {}; }

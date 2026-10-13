@@ -243,6 +243,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 		m_metalLayer.device = m_metalDevice;
 		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 		m_metalLayer.framebufferOnly = NO;
+		m_desiredOutputMode = cfg.outputMode;
 	}
 
 	m_progressEvent = [m_metalDevice newSharedEvent];
@@ -325,9 +326,60 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 
 	if (!m_headless)
 	{
-		m_caps.backBufferDesc.colorFormats[0] = convertPixelFormat([m_metalLayer pixelFormat]);
-		m_caps.backBufferDesc.depthFormat     = GfxFormat_D32_Float;
+		m_caps.hdrOutputSupported = static_cast<WindowApple*>(m_window)->displayHeadroomPotential() > 1.0f;
+		m_caps.backBufferDesc.depthFormat = GfxFormat_D32_Float;
+		applyOutputMode();
 	}
+}
+
+static CAEDRMetadata* makeHdr10Metadata(float maxLuminanceNits)
+{
+	return [CAEDRMetadata HDR10MetadataWithMinLuminance:0.0f maxLuminance:maxLuminanceNits opticalOutputScale:100.0f];
+}
+
+void GfxDevice::applyOutputMode()
+{
+	GfxOutputMode mode = m_desiredOutputMode;
+	if (mode != GfxOutputMode::SDR && !m_caps.hdrOutputSupported)
+	{
+		mode = GfxOutputMode::SDR;
+	}
+
+	MTLPixelFormat pixelFormat = MTLPixelFormatBGRA8Unorm;
+	CGColorSpaceRef colorSpace = nullptr;
+	CAEDRMetadata* edrMetadata = nil;
+	switch (mode)
+	{
+	case GfxOutputMode::SDR:
+		break;
+	case GfxOutputMode::HDR10:
+		pixelFormat = MTLPixelFormatRGB10A2Unorm;
+		colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_2100_PQ);
+		edrMetadata = makeHdr10Metadata(m_hdrMaxLuminanceNits);
+		break;
+	case GfxOutputMode::ScRGB:
+		pixelFormat = MTLPixelFormatRGBA16Float;
+		colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB);
+		break;
+	}
+
+	m_metalLayer.pixelFormat = pixelFormat;
+	m_metalLayer.colorspace = colorSpace;
+	m_metalLayer.wantsExtendedDynamicRangeContent = mode != GfxOutputMode::SDR;
+	m_metalLayer.EDRMetadata = edrMetadata;
+	if (colorSpace)
+	{
+		CGColorSpaceRelease(colorSpace);
+	}
+
+	[m_offscreenBackBuffer release];
+	m_offscreenBackBuffer = nil;
+
+	m_outputMode = mode;
+	m_desiredOutputMode = mode;
+	m_caps.outputMode = mode;
+	m_caps.backBufferDesc.colorFormats[0] = convertPixelFormat(pixelFormat);
+	m_caps.displayHeadroom = mode == GfxOutputMode::ScRGB ? static_cast<WindowApple*>(m_window)->displayHeadroom() : 0.0f;
 }
 
 GfxDevice::~GfxDevice()
@@ -439,6 +491,19 @@ void GfxDevice::beginFrame()
 
 		m_resizeEvents.clear();
 	}
+	if (!m_headless)
+	{
+		WindowApple* window = static_cast<WindowApple*>(m_window);
+		m_caps.hdrOutputSupported = window->displayHeadroomPotential() > 1.0f;
+		if (m_desiredOutputMode != m_outputMode)
+		{
+			applyOutputMode();
+		}
+		else if (m_outputMode == GfxOutputMode::ScRGB)
+		{
+			m_caps.displayHeadroom = window->displayHeadroom();
+		}
+	}
 
 	// The drawable is acquired on first use (acquireBackBuffer): nextDrawable
 	// blocks until the compositor frees one, so frames that only render
@@ -524,12 +589,13 @@ void Gfx_EndFrame()
 		const u32 height = (u32)[g_device->m_backBufferTexture height];
 
 		// Register temporary texture/buffer handles for Gfx_CopyTextureToBuffer
+		const GfxFormat backBufferFormat = g_device->m_caps.backBufferDesc.colorFormats[0];
 		TextureMTL tempTex;
 		tempTex.native = g_device->m_backBufferTexture;
-		tempTex.desc = GfxTextureDesc::make2D(width, height, GfxFormat_BGRA8_Unorm);
+		tempTex.desc = GfxTextureDesc::make2D(width, height, backBufferFormat);
 		const GfxTexture srcHandle = g_device->m_resources.textures.push(tempTex);
 
-		const GfxImageCopyInfo preInfo = Gfx_GetImageCopyInfo(GfxFormat_BGRA8_Unorm, {width, height, 1});
+		const GfxImageCopyInfo preInfo = Gfx_GetImageCopyInfo(backBufferFormat, {width, height, 1});
 		const u32 bufferSize = preInfo.bytesPerRow * preInfo.rowCount;
 
 		g_device->m_pendingScreenshot.width = width;
@@ -604,7 +670,7 @@ GfxProgressId Gfx_Present()
 				imageView.width = width;
 				imageView.height = height;
 				imageView.bytesPerRow = g_device->m_pendingScreenshot.copyInfo.bytesPerRow;
-				imageView.format = GfxFormat_BGRA8_Unorm;
+				imageView.format = g_device->m_caps.backBufferDesc.colorFormats[0];
 				convertToRGBA8(imageView, ArrayView<ColorRGBA8>(pixels));
 
 				g_device->m_pendingScreenshot.callback(
@@ -680,6 +746,21 @@ void Gfx_SetPresentInterval(u32 interval)
 	{
 		Log::warning("Present interval != 1 is not supported here");
 		warningReported = true;
+	}
+}
+
+void Gfx_SetOutputMode(GfxOutputMode mode)
+{
+	g_device->m_desiredOutputMode = mode;
+}
+
+void Gfx_SetHdrMetadata(float maxLuminanceNits, float maxFrameAverageNits)
+{
+	RUSH_UNUSED(maxFrameAverageNits);
+	g_device->m_hdrMaxLuminanceNits = maxLuminanceNits;
+	if (!g_device->m_headless && g_device->m_outputMode == GfxOutputMode::HDR10)
+	{
+		g_device->m_metalLayer.EDRMetadata = makeHdr10Metadata(maxLuminanceNits);
 	}
 }
 
@@ -1648,7 +1729,8 @@ void Gfx_TraceRays(GfxContext* rc, GfxRayTracingPipelineArg pipelineHandle, GfxB
 	X(GfxFormat_RGBA8_Unorm,       MTLPixelFormatRGBA8Unorm) \
 	X(GfxFormat_RGBA8_sRGB,        MTLPixelFormatRGBA8Unorm_sRGB) \
 	X(GfxFormat_BGRA8_Unorm,       MTLPixelFormatBGRA8Unorm) \
-	X(GfxFormat_BGRA8_sRGB,        MTLPixelFormatBGRA8Unorm_sRGB)
+	X(GfxFormat_BGRA8_sRGB,        MTLPixelFormatBGRA8Unorm_sRGB) \
+	X(GfxFormat_RGB10A2_Unorm,     MTLPixelFormatRGB10A2Unorm)
 // clang-format on
 
 static MTLPixelFormat convertPixelFormat(GfxFormat format)

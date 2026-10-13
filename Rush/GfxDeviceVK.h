@@ -657,7 +657,15 @@ public:
 		bool NV_geometry_shader_passthrough       = false;
 		bool NV_mesh_shader                       = false;
 		bool KHR_portability_subset               = false;
+		bool EXT_swapchain_colorspace             = false;
+		bool EXT_hdr_metadata                     = false;
 	} m_supportedExtensions;
+
+	GfxOutputMode m_outputMode              = GfxOutputMode::SDR;
+	GfxOutputMode m_desiredOutputMode       = GfxOutputMode::SDR;
+	float         m_hdrMaxLuminanceNits     = 1000.0f;
+	float         m_hdrMaxFrameAverageNits  = 400.0f;
+	void          applyHdrMetadata();
 
 	bool m_useNegativeViewport = false;
 };
