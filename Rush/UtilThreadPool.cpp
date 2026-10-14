@@ -2,11 +2,73 @@
 #include "UtilLog.h"
 
 #include <algorithm>
-#include <iterator>
+#include <deque>
 #include <mutex>
 
 namespace Rush
 {
+
+struct TaskDomain
+{
+	int priority = 0;
+	std::deque<ThreadPool::Task> tasks;
+};
+
+namespace
+{
+thread_local TaskDomain* t_currentDomain = nullptr;
+}
+
+ThreadPool::ThreadPool()
+{
+	m_defaultDomain = createDomain({});
+}
+
+TaskDomain* ThreadPool::createDomain(const TaskDomainDesc& desc)
+{
+	auto domain = std::make_unique<TaskDomain>();
+	domain->priority = desc.priority;
+	TaskDomain* result = domain.get();
+	std::lock_guard<std::mutex> lock(m_mutex);
+	const auto at = std::find_if(m_domains.begin(), m_domains.end(), [&](const std::unique_ptr<TaskDomain>& p) { return p->priority <= desc.priority; });
+	RUSH_ASSERT_MSG(at == m_domains.end() || (*at)->priority != desc.priority, "Two task domains with priority %d", desc.priority);
+	m_domains.insert(at, std::move(domain));
+	return result;
+}
+
+TaskDomain* ThreadPool::currentDomain()
+{
+	return t_currentDomain;
+}
+
+void ThreadPool::setCurrentDomain(TaskDomain* domain)
+{
+	t_currentDomain = domain;
+}
+
+TaskDomain* ThreadPool::resolveDomain(TaskDomain* domain) const
+{
+	for (const std::unique_ptr<TaskDomain>& own : m_domains)
+	{
+		if (own.get() == domain)
+		{
+			return domain;
+		}
+	}
+	return m_defaultDomain;
+}
+
+TaskDomain* ThreadPool::eligibleDomain()
+{
+	for (const std::unique_ptr<TaskDomain>& domain : m_domains)
+	{
+		if (!domain->tasks.empty())
+		{
+			return domain.get();
+		}
+	}
+	return nullptr;
+}
 
 void ThreadPool::startWorkers(u32 numWorkers)
 {
@@ -15,9 +77,12 @@ void ThreadPool::startWorkers(u32 numWorkers)
 	while (m_threads.size() < numWorkers)
 	{
 		m_threads.emplace_back([this]() {
-			while (doWorkInternal(true)) {}
+			while (doWorkInternal(true))
+			{
+			}
 		});
 	}
+	m_workerCount = u32(m_threads.size());
 }
 
 ThreadPool::~ThreadPool()
@@ -40,44 +105,77 @@ ThreadPool::Task ThreadPool::popTask(bool waitForSignal)
 
 	if (waitForSignal)
 	{
-		m_wakeCondition.wait(lock, [this]() { return m_shutdown || !m_tasks.empty(); });
+		m_wakeCondition.wait(lock, [this]() { return m_shutdown || eligibleDomain() != nullptr; });
 	}
 
 	Task result;
-	if (!m_tasks.empty())
+	if (TaskDomain* domain = eligibleDomain())
 	{
-		result = std::move(m_tasks.back());
-		m_tasks.pop_back();
+		result = std::move(domain->tasks.front());
+		domain->tasks.pop_front();
 	}
 	return result;
 }
 
 void ThreadPool::pushTask(TaskFunction&& fun, bool allowImmediateExecution)
 {
-	pushTask(Task{std::move(fun), nullptr}, allowImmediateExecution);
+	pushTask(Task{std::move(fun), nullptr, currentDomain()}, allowImmediateExecution);
 }
 
 void ThreadPool::pushTask(Task&& task, bool allowImmediateExecution)
 {
-	if (m_threads.empty() || (m_runningTasks.load() >= numWorkerThreads() && allowImmediateExecution))
+	std::unique_lock<std::mutex> lock(m_mutex);
+	task.domain = resolveDomain(task.domain);
+	if (m_threads.empty() || m_shutdown || (m_runningTasks.load() >= m_threads.size() && allowImmediateExecution))
 	{
+		lock.unlock();
 		runTask(task);
 	}
 	else
 	{
-		{
-			std::lock_guard<std::mutex> lock(m_mutex);
-			m_tasks.push_back(std::move(task));
-		}
+		task.domain->tasks.push_back(std::move(task));
+		lock.unlock();
 		m_wakeCondition.notify_one();
 	}
 }
 
-void ThreadPool::runTask(Task& task)
+void ThreadPool::pushTasks(TaskDomain* domain, std::vector<Task>&& tasks)
+{
+	if (tasks.empty())
+	{
+		return;
+	}
+	std::unique_lock<std::mutex> lock(m_mutex);
+	domain = resolveDomain(domain);
+	const bool runHere = m_threads.empty() || m_shutdown;
+	for (Task& task : tasks)
+	{
+		task.domain = domain;
+		if (!runHere)
+		{
+			domain->tasks.push_back(std::move(task));
+		}
+	}
+	lock.unlock();
+	if (!runHere)
+	{
+		m_wakeCondition.notify_all();
+		return;
+	}
+	for (Task& task : tasks)
+	{
+		runTask(task);
+	}
+}
+
+void ThreadPool::runTask(Task& task) noexcept
 {
 	++m_runningTasks;
+	TaskDomain* const previous = t_currentDomain;
+	t_currentDomain = task.domain;
 	task.function();
 	task.function = nullptr;
+	t_currentDomain = previous;
 	--m_runningTasks;
 	if (task.group)
 	{
@@ -101,13 +199,20 @@ bool ThreadPool::executeGroupTask(TaskGroup& group)
 	Task task;
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		const auto it = std::find_if(m_tasks.rbegin(), m_tasks.rend(), [&](const Task& t) { return t.group == &group; });
-		if (it == m_tasks.rend())
+		for (const std::unique_ptr<TaskDomain>& domain : m_domains)
 		{
-			return false;
+			const auto it = std::find_if(domain->tasks.begin(), domain->tasks.end(), [&](const Task& t) { return t.group == &group; });
+			if (it != domain->tasks.end())
+			{
+				task = std::move(*it);
+				domain->tasks.erase(it);
+				break;
+			}
 		}
-		task = std::move(*it);
-		m_tasks.erase(std::next(it).base());
+	}
+	if (!task.function)
+	{
+		return false;
 	}
 	runTask(task);
 	return true;
