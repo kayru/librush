@@ -39,6 +39,7 @@ public:
 	static constexpr u32 kMaxThreads = 64;
 
 	static ThreadPool& global();
+	static void setGlobalWorkerCount(u32 numWorkers);
 
 	void startWorkers(u32 numWorkers);
 	void pushTask(TaskFunction&& fun, bool allowImmediateExecution = true);

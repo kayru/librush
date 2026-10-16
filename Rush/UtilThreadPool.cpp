@@ -269,13 +269,28 @@ void Semaphore::release()
 	m_native.release();
 }
 
+namespace
+{
+constexpr u32 kDefaultGlobalWorkers = ~0u;
+std::atomic<u32> g_globalWorkers = kDefaultGlobalWorkers;
+std::atomic<bool> g_globalStarted = false;
+} // namespace
+
+void ThreadPool::setGlobalWorkerCount(u32 numWorkers)
+{
+	RUSH_ASSERT_MSG(!g_globalStarted.load(), "setGlobalWorkerCount after the global pool started");
+	g_globalWorkers = std::min(numWorkers, kMaxThreads);
+}
+
 ThreadPool& ThreadPool::global()
 {
 	static ThreadPool pool;
 	static std::once_flag initFlag;
 	std::call_once(initFlag, []() {
-		u32 numThreads = std::max(1u, std::thread::hardware_concurrency()) - 1;
-		pool.startWorkers(numThreads);
+		const u32 configured = g_globalWorkers.load();
+		const u32 hardware = std::max(1u, std::thread::hardware_concurrency()) - 1;
+		pool.startWorkers(configured != kDefaultGlobalWorkers ? configured : std::min(hardware, kMaxThreads));
+		g_globalStarted = true;
 	});
 	return pool;
 }
