@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Rush.h"
+#include "UtilArray.h"
 
 #include <thread>
 #include <atomic>
@@ -10,7 +11,6 @@
 #include <cstddef>
 #include <memory>
 #include <type_traits>
-#include <vector>
 #include <semaphore>
 
 namespace Rush
@@ -19,18 +19,41 @@ namespace Rush
 class TaskGroup;
 
 struct TaskDomain;
-
-struct TaskDomainDesc
-{
-	int priority = 0; // higher runs first; unique per pool, the default domain's is 0
-};
+struct ThreadPoolWorkers;
 
 class ThreadPool
 {
 public:
 	using TaskFunction = std::function<void()>;
 
+	struct Desc
+	{
+		struct Cpu
+		{
+			static constexpr u32 kMaxGroups = 64;
+
+			u32 processorNumber = 0; // as per currentProcessorNumber()
+			u8 group = 0; // last-level cache group, with close numbers for physically close caches
+			u32 core = 0; // the physical core number
+		};
+
+		static constexpr u32 kHardwareWorkers = ~0u; // all hardware threads but the caller's
+
+		u32 workers = 0; // how many threads to create
+		u32 joinSpinUs = 50; // spin for this many microseconds before sleeping on join
+		u32 minWorkPerHelper = 0; // in wake times, 0 means twice the hardware threads
+		DynamicArray<Cpu> cpus; // optional description of CPU topology
+	};
+
+	struct ParallelJob
+	{
+		void (*run)(const void* context, u64 first, u64 last);
+		const void* context;
+		u64 count;
+	};
+
 	ThreadPool();
+	explicit ThreadPool(const Desc& desc);
 	~ThreadPool();
 
 	ThreadPool(const ThreadPool&) = delete;
@@ -39,16 +62,16 @@ public:
 	static constexpr u32 kMaxThreads = 64;
 
 	static ThreadPool& global();
-	static void setGlobalWorkerCount(u32 numWorkers);
+	static void setGlobalDesc(const Desc& desc); // optional config before first global()
 
 	void startWorkers(u32 numWorkers);
 	void pushTask(TaskFunction&& fun, bool allowImmediateExecution = true);
 
-	TaskDomain* createDomain(const TaskDomainDesc& desc);
+	TaskDomain* createDomain(int priority); // higher runs first
 	TaskDomain* defaultDomain() { return m_defaultDomain; }
 	static TaskDomain* currentDomain();
 	static void setCurrentDomain(TaskDomain* domain);
-	bool tryExecuteTask() { return doWorkInternal(false); }
+	bool tryExecuteTask() { return doWorkInternal(); }
 
 	bool executeTasksUntilIdle()
 	{
@@ -57,7 +80,11 @@ public:
 		return numExecuted != 0;
 	}
 
-	u32 numWorkerThreads() const { return m_workerCount.load(); }
+	static u32 currentProcessorNumber(); // ~0u where the OS doesn't say
+	u32 numWorkerThreads() const;
+	u32 numIdleWorkers() const;
+
+	void runParallel(const ParallelJob& job) noexcept;
 
 private:
 	friend class TaskGroup;
@@ -71,22 +98,22 @@ private:
 	};
 
 	void pushTask(Task&& task, bool allowImmediateExecution);
-	void pushTasks(TaskDomain* domain, std::vector<Task>&& tasks);
-	bool doWorkInternal(bool waitForSignal);
+	void pushTasks(TaskDomain* domain, DynamicArray<Task>&& tasks);
+	bool doWorkInternal();
 	bool executeGroupTask(TaskGroup& group);
-	Task popTask(bool waitForSignal);
+	Task popTask();
 	void runTask(Task& task) noexcept;
 	TaskDomain* resolveDomain(TaskDomain* domain) const;
 	TaskDomain* eligibleDomain();
+	void workerMain(u32 index);
+	void wakeForQueue(u32 count);
+	void runParallelSegment(const ParallelJob& job) noexcept;
 
-	std::vector<std::thread> m_threads;
-	std::vector<std::unique_ptr<TaskDomain>> m_domains;
+	Desc m_desc;
+	DynamicArray<std::thread> m_threads;
+	DynamicArray<std::unique_ptr<TaskDomain>> m_domains;
 	TaskDomain* m_defaultDomain = nullptr;
-	std::mutex m_mutex;
-	std::condition_variable m_wakeCondition;
-	bool m_shutdown = false;
-	std::atomic<u32> m_runningTasks = 0;
-	std::atomic<u32> m_workerCount = 0;
+	std::unique_ptr<ThreadPoolWorkers> m_workers;
 };
 
 class TaskDomainScope
@@ -118,9 +145,6 @@ private:
 	std::counting_semaphore<ThreadPool::kMaxThreads + 1> m_native;
 };
 
-// wait() runs only this group's queued tasks, then blocks until the rest
-// finish on other threads. A task's captures are destroyed before it counts
-// as finished.
 class TaskGroup
 {
 public:
@@ -175,7 +199,7 @@ public:
 			}
 			return;
 		}
-		std::vector<ThreadPool::Task> tasks;
+		DynamicArray<ThreadPool::Task> tasks;
 		tasks.reserve(count);
 		for (u32 i = 0; i < count; ++i)
 		{
@@ -200,7 +224,7 @@ private:
 };
 
 template <typename I, typename F>
-inline void parallelFor(I begin, I end, F fun)
+inline void parallelFor(ThreadPool& pool, I begin, I end, F fun)
 {
 	static_assert(std::is_integral_v<I>);
 	using U = std::make_unsigned_t<I>;
@@ -208,33 +232,31 @@ inline void parallelFor(I begin, I end, F fun)
 	{
 		return;
 	}
-	ThreadPool& pool = ThreadPool::global();
-	const u64 count = u64(U(U(end) - U(begin)));
-	const u64 slots = u64(pool.numWorkerThreads()) + 1;
-	const u32 tasks = u32(count < slots ? count : slots);
-	if (tasks <= 1)
+	struct Context
 	{
-		for (I i = begin; i < end; ++i)
+		F* fun;
+		I begin;
+	};
+	const Context context{&fun, begin};
+	const ThreadPool::ParallelJob job{
+		[](const void* p, u64 first, u64 last)
 		{
-			fun(i);
-		}
-		return;
-	}
-	const u64 share = count / (u64(tasks) * 8);
-	const u64 grain = share > 0 ? share : 1;
-	std::atomic<u64> next = 0;
-	TaskGroup group(pool);
-	group.runBatch(tasks, [&](u32)
-	{
-		for (u64 first; (first = next.fetch_add(grain, std::memory_order_relaxed)) < count;)
-		{
-			const u64 last = first + grain < count ? first + grain : count;
+			const Context& c = *static_cast<const Context*>(p);
+			F& f = *c.fun;
+			const I b = c.begin;
 			for (u64 k = first; k < last; ++k)
 			{
-				fun(I(U(U(begin) + U(k))));
+				f(I(U(U(b) + U(k))));
 			}
-		}
-	});
+		},
+		&context, u64(U(U(end) - U(begin)))};
+	pool.runParallel(job);
+}
+
+template <typename I, typename F>
+inline void parallelFor(I begin, I end, F fun)
+{
+	parallelFor(ThreadPool::global(), begin, end, std::move(fun));
 }
 
 template <typename IT, typename F>

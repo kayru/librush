@@ -133,6 +133,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		WIN32_LEAN_AND_MEAN
 	)
 	set_source_files_properties(${RUSH_PLATFORM_SOURCES_WIN32} PROPERTIES HEADER_FILE_ONLY FALSE)
+	# WaitOnAddress (thread pool)
+	target_link_libraries(Rush INTERFACE Synchronization)
 
 	set(RUSH_VULKAN_PLATFORM VK_USE_PLATFORM_WIN32_KHR)
 
