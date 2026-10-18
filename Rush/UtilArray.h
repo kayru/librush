@@ -186,12 +186,14 @@ public:
 		return *this;
 	}
 
-	DynamicArray& operator = (DynamicArray&& other)
+	DynamicArray& operator = (DynamicArray&& other) noexcept
 	{
 		if (&other != this)
 		{
+			Buffer<T> old = m_buffer;
 			m_buffer = other.m_buffer;
 			other.m_buffer = Buffer<T>();
+			Buffer<T>::destroy(old);
 		}
 		return *this;
 	}
