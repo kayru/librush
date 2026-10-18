@@ -102,7 +102,7 @@ Mat4 Mat4::inverse() const
 
 Mat4 Mat4::operator*(const Mat4& rhs) const
 {
-	Mat4 res;
+	Mat4 res(noInit);
 	mul(res, *this, rhs);
 	return res;
 }
@@ -250,7 +250,7 @@ Mat4 Mat4::rotationZ(const Vec3& dir)
 
 Mat4 Mat4::rotationAxis(const Vec3& axis, float angle)
 {
-	Mat4 res;
+	Mat4 res(noInit);
 
 	float sa = sinf(angle);
 	float ca = cosf(angle);
@@ -297,13 +297,10 @@ Mat4 Mat4::rotationAxis(const Vec3& axis, float angle)
 
 Mat4 Mat4::lookAt(const Vec3& position, const Vec3& target, const Vec3& up)
 {
-	Vec3 x, y, z;
-
-	z = target - position;
-
-	x = up.cross(z);
-	y = z.cross(x);
-	x = y.cross(z);
+	Vec3 z = target - position;
+	Vec3 x = up.cross(z);
+	Vec3 y = z.cross(x);
+	x      = y.cross(z);
 
 	x.normalize();
 	y.normalize();
@@ -467,51 +464,21 @@ Vec3 Plane::intersectInfiniteLine(const Vec3& a, const Vec3& b)
 
 Mat4::Mat4(float m00, float m10, float m20, float m30, float m01, float m11, float m21, float m31, float m02, float m12,
     float m22, float m32, float m03, float m13, float m23, float m33)
+: rows{Vec4(m00, m10, m20, m30), Vec4(m01, m11, m21, m31), Vec4(m02, m12, m22, m32), Vec4(m03, m13, m23, m33)}
 {
-	rows[0] = Vec4(m00, m10, m20, m30);
-	rows[1] = Vec4(m01, m11, m21, m31);
-	rows[2] = Vec4(m02, m12, m22, m32);
-	rows[3] = Vec4(m03, m13, m23, m33);
 }
 
 Mat4::Mat4(float m00, float m10, float m20, float m01, float m11, float m21, float m02, float m12, float m22)
+: rows{Vec4(m00, m10, m20, 0), Vec4(m01, m11, m21, 0), Vec4(m02, m12, m22, 0), Vec4(0, 0, 0, 1)}
 {
-	rows[0] = Vec4(m00, m10, m20, 0);
-	rows[1] = Vec4(m01, m11, m21, 0);
-	rows[2] = Vec4(m02, m12, m22, 0);
-	rows[3] = Vec4(0, 0, 0, 1);
 }
 
 Mat4::Mat4(const Mat3& m)
+: rows{Vec4(m.rows[0], 0.0f), Vec4(m.rows[1], 0.0f), Vec4(m.rows[2], 0.0f), Vec4(0.0f, 0.0f, 0.0f, 1.0f)}
 {
-	rows[0] = Vec4(m.rows[0], 0.0f);
-	rows[1] = Vec4(m.rows[1], 0.0f);
-	rows[2] = Vec4(m.rows[2], 0.0f);
-	rows[3] = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-Mat4::Mat4(float* arr)
-{
-	rows[0].x = arr[0];
-	rows[0].y = arr[1];
-	rows[0].z = arr[2];
-	rows[0].w = arr[3];
-
-	rows[1].x = arr[4];
-	rows[1].y = arr[5];
-	rows[1].z = arr[6];
-	rows[1].w = arr[7];
-
-	rows[2].x = arr[8];
-	rows[2].y = arr[9];
-	rows[2].z = arr[10];
-	rows[2].w = arr[11];
-
-	rows[3].x = arr[12];
-	rows[3].y = arr[13];
-	rows[3].z = arr[14];
-	rows[3].w = arr[15];
-}
+Mat4::Mat4(float* arr) : rows{Vec4(arr), Vec4(arr + 4), Vec4(arr + 8), Vec4(arr + 12)} {}
 
 Vec4 Mat4::column(size_t c) const
 {
@@ -527,7 +494,7 @@ Vec4 Mat4::column(size_t c) const
 
 Vec4 Mat4::operator*(const Vec4& v) const
 {
-	Vec4 res;
+	Vec4 res(noInit);
 
 	res.x = v.x * m(0, 0) + v.y * m(1, 0) + v.z * m(2, 0) + v.w * m(3, 0);
 	res.y = v.x * m(0, 1) + v.y * m(1, 1) + v.z * m(2, 1) + v.w * m(3, 1);
@@ -539,7 +506,7 @@ Vec4 Mat4::operator*(const Vec4& v) const
 
 Vec3 Mat4::operator*(const Vec3& v) const
 {
-	Vec3 res;
+	Vec3 res(noInit);
 
 	res.x = v.x * m(0, 0) + v.y * m(1, 0) + v.z * m(2, 0) + m(3, 0);
 	res.y = v.x * m(0, 1) + v.y * m(1, 1) + v.z * m(2, 1) + m(3, 1);
@@ -550,7 +517,7 @@ Vec3 Mat4::operator*(const Vec3& v) const
 
 Mat4 Mat4::transposed() const
 {
-	Mat4 res;
+	Mat4 res(noInit);
 
 	res.m(0, 0) = m(0, 0);
 	res.m(0, 1) = m(1, 0);
@@ -577,7 +544,7 @@ Mat4 Mat4::transposed() const
 
 void Mat4::transpose()
 {
-	Mat4 res;
+	Mat4 res(noInit);
 
 	res.m(0, 0) = m(0, 0);
 	res.m(0, 1) = m(1, 0);
@@ -687,7 +654,7 @@ Quat makeQuat(const Mat3& m)
 	float biggestVal = sqrtf(fourBiggestSquaredMinus1 + 1.0f) * 0.5f;
 	float mult       = 0.25f / biggestVal;
 
-	Quat result;
+	Quat result(noInit);
 	switch (biggestIndex)
 	{
 	default:
@@ -723,7 +690,7 @@ Mat3 makeMat3(const Quat& q)
 {
 	// Quaternion implementation from GLM
 
-	Mat3 result{{Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)}};
+	Mat3 result{Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)};
 
 	float qxx(q.x * q.x);
 	float qyy(q.y * q.y);

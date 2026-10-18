@@ -3,6 +3,7 @@
 #include "Rush.h"
 #include "UtilMemory.h"
 
+#include <type_traits>
 #include <utility>
 
 namespace Rush
@@ -78,6 +79,21 @@ struct Buffer
 		}
 	}
 
+	static void constructRange(T* begin, T* end, NoInit)
+	{
+		for (; begin < end; ++begin)
+		{
+			if constexpr (std::is_constructible_v<T, NoInit>)
+			{
+				new(begin) T(noInit);
+			}
+			else
+			{
+				new(begin) T;
+			}
+		}
+	}
+
 	static void constructRange(T* begin, T* end, const T& val)
 	{
 		for (; begin < end; ++begin)
@@ -105,6 +121,16 @@ struct Buffer
 		reserve(buf, newSize);
 
 		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize);
+		destructRange(buf.m_data + newSize, buf.m_data + buf.m_size);
+
+		buf.m_size = newSize;
+	}
+
+	static void resize(Buffer& buf, size_t newSize, NoInit)
+	{
+		reserve(buf, newSize);
+
+		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize, noInit);
 		destructRange(buf.m_data + newSize, buf.m_data + buf.m_size);
 
 		buf.m_size = newSize;

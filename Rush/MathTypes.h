@@ -9,7 +9,8 @@ struct Vec2
 {
 	float x, y;
 
-	Vec2() = default;
+	Vec2() : x(0), y(0) {}
+	explicit Vec2(NoInit) {}
 	Vec2(const float _x, const float _y) : x(_x), y(_y){};
 	Vec2(const float s) : x(s), y(s){};
 	Vec2(const float* arr) : x(arr[0]), y(arr[1]){};
@@ -124,7 +125,8 @@ struct Vec3
 {
 	float x, y, z;
 
-	Vec3() = default;
+	Vec3() : x(0), y(0), z(0) {}
+	explicit Vec3(NoInit) {}
 
 	Vec3(const float _x, const float _y, const float _z) : x(_x), y(_y), z(_z){};
 	Vec3(const float s) : x(s), y(s), z(s){};
@@ -254,7 +256,8 @@ struct Vec4
 {
 	float x, y, z, w;
 
-	Vec4() = default;
+	Vec4() : x(0), y(0), z(0), w(0) {}
+	explicit Vec4(NoInit) {}
 
 	Vec4(const float _x, const float _y, const float _z, const float _w) : x(_x), y(_y), z(_z), w(_w){};
 	Vec4(const float s) : x(s), y(s), z(s), w(s){};
@@ -440,6 +443,10 @@ struct Mat2
 {
 	Vec2 rows[2];
 
+	Mat2() = default;
+	explicit Mat2(NoInit) : rows{Vec2(noInit), Vec2(noInit)} {}
+	Mat2(const Vec2& r0, const Vec2& r1) : rows{r0, r1} {}
+
 	Vec2 operator*(const Vec2& v) const
 	{
 		return {
@@ -453,6 +460,10 @@ struct Mat3
 {
 	Vec3 rows[3];
 
+	Mat3() = default;
+	explicit Mat3(NoInit) : rows{Vec3(noInit), Vec3(noInit), Vec3(noInit)} {}
+	Mat3(const Vec3& r0, const Vec3& r1, const Vec3& r2) : rows{r0, r1, r2} {}
+
 	Vec3 operator*(const Vec3& v) const
 	{
 		return {
@@ -465,8 +476,8 @@ struct Mat3
 
 inline Mat3 transpose(const Mat3& m)
 {
-	return {{Vec3{m.rows[0].x, m.rows[1].x, m.rows[2].x}, Vec3{m.rows[0].y, m.rows[1].y, m.rows[2].y},
-	    Vec3{m.rows[0].z, m.rows[1].z, m.rows[2].z}}};
+	return {Vec3{m.rows[0].x, m.rows[1].x, m.rows[2].x}, Vec3{m.rows[0].y, m.rows[1].y, m.rows[2].y},
+	    Vec3{m.rows[0].z, m.rows[1].z, m.rows[2].z}};
 }
 
 struct Mat4
@@ -474,6 +485,7 @@ struct Mat4
 	Vec4 rows[4];
 
 	Mat4() = default;
+	explicit Mat4(NoInit) : rows{Vec4(noInit), Vec4(noInit), Vec4(noInit), Vec4(noInit)} {}
 
 	Mat4(float m00, float m10, float m20, float m30, float m01, float m11, float m21, float m31, float m02, float m12,
 	    float m22, float m32, float m03, float m13, float m23, float m33);
@@ -548,6 +560,10 @@ struct Quat
 {
 	float x, y, z, w;
 
+	Quat() : x(0), y(0), z(0), w(0) {}
+	explicit Quat(NoInit) {}
+	Quat(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
+
 	Quat operator+(const Quat& q) const { return {x + q.x, y + q.y, z + q.z, w + q.w}; }
 	Quat operator*(float s) const { return {x * s, y * s, z * s, w * s}; }
 	Quat operator/(float s) const { return {x / s, y / s, z / s, w / s}; }
@@ -578,6 +594,7 @@ public:
 	};
 
 	BoxT() = default;
+	explicit BoxT(NoInit) : m_min(noInit), m_max(noInit) {}
 
 	BoxT(const VECTOR_TYPE& min, const VECTOR_TYPE& max) : m_min(min), m_max(max) {}
 
@@ -623,7 +640,8 @@ class Box2 : public BoxT<Vec2>
 	typedef BoxT<Vec2> BASE_TYPE;
 
 public:
-	Box2() {}
+	Box2() = default;
+	explicit Box2(NoInit) : BASE_TYPE(noInit) {}
 
 	Box2(const Vec2& min, const Vec2& max) : BASE_TYPE(min, max) {}
 	Box2(const Vec2& origin, float radius) : BASE_TYPE(origin, radius) {}
@@ -678,7 +696,8 @@ class Box3 : public BoxT<Vec3>
 	typedef BoxT<Vec3> BASE_TYPE;
 
 public:
-	Box3() {}
+	Box3() = default;
+	explicit Box3(NoInit) : BASE_TYPE(noInit) {}
 
 	Box3(const Vec3& min, const Vec3& max) : BASE_TYPE(min, max) {}
 
@@ -717,6 +736,7 @@ class Line2
 {
 public:
 	Line2() = default;
+	explicit Line2(NoInit) : start(noInit), end(noInit) {}
 
 	Line2(const Vec2& a, const Vec2& b) : start(a), end(b) {}
 
@@ -747,6 +767,7 @@ class Line3
 {
 public:
 	Line3() = default;
+	explicit Line3(NoInit) : start(noInit), end(noInit) {}
 
 	Line3(const Vec3& a, const Vec3& b) : start(a), end(b) {}
 
@@ -762,15 +783,11 @@ struct Plane
 	Vec3  n;
 	float d;
 
-	Plane() = default;
+	Plane() : d(0) {}
+	explicit Plane(NoInit) : n(noInit) {}
 	Plane(const Vec3& _n, float _d) : n(_n), d(_d) {}
 	Plane(float _nx, float _ny, float _nz, float _d) : n(_nx, _ny, _nz), d(_d) {}
-
-	Plane(const Vec3& pos, const Vec3& normal)
-	{
-		n = normal;
-		d = -(normal.dot(pos));
-	}
+	Plane(const Vec3& pos, const Vec3& normal) : n(normal), d(-(normal.dot(pos))) {}
 
 	float distance(const Vec3& pos) const { return dot(n, pos) + d; }
 
@@ -852,6 +869,7 @@ public:
 	Vec3 a, b, c;
 
 	Triangle() = default;
+	explicit Triangle(NoInit) : a(noInit), b(noInit), c(noInit) {}
 	Triangle(const Vec3& _a, const Vec3& _b, const Vec3& _c) : a(_a), b(_b), c(_c) {}
 
 	Vec3         calculateNormal() const { return calculateNormal(a, b, c); }

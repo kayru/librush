@@ -143,6 +143,12 @@ public:
 		resize(size);
 	}
 
+	DynamicArray(size_t size, NoInit)
+		: DynamicArray()
+	{
+		resize(size, noInit);
+	}
+
 	DynamicArray(size_t size, const T& defaultValue)
 		: DynamicArray()
 	{
@@ -228,6 +234,11 @@ public:
 	RUSH_FORCEINLINE void resize(size_t desiredSize)
 	{
 		Buffer<T>::resize(m_buffer, desiredSize);
+	}
+
+	RUSH_FORCEINLINE void resize(size_t desiredSize, NoInit)
+	{
+		Buffer<T>::resize(m_buffer, desiredSize, noInit);
 	}
 
 	RUSH_FORCEINLINE void resize(size_t desiredSize, const T& defaultValue)

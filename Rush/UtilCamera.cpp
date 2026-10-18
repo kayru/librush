@@ -66,12 +66,12 @@ void Camera::blendTo(const Camera& other, float positionAlpha, float orientation
 		m_clipFar = lerp(m_clipFar, other.m_clipFar, parameterAlpha);
 	}
 
-	Mat3 orientationA{{Vec3{m_axisX.x, m_axisY.x, m_axisZ.x}, Vec3{m_axisX.y, m_axisY.y, m_axisZ.y},
-	    Vec3{m_axisX.z, m_axisY.z, m_axisZ.z}}};
+	Mat3 orientationA{Vec3{m_axisX.x, m_axisY.x, m_axisZ.x}, Vec3{m_axisX.y, m_axisY.y, m_axisZ.y},
+	    Vec3{m_axisX.z, m_axisY.z, m_axisZ.z}};
 
-	Mat3 orientationB{{Vec3{other.m_axisX.x, other.m_axisY.x, other.m_axisZ.x},
+	Mat3 orientationB{Vec3{other.m_axisX.x, other.m_axisY.x, other.m_axisZ.x},
 	    Vec3{other.m_axisX.y, other.m_axisY.y, other.m_axisZ.y},
-	    Vec3{other.m_axisX.z, other.m_axisY.z, other.m_axisZ.z}}};
+	    Vec3{other.m_axisX.z, other.m_axisY.z, other.m_axisZ.z}};
 
 	Quat quatA = makeQuat(orientationA);
 	Quat quatB = makeQuat(orientationB);

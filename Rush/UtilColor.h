@@ -14,7 +14,8 @@ struct ColorRGBA
 {
 	float r, g, b, a;
 
-	ColorRGBA() = default;
+	ColorRGBA() : r(0), g(0), b(0), a(0) {}
+	explicit ColorRGBA(NoInit) {}
 
 	ColorRGBA(float _r, float _g, float _b, float _a = 1.0f) : r(_r), g(_g), b(_b), a(_a) {}
 
@@ -48,9 +49,10 @@ struct ColorRGBA8
 {
 	u8 r, g, b, a;
 
-	ColorRGBA8() = default;
+	ColorRGBA8() : r(0), g(0), b(0), a(0) {}
+	explicit ColorRGBA8(NoInit) {}
 
-	explicit ColorRGBA8(u32 col) { memcpy(this, &col, 4); }
+	explicit ColorRGBA8(u32 col) : ColorRGBA8(noInit) { memcpy(this, &col, 4); }
 
 	ColorRGBA8(u8 _r, u8 _g, u8 _b, u8 _a = 255) : r(_r), g(_g), b(_b), a(_a) {}
 
@@ -115,7 +117,7 @@ inline ColorRGBA::operator ColorRGBA8() const
 
 template <> inline ColorRGBA lerp(const ColorRGBA& x, const ColorRGBA& y, float t)
 {
-	ColorRGBA res;
+	ColorRGBA res(noInit);
 
 	res.r = lerp(x.r, y.r, t);
 	res.g = lerp(x.g, y.g, t);
