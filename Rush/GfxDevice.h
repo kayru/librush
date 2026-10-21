@@ -121,7 +121,7 @@ struct GfxConfig
 
 	u32  backBufferWidth  = 640;
 	u32  backBufferHeight = 480;
-	u32  presentInterval  = 0;
+	u32  presentInterval  = 1;
 	bool useFullScreen    = false;
 	bool debug            = false;
 	bool warp             = false;

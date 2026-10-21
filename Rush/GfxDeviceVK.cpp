@@ -956,6 +956,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 
 	m_desiredSwapChainImageCount = cfg.minimizeLatency ? 1 : 2;
 	m_desiredOutputMode = cfg.outputMode;
+	m_desiredPresentInterval = cfg.presentInterval;
 	if (useSwapChain)
 	{
 		createSwapChain();

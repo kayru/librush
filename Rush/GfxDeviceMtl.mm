@@ -243,6 +243,9 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 		m_metalLayer.device = m_metalDevice;
 		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 		m_metalLayer.framebufferOnly = NO;
+#if !defined(RUSH_PLATFORM_IOS)
+		m_metalLayer.displaySyncEnabled = cfg.presentInterval != 0;
+#endif
 		m_desiredOutputMode = cfg.outputMode;
 	}
 
