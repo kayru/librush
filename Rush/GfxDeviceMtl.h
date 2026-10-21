@@ -197,6 +197,7 @@ public:
 
 	void beginFrame();
 	void applyOutputMode();
+	void applyPresentInterval(u32 interval);
 	bool acquireBackBuffer(); // current frame's drawable (offscreen when skipping present); false when headless or none is available
 	void createDefaultDepthBuffer(u32 width, u32 height);
 

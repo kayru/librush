@@ -243,9 +243,7 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 		m_metalLayer.device = m_metalDevice;
 		m_metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 		m_metalLayer.framebufferOnly = NO;
-#if !defined(RUSH_PLATFORM_IOS)
-		m_metalLayer.displaySyncEnabled = cfg.presentInterval != 0;
-#endif
+		applyPresentInterval(cfg.presentInterval);
 		m_desiredOutputMode = cfg.outputMode;
 	}
 
@@ -733,22 +731,31 @@ void Gfx_SkipPresent()
 	g_device->m_skipPresent = true;
 }
 
-void Gfx_SetPresentInterval(u32 interval)
+void GfxDevice::applyPresentInterval(u32 interval)
 {
-#if !defined(RUSH_PLATFORM_IOS)
-	if (g_device && g_device->m_metalLayer)
-	{
-		// CAMetalLayer only offers on/off: 0 presents as soon as a drawable is
-		// ready, anything else waits for the display refresh
-		g_device->m_metalLayer.displaySyncEnabled = interval != 0;
-		return;
-	}
-#endif
+#if defined(RUSH_PLATFORM_IOS)
 	static bool warningReported = false;
 	if (interval != 1 && !warningReported)
 	{
 		Log::warning("Present interval != 1 is not supported here");
 		warningReported = true;
+	}
+#else
+	// CAMetalLayer only offers on/off: 0 presents as soon as a drawable is
+	// ready, anything else waits for the display refresh.
+	// With sync off, a windowed layer with 3 drawables still gets its drawables
+	// back only at the display refresh rate (measured on macOS 26). A 2-drawable
+	// pool is required to actually run unsynced.
+	m_metalLayer.displaySyncEnabled = interval != 0;
+	m_metalLayer.maximumDrawableCount = interval != 0 ? 3 : 2;
+#endif
+}
+
+void Gfx_SetPresentInterval(u32 interval)
+{
+	if (g_device && g_device->m_metalLayer)
+	{
+		g_device->applyPresentInterval(interval);
 	}
 }
 
