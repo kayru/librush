@@ -813,6 +813,10 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 				break;
 			}
 			m_focused = eventCode == XCB_FOCUS_IN;
+			if (!m_focused)
+			{
+				releaseKeys();
+			}
 			if (g_composeState)
 			{
 				xkb_compose_state_reset(g_composeState);

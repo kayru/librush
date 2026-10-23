@@ -10,6 +10,8 @@ using namespace Rush;
 
 #if defined(RUSH_PLATFORM_MAC)
 
+#include <IOKit/hidsystem/IOLLEvent.h> // NX_DEVICE*KEYMASK
+
 @interface RushWindow: NSWindow
 {
 	@public WindowMac* parent;
@@ -132,6 +134,7 @@ using namespace Rush;
 	RushWindow* window = notification.object;
 	window->parent->setFocused(false);
 	window->parent->releaseMouseButtons(0);
+	window->parent->releaseKeys();
 }
 
 @end
@@ -711,6 +714,17 @@ bool WindowMac::processEvent(NSEvent* event)
 				return true;
 			}
 
+			const u16 code = [event keyCode];
+			if (code < RUSH_COUNTOF(m_keyOfCode))
+			{
+				const Key held = m_keyOfCode[code];
+				if (held != Key_Unknown && held != key && m_keyboard.keys[held])
+				{
+					m_keyboard.keys[held] = false;
+					broadcast(WindowEvent::KeyUp(held));
+				}
+				m_keyOfCode[code] = key;
+			}
 			m_keyboard.keys[key] = true;
 			auto e = WindowEvent::KeyDown(key);
 			broadcast(e);
@@ -745,63 +759,48 @@ bool WindowMac::processEvent(NSEvent* event)
 		case NSEventTypeKeyUp:
 		{
 			Key key = translateKeyMac(event);
-			m_keyboard.keys[key] = false;
-			auto e = WindowEvent::KeyUp(key);
-			broadcast(e);
+			const u16 code = [event keyCode];
+			if (code < RUSH_COUNTOF(m_keyOfCode) && m_keyOfCode[code] != Key_Unknown)
+			{
+				key = m_keyOfCode[code];
+				m_keyOfCode[code] = Key_Unknown;
+			}
+			// Released already when the window lost focus
+			if (m_keyboard.keys[key])
+			{
+				m_keyboard.keys[key] = false;
+				broadcast(WindowEvent::KeyUp(key));
+			}
 			return true;
 		}
 		case NSEventTypeFlagsChanged:
 		{
-			u16 keyCode = [event keyCode];
-
-			Key key = Key_Unknown;
-			switch(keyCode)
+			struct Modifier
 			{
-			case 56:
-				key = Key_LeftShift;
-				break;
-			case 60:
-				key = Key_RightShift;
-				break;
-			case 59:
-				key = Key_LeftControl;
-				break;
-			case 55:
-				key = Key_LeftSuper;
-				break;
-			case 54:
-				key = Key_RightSuper;
-				break;
-			case 58:
-				key = Key_LeftAlt;
-				break;
-			case 61:
-				key = Key_RightAlt;
-				break;
-			case 62:
-				key = Key_RightControl;
-				break;
-			case 57:
-				key = Key_CapsLock;
-				break;
-			default:
-				key = Key_Unknown;
-				break;
-			}
-
-			if (key != Key_Unknown)
+				u16 keyCode;
+				Key key;
+				NSUInteger mask;
+			};
+			static constexpr Modifier modifiers[] = {
+				{59, Key_LeftControl, NX_DEVICELCTLKEYMASK}, {62, Key_RightControl, NX_DEVICERCTLKEYMASK},
+				{56, Key_LeftShift, NX_DEVICELSHIFTKEYMASK}, {60, Key_RightShift, NX_DEVICERSHIFTKEYMASK},
+				{55, Key_LeftSuper, NX_DEVICELCMDKEYMASK},   {54, Key_RightSuper, NX_DEVICERCMDKEYMASK},
+				{58, Key_LeftAlt, NX_DEVICELALTKEYMASK},     {61, Key_RightAlt, NX_DEVICERALTKEYMASK},
+				{57, Key_CapsLock, NSEventModifierFlagCapsLock},
+			};
+			const u16 keyCode = [event keyCode];
+			const NSUInteger flags = [event modifierFlags];
+			for (const Modifier& m : modifiers)
 			{
-				if (m_keyboard.keys[key])
+				if (m.keyCode != keyCode)
 				{
-					auto e = WindowEvent::KeyUp(key);
-					broadcast(e);
-					m_keyboard.keys[key] = false;
+					continue;
 				}
-				else
+				const bool down = (flags & m.mask) != 0;
+				if (down != m_keyboard.keys[m.key])
 				{
-					auto e = WindowEvent::KeyDown(key);
-					broadcast(e);
-					m_keyboard.keys[key] = true;
+					m_keyboard.keys[m.key] = down;
+					broadcast(down ? WindowEvent::KeyDown(m.key) : WindowEvent::KeyUp(m.key));
 				}
 			}
 

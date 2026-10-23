@@ -97,6 +97,7 @@ private:
 	Vec2 m_windowedFrameOrigin = Vec2(0.0f);
 	Vec2 m_windowedFrameSize = Vec2(0.0f);
 	u32 m_windowedStyleMask = 0;
+	Key m_keyOfCode[128] = {};
 };
 
 #elif defined(RUSH_PLATFORM_IOS)

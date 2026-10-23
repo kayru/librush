@@ -234,6 +234,23 @@ void Window::releaseMouseButtons(u32 heldMask)
 	}
 }
 
+void Window::releaseKeys()
+{
+	if (!m_osInputEnabled)
+	{
+		return;
+	}
+	for (u32 i = 0; i < Key_COUNT; ++i)
+	{
+		if (m_keyboard.keys[i] && Key(i) != Key_Unknown)
+		{
+			m_keyboard.keys[i] = false;
+			broadcast(WindowEvent::KeyUp(Key(i)));
+		}
+	}
+	m_keyboard.keys[Key_Unknown] = false;
+}
+
 void Window::retain() { m_refs++; }
 
 u32 Window::release()

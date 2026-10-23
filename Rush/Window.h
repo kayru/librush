@@ -283,6 +283,7 @@ public:
 	bool isOsInputEnabled() const { return m_osInputEnabled; }
 
 	void releaseMouseButtons(u32 heldMask);
+	void releaseKeys();
 
 	// Reference counting
 

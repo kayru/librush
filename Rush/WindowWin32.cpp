@@ -345,6 +345,7 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_KILLFOCUS:
 		m_focused = false;
 		releaseMouseButtons(0);
+		releaseKeys();
 		break;
 
 	case WM_CAPTURECHANGED:
