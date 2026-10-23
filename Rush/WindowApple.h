@@ -74,7 +74,6 @@ public:
 	virtual void           setCaption(const char* str) override;
 	virtual void           setSize(const Tuple2i& size) override;
 	virtual void           setPosition(const Tuple2i& position) override;
-	virtual void           setMouseLock(bool state) override;
 	virtual bool           setFullscreen(bool state) override;
 	virtual Box2 getSafeArea() const override;
 
@@ -82,18 +81,13 @@ public:
 	virtual float displayHeadroomPotential() const override;
 
 	bool processEvent(NSEvent* event);
-	void processResize(float newWidth, float newHeight);
 	void updateResolutionScale();
 
 private:
+	void applyMouseLock(bool state) override;
 	bool isContentMouseDown(NSEvent* event) const;
-	void onMouseDown(NSEvent* event, u32 button);
-	void onMouseUp(u32 button);
 
 	NSWindow* m_nativeWindow = nullptr;
-	Vec2 m_preLockMousePos = Vec2(0.0f);
-	float m_scrollAccumH = 0.0f;
-	float m_scrollAccumV = 0.0f;
 	Vec2 m_windowedFrameOrigin = Vec2(0.0f);
 	Vec2 m_windowedFrameSize = Vec2(0.0f);
 	u32 m_windowedStyleMask = 0;
@@ -112,7 +106,6 @@ public:
 	virtual void           setCaption(const char*) override {}
 	virtual void           setSize(const Tuple2i&) override {}
 	virtual void           setPosition(const Tuple2i&) override {}
-	virtual void           setMouseLock(bool) override {}
 	virtual bool           setFullscreen(bool) override { return true; }
 	virtual Box2 getSafeArea() const override;
 
@@ -123,8 +116,7 @@ public:
 	void setViewController(RushViewController* vc);
 	void updateResolutionScale();
 
-	void setKeyDown(Key key) { m_keyboard.keys[key] = true; }
-	void setKeyUp(Key key) { m_keyboard.keys[key] = false; }
+	using Window::processInput;
 
 	void touchBegan(void* nativeId, const Vec2& pos);
 	void touchMoved(void* nativeId, const Vec2& pos);

@@ -108,11 +108,7 @@ using namespace Rush;
 - (void)windowDidEndLiveResize:(NSNotification*)notification
 {
 	RushWindow* window = notification.object;
-	NSView* contentView = [notification.object contentView];
-	CALayer* layer = [contentView layer];
-	CGSize frame = [layer frame].size;
 	window->parent->updateResolutionScale();
-	window->parent->processResize(frame.width, frame.height);
 	// Live resize eats the mouse-up
 	window->parent->releaseMouseButtons((u32)[NSEvent pressedMouseButtons]);
 }
@@ -133,8 +129,6 @@ using namespace Rush;
 {
 	RushWindow* window = notification.object;
 	window->parent->setFocused(false);
-	window->parent->releaseMouseButtons(0);
-	window->parent->releaseKeys();
 }
 
 @end
@@ -371,9 +365,7 @@ WindowMac::WindowMac(const WindowDesc& desc)
 	else if (desc.maximized)
 	{
 		[window setFrame:[mainScreen visibleFrame] display:YES animate:NO];
-		NSSize contentSize = [[window contentView] frame].size;
 		updateResolutionScale();
-		processResize((float)contentSize.width, (float)contentSize.height);
 	}
 }
 
@@ -396,7 +388,7 @@ void WindowMac::setCaption(const char* str)
 void WindowMac::setSize(const Tuple2i& size)
 {
 	[m_nativeWindow setContentSize:NSMakeSize(size.x, size.y)];
-	processResize((float)size.x, (float)size.y);
+	updateResolutionScale();
 }
 
 void WindowMac::setPosition(const Tuple2i& position)
@@ -427,20 +419,6 @@ Box2 WindowMac::getSafeArea() const
 	}
 
 	return Box2(Vec2(0.0f), getSizeFloat());
-}
-
-void WindowMac::processResize(float newWidth, float newHeight)
-{
-	updateResolutionScale();
-	Tuple2i pendingSize;
-	pendingSize.x = int(newWidth);
-	pendingSize.y = int(newHeight);
-
-	if (m_size != pendingSize)
-	{
-		m_size = pendingSize;
-		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
-	}
 }
 
 float WindowMac::displayHeadroom() const
@@ -480,50 +458,34 @@ void WindowMac::updateResolutionScale()
 	const bool scaleChanged = (m_resolutionScale.x != scaleFloat) || (m_resolutionScale.y != scaleFloat);
 	m_resolutionScale = Vec2(scaleFloat, scaleFloat);
 
-	bool sizeChanged = false;
-
+	NSView* contentView = [m_nativeWindow contentView];
+	if (!contentView)
+	{
+		return;
+	}
+	const NSRect bounds = [contentView bounds];
+	const bool sizeChanged = processResize({(int)bounds.size.width, (int)bounds.size.height});
 	if (m_metalLayer)
 	{
-		NSView* contentView = [m_nativeWindow contentView];
-		if (contentView)
-		{
-			const NSRect bounds = [contentView bounds];
-			m_metalLayer.frame = bounds;
-			const Tuple2i pendingSize{(int)bounds.size.width, (int)bounds.size.height};
-			if (pendingSize.x > 0 && pendingSize.y > 0 && m_size != pendingSize)
-			{
-				m_size = pendingSize;
-				sizeChanged = true;
-			}
-			m_metalLayer.contentsScale = scale;
-			m_metalLayer.drawableSize = CGSizeMake(
-				(CGFloat)m_size.x * scale,
-				(CGFloat)m_size.y * scale);
-		}
+		m_metalLayer.frame = bounds;
+		m_metalLayer.contentsScale = scale;
+		m_metalLayer.drawableSize = CGSizeMake((CGFloat)m_size.x * scale, (CGFloat)m_size.y * scale);
 	}
-
-	if (sizeChanged || scaleChanged)
+	if (scaleChanged && !sizeChanged)
 	{
 		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
 	}
 }
 
-void WindowMac::setMouseLock(bool state)
+void WindowMac::applyMouseLock(bool state)
 {
-	if (m_mouseLocked == state)
-	{
-		return;
-	}
-	m_mouseLocked = state;
 	CGAssociateMouseAndMouseCursorPosition(!state);
 	if (state)
 	{
-		m_preLockMousePos = m_mouse.pos;
 		[NSCursor hide];
 	}
 	else
 	{
-		m_mouse.pos = m_preLockMousePos;
 		[NSCursor unhide];
 	}
 }
@@ -563,8 +525,7 @@ bool WindowMac::setFullscreen(bool state)
 
 	m_fullScreen = state;
 
-	const NSRect contentRect = [[m_nativeWindow contentView] frame];
-	processResize((float)contentRect.size.width, (float)contentRect.size.height);
+	updateResolutionScale();
 
 	return true;
 }
@@ -582,23 +543,6 @@ bool WindowMac::isContentMouseDown(NSEvent* event) const
 	NSView* contentView = [m_nativeWindow contentView];
 	const NSPoint pos = [contentView convertPoint:[event locationInWindow] fromView:nil];
 	return NSPointInRect(pos, [contentView bounds]);
-}
-
-void WindowMac::onMouseDown(NSEvent* event, u32 button)
-{
-	const bool doubleClick = [event clickCount] >= 2;
-	m_mouse.buttons[button] = true;
-	m_mouse.doubleclick = doubleClick;
-	broadcast(WindowEvent::MouseDown(m_mouse.pos, button, doubleClick));
-}
-
-void WindowMac::onMouseUp(u32 button)
-{
-	if (m_mouse.buttons[button])
-	{
-		m_mouse.buttons[button] = false;
-		broadcast(WindowEvent::MouseUp(m_mouse.pos, button));
-	}
 }
 
 bool WindowMac::processEvent(NSEvent* event)
@@ -634,11 +578,10 @@ bool WindowMac::processEvent(NSEvent* event)
 		case NSEventTypeOtherMouseDragged:
 		case NSEventTypeMouseMoved:
 		{
+			Vec2 pos;
 			if (m_mouseLocked)
 			{
-				const float dx = (float)[event deltaX];
-				const float dy = (float)[event deltaY];
-				m_mouse.pos += Vec2(dx, dy);
+				pos = m_mouse.pos + Vec2((float)[event deltaX], (float)[event deltaY]);
 			}
 			else
 			{
@@ -659,9 +602,9 @@ bool WindowMac::processEvent(NSEvent* event)
 				const Tuple2i size = getSize();
 				const float xPos = clamp((float)mouseLocation.x, 0.0f, (float)size.x);
 				const float yPos = clamp((float)size.y - (float)mouseLocation.y, 0.0f, (float)size.y);
-				m_mouse.pos = Vec2((float)xPos, (float)yPos);
+				pos = Vec2(xPos, yPos);
 			}
-			broadcast(WindowEvent::MouseMove(m_mouse.pos));
+			processInput(WindowEvent::MouseMove(pos));
 			return true;
 		}
 		case NSEventTypeLeftMouseDown:
@@ -673,7 +616,7 @@ bool WindowMac::processEvent(NSEvent* event)
 			{
 				return false;
 			}
-			onMouseDown(event, (u32)button);
+			processInput(WindowEvent::MouseDown(m_mouse.pos, (u32)button));
 			return true;
 		}
 		case NSEventTypeLeftMouseUp:
@@ -681,53 +624,30 @@ bool WindowMac::processEvent(NSEvent* event)
 		case NSEventTypeOtherMouseUp:
 		{
 			const NSInteger button = [event buttonNumber];
-			if (button >= 0 && button < (NSInteger)RUSH_COUNTOF(m_mouse.buttons))
+			if (button >= 0)
 			{
-				onMouseUp((u32)button);
+				processInput(WindowEvent::MouseUp(m_mouse.pos, (u32)button));
 			}
 			return true;
 		}
 		case NSEventTypeScrollWheel:
 		{
-			const float deltaX = [event deltaX] * 0.25f;
-			const float deltaY = [event deltaY] * 0.25f;
-			m_scrollAccumH += deltaX;
-			m_scrollAccumV += deltaY;
-			const int wholeH = (int)m_scrollAccumH;
-			const int wholeV = (int)m_scrollAccumV;
-			m_scrollAccumH -= (float)wholeH;
-			m_scrollAccumV -= (float)wholeV;
-			m_mouse.wheelH += wholeH;
-			m_mouse.wheelV += wholeV;
-			broadcast(WindowEvent::Scroll(deltaX, deltaY));
+			processInput(WindowEvent::Scroll([event deltaX] * 0.25f, [event deltaY] * 0.25f));
 			return true;
 		}
 		case NSEventTypeKeyDown:
 		{
-			Key key = translateKeyMac(event);
-
-			if (key == Key_Enter
-				&& ([event modifierFlags] & NSEventModifierFlagOption)
-				&& getDesc().handleShortcutFullScreen)
-			{
-				toggleFullscreen();
-				return true;
-			}
-
+			const Key key = translateKeyMac(event);
 			const u16 code = [event keyCode];
 			if (code < RUSH_COUNTOF(m_keyOfCode))
 			{
-				const Key held = m_keyOfCode[code];
-				if (held != Key_Unknown && held != key && m_keyboard.keys[held])
+				if (m_keyOfCode[code] != key)
 				{
-					m_keyboard.keys[held] = false;
-					broadcast(WindowEvent::KeyUp(held));
+					processInput(WindowEvent::KeyUp(m_keyOfCode[code]));
 				}
 				m_keyOfCode[code] = key;
 			}
-			m_keyboard.keys[key] = true;
-			auto e = WindowEvent::KeyDown(key);
-			broadcast(e);
+			processInput(WindowEvent::KeyDown(key));
 
 			// One event can carry several characters (a dead key followed by one it does not combine with),
 			// and characters outside the BMP come as surrogate pairs
@@ -745,12 +665,10 @@ bool WindowMac::processEvent(NSEvent* event)
 						++i;
 					}
 				}
-				// Control characters and the function keys' private-use codes are keys, not text
-				const bool functionKey = cp >= 0xF700 && cp < 0xF900;
-				const bool loneSurrogate = cp >= 0xD800 && cp < 0xE000;
-				if (cp >= 32 && cp != 127 && !functionKey && !loneSurrogate)
+				// The function keys' private-use codes are keys, not text
+				if (cp < 0xF700 || cp >= 0xF900)
 				{
-					broadcast(WindowEvent::Char(cp));
+					processInput(WindowEvent::Char(cp));
 				}
 			}
 
@@ -765,12 +683,7 @@ bool WindowMac::processEvent(NSEvent* event)
 				key = m_keyOfCode[code];
 				m_keyOfCode[code] = Key_Unknown;
 			}
-			// Released already when the window lost focus
-			if (m_keyboard.keys[key])
-			{
-				m_keyboard.keys[key] = false;
-				broadcast(WindowEvent::KeyUp(key));
-			}
+			processInput(WindowEvent::KeyUp(key));
 			return true;
 		}
 		case NSEventTypeFlagsChanged:
@@ -799,8 +712,7 @@ bool WindowMac::processEvent(NSEvent* event)
 				const bool down = (flags & m.mask) != 0;
 				if (down != m_keyboard.keys[m.key])
 				{
-					m_keyboard.keys[m.key] = down;
-					broadcast(down ? WindowEvent::KeyDown(m.key) : WindowEvent::KeyUp(m.key));
+					processInput(down ? WindowEvent::KeyDown(m.key) : WindowEvent::KeyUp(m.key));
 				}
 			}
 
@@ -975,11 +887,9 @@ static Key translateKeyIOS(UIKeyboardHIDUsage usage)
 		if (press.key)
 		{
 			const Key key = translateKeyIOS((UIKeyboardHIDUsage)press.key.keyCode);
-			// Releases always pass: a key held before input was disabled must not stick
 			if (key != Key_Unknown && w->isOsInputEnabled())
 			{
-				w->setKeyDown(key);
-				w->broadcast(WindowEvent::KeyDown(key));
+				w->processInput(WindowEvent::KeyDown(key));
 				handled = true;
 			}
 		}
@@ -999,10 +909,9 @@ static Key translateKeyIOS(UIKeyboardHIDUsage usage)
 		if (press.key)
 		{
 			const Key key = translateKeyIOS((UIKeyboardHIDUsage)press.key.keyCode);
-			if (key != Key_Unknown)
+			if (key != Key_Unknown && w->isOsInputEnabled())
 			{
-				w->setKeyUp(key);
-				w->broadcast(WindowEvent::KeyUp(key));
+				w->processInput(WindowEvent::KeyUp(key));
 				handled = true;
 			}
 		}
@@ -1043,7 +952,6 @@ WindowIOS::WindowIOS(const WindowDesc& desc)
 	: WindowApple(desc)
 {
 	m_fullScreen = true;
-	m_focused = true;
 }
 
 WindowIOS::~WindowIOS()
@@ -1172,11 +1080,7 @@ void WindowIOS::updateResolutionScale()
 			(CGFloat)pendingSize.x * scale,
 			(CGFloat)pendingSize.y * scale);
 
-		if (m_size != pendingSize)
-		{
-			m_size = pendingSize;
-			broadcast(WindowEvent::Resize(m_size.x, m_size.y));
-		}
+		processResize(pendingSize);
 	}
 }
 

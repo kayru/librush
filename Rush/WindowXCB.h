@@ -23,7 +23,6 @@ public:
 	virtual void  setSize(const Tuple2i& size) override;
 	virtual bool  setFullscreen(bool state) override;
 	virtual void  pollEvents() override;
-	virtual void  setMouseLock(bool state) override;
 
 	// The CLIPBOARD selection, served from this window's event loop (Platform_SetClipboardText)
 	void   setClipboardText(const char* text);
@@ -33,10 +32,12 @@ private:
 
 	void processEvent(const xcb_generic_event_t* event);
 	void processKeyPress(const xcb_key_press_event_t* event);
+	void applyMouseLock(bool state) override;
 	void updateFullscreenState();
 	void grabPointer();
 	void warpPointer(Vec2 pos);
 	Vec2 lockCenter() const;
+	Vec2 clampToClient(Vec2 pos) const;
 
 	// Clipboard (ICCCM CLIPBOARD selection)
 	bool processSelectionEvent(const xcb_generic_event_t* event); // true: a selection event, handled
@@ -52,7 +53,6 @@ private:
 
 	xcb_window_t m_nativeHandle = 0;
 	String m_caption;
-	Tuple2i m_pendingSize;
 
 	// Events that arrived while waiting for a selection reply, processed by the next pollEvents
 	DynamicArray<xcb_generic_event_t*> m_deferredEvents;
@@ -76,7 +76,6 @@ private:
 	// motion accumulates into m_mouse.pos as relative deltas
 	xcb_cursor_t m_hiddenCursor = 0;
 	bool m_pointerGrabbed = false;
-	Vec2 m_preLockMousePos = Vec2(0.0f);
 	Vec2 m_lockPointerPos = Vec2(0.0f); // last known real pointer position
 	bool m_warpPending = false;
 	u16 m_warpSequence = 0; // motion events from this request on are post-warp

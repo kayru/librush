@@ -316,15 +316,14 @@ uint32_t rush_window_event_listener_receive(struct rush_window_event_listener* l
 		out_events[i].event_type   = rush_window_event_type(events[i].type);
 		out_events[i].key          = rush_key(events[i].code);
 		out_events[i].character    = events[i].character;
-		out_events[i].modifiers    = events[i].modifiers;
 		out_events[i].width        = events[i].width;
 		out_events[i].height       = events[i].height;
 		out_events[i].pos[0]       = events[i].pos.x;
 		out_events[i].pos[1]       = events[i].pos.y;
 		out_events[i].button       = events[i].button;
-		out_events[i].double_click = events[i].doubleClick;
 		out_events[i].scroll[0]    = events[i].scroll.x;
 		out_events[i].scroll[1]    = events[i].scroll.y;
+		out_events[i].touch_id     = events[i].touchId;
 	}
 	std::move(events+receive_count, events+listener->size(), events);
 	listener->resize(listener->size() - receive_count);

@@ -277,7 +277,6 @@ namespace
 
 WindowXCB::WindowXCB(const WindowDesc& desc)
 : Window(desc)
-, m_pendingSize(m_size)
 {
 	if (g_xcbConnectionRefCount == 0)
 	{
@@ -475,6 +474,11 @@ void WindowXCB::updateFullscreenState()
 	free(reply);
 }
 
+Vec2 WindowXCB::clampToClient(Vec2 pos) const
+{
+	return Vec2(clamp(pos.x, 0.0f, float(m_size.x)), clamp(pos.y, 0.0f, float(m_size.y)));
+}
+
 Vec2 WindowXCB::lockCenter() const
 {
 	return Vec2(float(m_size.x / 2), float(m_size.y / 2));
@@ -500,14 +504,8 @@ void WindowXCB::grabPointer()
 	free(reply);
 }
 
-void WindowXCB::setMouseLock(bool state)
+void WindowXCB::applyMouseLock(bool state)
 {
-	if (m_mouseLocked == state)
-	{
-		return;
-	}
-	m_mouseLocked = state;
-
 	if (state)
 	{
 		if (!m_hiddenCursor)
@@ -526,7 +524,6 @@ void WindowXCB::setMouseLock(bool state)
 			xcb_free_pixmap(g_xcbConnection, pixmap);
 		}
 
-		m_preLockMousePos = m_mouse.pos;
 		m_lockPointerPos = m_mouse.pos;
 		xcb_change_window_attributes(g_xcbConnection, m_nativeHandle, XCB_CW_CURSOR, &m_hiddenCursor);
 		grabPointer();
@@ -543,7 +540,6 @@ void WindowXCB::setMouseLock(bool state)
 		xcb_change_window_attributes(g_xcbConnection, m_nativeHandle, XCB_CW_CURSOR, &defaultCursor);
 		warpPointer(m_preLockMousePos);
 		m_warpPending = false; // unlocked motion is absolute
-		m_mouse.pos = m_preLockMousePos;
 	}
 	xcb_flush(g_xcbConnection);
 }
@@ -554,6 +550,8 @@ Key translateKeyXCB(xcb_keycode_t code)
 	switch (sym)
 	{
 	case XK_space: return Key_Space;
+	case XK_apostrophe: return Key_Apostrophe;
+	case XK_grave: return Key_Backquote;
 	case XK_comma: return Key_Comma;
 	case XK_minus: return Key_Minus;
 	case XK_period: return Key_Period;
@@ -642,9 +640,32 @@ Key translateKeyXCB(xcb_keycode_t code)
 	case XK_F22: return Key_F22;
 	case XK_F23: return Key_F23;
 	case XK_F24: return Key_F24;
+	case XK_F25: return Key_F25;
 	case XK_Shift_L: return Key_LeftShift;
+	case XK_Shift_R: return Key_RightShift;
 	case XK_Control_L: return Key_LeftControl;
+	case XK_Control_R: return Key_RightControl;
 	case XK_Alt_L: return Key_LeftAlt;
+	case XK_Alt_R: return Key_RightAlt;
+	case XK_Super_L: return Key_LeftSuper;
+	case XK_Super_R: return Key_RightSuper;
+	case XK_KP_0: case XK_KP_Insert: return Key_KP0;
+	case XK_KP_1: case XK_KP_End: return Key_KP1;
+	case XK_KP_2: case XK_KP_Down: return Key_KP2;
+	case XK_KP_3: case XK_KP_Page_Down: return Key_KP3;
+	case XK_KP_4: case XK_KP_Left: return Key_KP4;
+	case XK_KP_5: case XK_KP_Begin: return Key_KP5;
+	case XK_KP_6: case XK_KP_Right: return Key_KP6;
+	case XK_KP_7: case XK_KP_Home: return Key_KP7;
+	case XK_KP_8: case XK_KP_Up: return Key_KP8;
+	case XK_KP_9: case XK_KP_Page_Up: return Key_KP9;
+	case XK_KP_Decimal: case XK_KP_Delete: return Key_KPDecimal;
+	case XK_KP_Divide: return Key_KPDivide;
+	case XK_KP_Multiply: return Key_KPMultiply;
+	case XK_KP_Subtract: return Key_KPSubtract;
+	case XK_KP_Add: return Key_KPAdd;
+	case XK_KP_Enter: return Key_KPEnter;
+	case XK_KP_Equal: return Key_KPEqual;
 
 	default: return Key_Unknown;
 	}
@@ -652,9 +673,7 @@ Key translateKeyXCB(xcb_keycode_t code)
 
 void WindowXCB::processKeyPress(const xcb_key_press_event_t* event)
 {
-	const Key key = translateKeyXCB(event->detail);
-	m_keyboard.keys[key] = true;
-	broadcast(WindowEvent::KeyDown(key));
+	processInput(WindowEvent::KeyDown(translateKeyXCB(event->detail)));
 
 	if (!g_xkbState)
 	{
@@ -676,11 +695,11 @@ void WindowXCB::processKeyPress(const xcb_key_press_event_t* event)
 			const int length = xkb_compose_state_get_utf8(g_composeState, text, sizeof(text));
 			if (length > 0 && size_t(length) < sizeof(text))
 			{
-				forEachCodePoint(text, size_t(length), [&](u32 cp) { broadcast(WindowEvent::Char(cp)); });
+				forEachCodePoint(text, size_t(length), [&](u32 cp) { processInput(WindowEvent::Char(cp)); });
 			}
 			else if (const u32 cp = xkb_keysym_to_utf32(xkb_compose_state_get_one_sym(g_composeState)))
 			{
-				broadcast(WindowEvent::Char(cp));
+				processInput(WindowEvent::Char(cp));
 			}
 			xkb_compose_state_reset(g_composeState);
 			return;
@@ -691,7 +710,7 @@ void WindowXCB::processKeyPress(const xcb_key_press_event_t* event)
 	}
 	if (const u32 cp = xkb_state_key_get_utf32(g_xkbState, event->detail))
 	{
-		broadcast(WindowEvent::Char(cp));
+		processInput(WindowEvent::Char(cp));
 	}
 }
 
@@ -794,13 +813,7 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 			const xcb_configure_notify_event_t* event = (const xcb_configure_notify_event_t *)xcbEvent;
 			if (event->window == m_nativeHandle && event->width > 0 && event->height > 0)
 			{
-				m_pendingSize.x = event->width;
-				m_pendingSize.y = event->height;
-				if (m_size != m_pendingSize)
-				{
-					m_size = m_pendingSize;
-					broadcast(WindowEvent::Resize(m_size.x, m_size.y));
-				}
+				processResize({event->width, event->height});
 			}
 			break;
 		}
@@ -812,11 +825,7 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 			{
 				break;
 			}
-			m_focused = eventCode == XCB_FOCUS_IN;
-			if (!m_focused)
-			{
-				releaseKeys();
-			}
+			setFocused(eventCode == XCB_FOCUS_IN);
 			if (g_composeState)
 			{
 				xkb_compose_state_reset(g_composeState);
@@ -846,49 +855,30 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 				{
 					break;
 				}
-				m_mouse.pos += delta;
+				processInput(WindowEvent::MouseMove(m_mouse.pos + delta));
 			}
 			else
 			{
-				m_mouse.pos = pointerPos;
+				processInput(WindowEvent::MouseMove(clampToClient(pointerPos)));
 			}
-			broadcast(WindowEvent::MouseMove(Vec2(m_mouse.pos)));
 			break;
 		}
 		case XCB_BUTTON_PRESS:
-		{
-			const xcb_button_press_event_t* event = (const xcb_button_press_event_t *)xcbEvent;
-			if (event->detail > 0 && event->detail < 4)
-			{
-				u32 idx = mouseButtonRemap[event->detail];
-				m_mouse.buttons[idx] = true;
-				if (!m_mouseLocked)
-				{
-					m_mouse.pos.x = event->event_x;
-					m_mouse.pos.y = event->event_y;
-				}
-				broadcast(WindowEvent::MouseDown(m_mouse.pos, idx, false));
-			}
-			else if(event->detail == 4) broadcast(WindowEvent::Scroll(0.0, 1.0));
-			else if(event->detail == 5) broadcast(WindowEvent::Scroll(0.0, -1.0));
-			else if(event->detail == 6) broadcast(WindowEvent::Scroll(1.0, 0.0));
-			else if(event->detail == 7) broadcast(WindowEvent::Scroll(-1.0, 0.0));
-
-			break;
-		}
 		case XCB_BUTTON_RELEASE:
 		{
-			const xcb_button_release_event_t* event = (const xcb_button_release_event_t *)xcbEvent;
-			if (event->detail > 0 && event->detail <= 3)
+			const xcb_button_press_event_t* event = (const xcb_button_press_event_t *)xcbEvent;
+			const bool down = eventCode == XCB_BUTTON_PRESS;
+			if (event->detail > 0 && event->detail < 4)
 			{
-				u32 idx = mouseButtonRemap[event->detail];
-				m_mouse.buttons[idx] = false;
-				if (!m_mouseLocked)
-				{
-					m_mouse.pos.x = event->event_x;
-					m_mouse.pos.y = event->event_y;
-				}
-				broadcast(WindowEvent::MouseUp(m_mouse.pos, idx));
+				const u32 button = mouseButtonRemap[event->detail];
+				const Vec2 pos = m_mouseLocked ? m_mouse.pos : clampToClient(Vec2(event->event_x, event->event_y));
+				processInput(down ? WindowEvent::MouseDown(pos, button) : WindowEvent::MouseUp(pos, button));
+			}
+			else if (down && event->detail < 8)
+			{
+				const Vec2 steps[] = {Vec2(0.0f, 1.0f), Vec2(0.0f, -1.0f), Vec2(1.0f, 0.0f), Vec2(-1.0f, 0.0f)};
+				const Vec2 step = steps[event->detail - 4];
+				processInput(WindowEvent::Scroll(step.x, step.y));
 			}
 			break;
 		}
@@ -900,9 +890,7 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 		case XCB_KEY_RELEASE:
 		{
 			const xcb_key_release_event_t* event = (const xcb_key_release_event_t *)xcbEvent;
-			Key key = translateKeyXCB(event->detail);
-			m_keyboard.keys[key] = false;
-			broadcast(WindowEvent::KeyUp(key));
+			processInput(WindowEvent::KeyUp(translateKeyXCB(event->detail)));
 			break;
 		}
 		default:

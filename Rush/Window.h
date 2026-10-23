@@ -153,10 +153,9 @@ const char* toStringShort(Key key);
 class MouseState
 {
 public:
-	MouseState() : doubleclick(false), pos(0, 0), wheelH(0), wheelV(0) { memset(buttons, 0, sizeof(buttons)); }
+	MouseState() : pos(0, 0), wheelH(0), wheelV(0) { memset(buttons, 0, sizeof(buttons)); }
 
 	bool buttons[10];
-	bool doubleclick;
 
 	Vec2 pos;
 	int  wheelH;
@@ -215,7 +214,7 @@ public:
 	virtual void  setCaption(const char* str)  = 0;
 	virtual void  setSize(const Tuple2i& size) = 0;
 	virtual void  setPosition(const Tuple2i& position){};
-	virtual void  setMouseLock(bool state){ m_mouseLocked = state; };
+	void setMouseLock(bool state);
 	bool isMouseLocked() const { return m_mouseLocked; }
 	virtual bool  setFullscreen(bool state) { return false; }
 	virtual void  pollEvents() { }
@@ -240,7 +239,7 @@ public:
 	bool isFullscreen() const { return m_fullScreen; }
 	void toggleFullscreen() { setFullscreen(!isFullscreen()); }
 
-	void setFocused(bool focused) { m_focused = focused; }
+	void setFocused(bool focused);
 
 	int getWidth() const { return m_size.x; }
 	int getHeight() const { return m_size.y; }
@@ -279,11 +278,10 @@ public:
 	// When disabled, OS keyboard/mouse events are dropped and only
 	// injectInputEvent() drives input: automation stays deterministic while a
 	// person uses the machine. Resize/close/focus are unaffected.
-	void setOsInputEnabled(bool enabled) { m_osInputEnabled = enabled; }
+	void setOsInputEnabled(bool enabled);
 	bool isOsInputEnabled() const { return m_osInputEnabled; }
 
 	void releaseMouseButtons(u32 heldMask);
-	void releaseKeys();
 
 	// Reference counting
 
@@ -292,6 +290,12 @@ public:
 
 protected:
 	virtual ~Window();
+
+	void processInput(const WindowEvent& e);
+	bool processResize(Tuple2i size);
+	virtual void applyMouseLock(bool state) {}
+
+	Vec2 m_preLockMousePos = Vec2(0.0f);
 
 	WindowDesc m_desc;
 
@@ -317,7 +321,10 @@ protected:
 	DynamicArray<WindowEventListener*> m_listeners;
 
 private:
+	void releaseKeys();
+
 	WindowMessageInterceptor* m_interceptor;
+	Vec2 m_scrollRemainder = Vec2(0.0f);
 };
 
 enum WindowEventType : u32
@@ -362,14 +369,12 @@ struct WindowEvent
 
 	Key code      = Key_Unknown;
 	u32 character = 0;
-	u32 modifiers = 0;
 
 	u32 width  = 0;
 	u32 height = 0;
 
-	Vec2 pos         = Vec2(0.0f);
-	u32  button      = 0;
-	bool doubleClick = false;
+	Vec2 pos    = Vec2(0.0f);
+	u32  button = 0;
 
 	Vec2 scroll = Vec2(0.0f); // wheel steps: x > 0 left, y > 0 up, on every platform
 
@@ -408,13 +413,12 @@ struct WindowEvent
 		return e;
 	}
 
-	static WindowEvent MouseDown(const Vec2& _pos, u32 _button, bool _doubleclick)
+	static WindowEvent MouseDown(const Vec2& _pos, u32 _button)
 	{
 		WindowEvent e;
-		e.type        = WindowEventType_MouseDown;
-		e.pos         = _pos;
-		e.doubleClick = _doubleclick;
-		e.button      = _button;
+		e.type   = WindowEventType_MouseDown;
+		e.pos    = _pos;
+		e.button = _button;
 		return e;
 	}
 

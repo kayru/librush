@@ -190,7 +190,6 @@ typedef struct rush_window_keyboard_state
 typedef struct rush_window_mouse_state
 {
 	bool    buttons[10];
-	bool    double_click;
 	float   pos[2];
 	int32_t wheel[2];
 } rush_window_mouse_state;
@@ -238,12 +237,10 @@ typedef struct rush_window_event
 	rush_window_event_type event_type;
 	rush_key key;
 	uint32_t character;
-	uint32_t modifiers;
 	uint32_t width;
 	uint32_t height;
 	float pos[2];
 	uint32_t  button;
-	bool double_click;
 	float scroll[2];
 	uint64_t touch_id;
 } rush_window_event;

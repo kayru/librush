@@ -20,15 +20,14 @@ public:
 	virtual void* nativeHandle();
 	virtual void  setCaption(const char* str);
 	virtual void  setSize(const Tuple2i& size);
-	virtual void  setMouseLock(bool state);
 	virtual bool  setFullscreen(bool state);
 
 private:
 	bool processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+	void applyMouseLock(bool state) override;
 
 	void processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam);
-	void onMouseDown(u32 button, bool doubleClick);
-	void onMouseUp(u32 button);
+	void onMouseButton(u32 button, bool down, Vec2 pos);
 	bool processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam);
 	void processChar(u32 unit);
 	void processSizeEvent(WPARAM wparam, LPARAM lparam);
@@ -50,8 +49,6 @@ private:
 	Tuple2i m_windowedPos;
 
 	u32 m_windowStyle = 0;
-
-	Rush::Vec2 m_preLockMousePos;
 
 	u32 m_highSurrogate = 0; // the first half of a pair, until its second arrives
 };

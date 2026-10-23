@@ -136,7 +136,7 @@ void Window::processTouchEvent(const WindowEvent& e)
 		m_mouse.pos = e.pos;
 		m_mouse.buttons[0] = true;
 		broadcast(WindowEvent::MouseMove(e.pos));
-		broadcast(WindowEvent::MouseDown(e.pos, 0, false));
+		broadcast(WindowEvent::MouseDown(e.pos, 0));
 	}
 	else if (e.touchId == m_mouseTouchId)
 	{
@@ -170,42 +170,66 @@ void Window::injectInputEvent(const WindowEvent& injected)
 	WindowEvent e = injected;
 	e.pos    = Vec2(std::clamp(e.pos.x, -kLimit, kLimit), std::clamp(e.pos.y, -kLimit, kLimit));
 	e.scroll = Vec2(std::clamp(e.scroll.x, -kLimit, kLimit), std::clamp(e.scroll.y, -kLimit, kLimit));
+	processInput(e);
+}
 
+void Window::processInput(const WindowEvent& e)
+{
 	switch (e.type)
 	{
 	case WindowEventType_KeyDown:
-		if (e.code < Key_COUNT)
+		if (e.code == Key_Unknown || e.code >= Key_COUNT)
 		{
-			m_keyboard.keys[e.code] = true;
+			return;
 		}
+		if (e.code == Key_Enter && m_desc.handleShortcutFullScreen
+			&& (m_keyboard.isKeyDown(Key_LeftAlt) || m_keyboard.isKeyDown(Key_RightAlt)))
+		{
+			toggleFullscreen();
+			return;
+		}
+		m_keyboard.keys[e.code] = true;
 		break;
 	case WindowEventType_KeyUp:
-		if (e.code < Key_COUNT)
+		if (e.code == Key_Unknown || e.code >= Key_COUNT || !m_keyboard.keys[e.code])
 		{
-			m_keyboard.keys[e.code] = false;
+			return;
 		}
+		m_keyboard.keys[e.code] = false;
 		break;
 	case WindowEventType_MouseDown:
-		if (e.button < RUSH_COUNTOF(m_mouse.buttons))
+		if (e.button >= RUSH_COUNTOF(m_mouse.buttons))
 		{
-			m_mouse.buttons[e.button] = true;
+			return;
 		}
+		m_mouse.buttons[e.button] = true;
 		m_mouse.pos = e.pos;
-		m_mouse.doubleclick = e.doubleClick;
 		break;
 	case WindowEventType_MouseUp:
-		if (e.button < RUSH_COUNTOF(m_mouse.buttons))
+		if (e.button >= RUSH_COUNTOF(m_mouse.buttons) || !m_mouse.buttons[e.button])
 		{
-			m_mouse.buttons[e.button] = false;
+			return;
 		}
+		m_mouse.buttons[e.button] = false;
 		m_mouse.pos = e.pos;
 		break;
 	case WindowEventType_MouseMove:
 		m_mouse.pos = e.pos;
 		break;
 	case WindowEventType_Scroll:
-		m_mouse.wheelH += int(e.scroll.x);
-		m_mouse.wheelV += int(e.scroll.y);
+	{
+		m_scrollRemainder += e.scroll;
+		const Vec2 whole = Vec2(std::trunc(m_scrollRemainder.x), std::trunc(m_scrollRemainder.y));
+		m_scrollRemainder -= whole;
+		m_mouse.wheelH += int(whole.x);
+		m_mouse.wheelV += int(whole.y);
+		break;
+	}
+	case WindowEventType_Char:
+		if (e.character < 32 || e.character == 127 || (e.character >= 0xD800 && e.character < 0xE000) || e.character > 0x10FFFF)
+		{
+			return;
+		}
 		break;
 	case WindowEventType_TouchBegin:
 	case WindowEventType_TouchMove:
@@ -218,6 +242,55 @@ void Window::injectInputEvent(const WindowEvent& injected)
 	broadcast(e);
 }
 
+bool Window::processResize(Tuple2i size)
+{
+	if (size.x <= 0 || size.y <= 0 || size == m_size)
+	{
+		return false;
+	}
+	m_size = size;
+	broadcast(WindowEvent::Resize(m_size.x, m_size.y));
+	return true;
+}
+
+void Window::setMouseLock(bool state)
+{
+	if (m_mouseLocked == state)
+	{
+		return;
+	}
+	if (state)
+	{
+		m_preLockMousePos = m_mouse.pos;
+	}
+	m_mouseLocked = state;
+	applyMouseLock(state);
+	if (!state)
+	{
+		m_mouse.pos = m_preLockMousePos;
+	}
+}
+
+void Window::setFocused(bool focused)
+{
+	m_focused = focused;
+	if (!focused)
+	{
+		releaseMouseButtons(0);
+		releaseKeys();
+	}
+}
+
+void Window::setOsInputEnabled(bool enabled)
+{
+	if (m_osInputEnabled && !enabled)
+	{
+		releaseMouseButtons(0);
+		releaseKeys();
+	}
+	m_osInputEnabled = enabled;
+}
+
 void Window::releaseMouseButtons(u32 heldMask)
 {
 	if (!m_osInputEnabled)
@@ -228,8 +301,7 @@ void Window::releaseMouseButtons(u32 heldMask)
 	{
 		if (m_mouse.buttons[i] && !(heldMask & (1u << i)))
 		{
-			m_mouse.buttons[i] = false;
-			broadcast(WindowEvent::MouseUp(m_mouse.pos, i));
+			processInput(WindowEvent::MouseUp(m_mouse.pos, i));
 		}
 	}
 }
@@ -242,13 +314,11 @@ void Window::releaseKeys()
 	}
 	for (u32 i = 0; i < Key_COUNT; ++i)
 	{
-		if (m_keyboard.keys[i] && Key(i) != Key_Unknown)
+		if (m_keyboard.keys[i])
 		{
-			m_keyboard.keys[i] = false;
-			broadcast(WindowEvent::KeyUp(Key(i)));
+			processInput(WindowEvent::KeyUp(Key(i)));
 		}
 	}
-	m_keyboard.keys[Key_Unknown] = false;
 }
 
 void Window::retain() { m_refs++; }

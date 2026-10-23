@@ -20,8 +20,9 @@
 
 namespace Rush
 {
-static Key translateKeyWin32(int key)
+static Key translateKeyWin32(WPARAM key, LPARAM lparam)
 {
+	const bool extended = (lparam & (1 << 24)) != 0;
 	switch (key)
 	{
 	case VK_SPACE: return Key_Space;
@@ -72,7 +73,7 @@ static Key translateKeyWin32(int key)
 	case 0xDD: return Key_RightBracket;
 	case 0xC0: return Key_Backquote;
 	case VK_ESCAPE: return Key_Escape;
-	case VK_RETURN: return Key_Enter;
+	case VK_RETURN: return extended ? Key_KPEnter : Key_Enter;
 	case VK_TAB: return Key_Tab;
 	case VK_BACK: return Key_Backspace;
 	case VK_INSERT: return Key_Insert;
@@ -114,9 +115,28 @@ static Key translateKeyWin32(int key)
 	case VK_F22: return Key_F22;
 	case VK_F23: return Key_F23;
 	case VK_F24: return Key_F24;
-	case VK_SHIFT: return Key_LeftShift;
-	case VK_CONTROL: return Key_LeftControl;
-	case VK_MENU: return Key_LeftAlt;
+	case VK_SHIFT:
+		return MapVirtualKeyW(UINT((lparam >> 16) & 0xFF), MAPVK_VSC_TO_VK_EX) == VK_RSHIFT ? Key_RightShift : Key_LeftShift;
+	case VK_CONTROL: return extended ? Key_RightControl : Key_LeftControl;
+	case VK_MENU: return extended ? Key_RightAlt : Key_LeftAlt;
+	case VK_LWIN: return Key_LeftSuper;
+	case VK_RWIN: return Key_RightSuper;
+	case VK_OEM_7: return Key_Apostrophe;
+	case VK_NUMPAD0: return Key_KP0;
+	case VK_NUMPAD1: return Key_KP1;
+	case VK_NUMPAD2: return Key_KP2;
+	case VK_NUMPAD3: return Key_KP3;
+	case VK_NUMPAD4: return Key_KP4;
+	case VK_NUMPAD5: return Key_KP5;
+	case VK_NUMPAD6: return Key_KP6;
+	case VK_NUMPAD7: return Key_KP7;
+	case VK_NUMPAD8: return Key_KP8;
+	case VK_NUMPAD9: return Key_KP9;
+	case VK_DECIMAL: return Key_KPDecimal;
+	case VK_DIVIDE: return Key_KPDivide;
+	case VK_MULTIPLY: return Key_KPMultiply;
+	case VK_SUBTRACT: return Key_KPSubtract;
+	case VK_ADD: return Key_KPAdd;
 	default: return Key_Unknown;
 	}
 }
@@ -155,7 +175,7 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	// WNDPROC;
 
 	wc.cbSize        = sizeof(WNDCLASSEXW);
-	wc.style         = CS_DBLCLKS | CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
+	wc.style         = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc   = windowProc;
 	wc.cbClsExtra    = 0;
 	wc.cbWndExtra    = 0;
@@ -261,11 +281,11 @@ void WindowWin32::processChar(u32 unit)
 	{
 		if (high)
 		{
-			broadcast(WindowEvent::Char(0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00)));
+			processInput(WindowEvent::Char(0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00)));
 		}
 		return;
 	}
-	broadcast(WindowEvent::Char(unit));
+	processInput(WindowEvent::Char(unit));
 }
 
 LRESULT APIENTRY WindowWin32::windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -312,9 +332,6 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_LBUTTONUP:
 	case WM_RBUTTONUP:
 	case WM_MBUTTONUP:
-	case WM_LBUTTONDBLCLK:
-	case WM_RBUTTONDBLCLK:
-	case WM_MBUTTONDBLCLK:
 	case WM_MOUSEWHEEL:
 	case WM_MOUSEHWHEEL:
 		if (!m_osInputEnabled)
@@ -340,13 +357,9 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		finishResizing();
 		break;
 
-	case WM_SETFOCUS: m_focused = true; break;
+	case WM_SETFOCUS: setFocused(true); break;
 
-	case WM_KILLFOCUS:
-		m_focused = false;
-		releaseMouseButtons(0);
-		releaseKeys();
-		break;
+	case WM_KILLFOCUS: setFocused(false); break;
 
 	case WM_CAPTURECHANGED:
 		if ((HWND)lparam != m_hwnd)
@@ -364,17 +377,10 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	return false;
 }
 
-void WindowWin32::setMouseLock(bool state)
+void WindowWin32::applyMouseLock(bool state)
 {
-	if (m_mouseLocked == state)
-	{
-		return;
-	}
-	m_mouseLocked = state;
 	if (state)
 	{
-		m_preLockMousePos = m_mouse.pos;
-
 		RECT clientRect;
 		GetClientRect(m_hwnd, &clientRect);
 		POINT topLeft = { clientRect.left, clientRect.top };
@@ -399,7 +405,6 @@ void WindowWin32::setMouseLock(bool state)
 		restorePos.y = (LONG)m_preLockMousePos.y;
 		ClientToScreen(m_hwnd, &restorePos);
 		SetCursorPos(restorePos.x, restorePos.y);
-		m_mouse.pos = m_preLockMousePos;
 
 		ShowCursor(TRUE);
 	}
@@ -407,83 +412,66 @@ void WindowWin32::setMouseLock(bool state)
 
 void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
-	if (message != WM_MOUSEWHEEL && message != WM_MOUSEHWHEEL)
+	switch (message)
 	{
-		const int xPos = GET_X_LPARAM(lparam);
-		const int yPos = GET_Y_LPARAM(lparam);
+	case WM_MOUSEHWHEEL:
+		// WM_MOUSEHWHEEL is > 0 for right: negated to the x > 0 left of the other platforms
+		processInput(WindowEvent::Scroll(-(float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA, 0.0f));
+		return;
+	case WM_MOUSEWHEEL:
+		processInput(WindowEvent::Scroll(0.0f, (float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA));
+		return;
+	default:
+		break;
+	}
 
-		if (m_mouseLocked)
+	const int xPos = GET_X_LPARAM(lparam);
+	const int yPos = GET_Y_LPARAM(lparam);
+	Vec2 pos;
+	if (m_mouseLocked)
+	{
+		RECT clientRect;
+		GetClientRect(m_hwnd, &clientRect);
+		const int centerX = (clientRect.left + clientRect.right) / 2;
+		const int centerY = (clientRect.top + clientRect.bottom) / 2;
+
+		const float dx = (float)(xPos - centerX);
+		const float dy = (float)(yPos - centerY);
+		pos = m_mouse.pos + Vec2(dx, dy);
+
+		if (dx != 0.0f || dy != 0.0f)
 		{
-			RECT clientRect;
-			GetClientRect(m_hwnd, &clientRect);
-			const int centerX = (clientRect.left + clientRect.right) / 2;
-			const int centerY = (clientRect.top + clientRect.bottom) / 2;
-
-			const float dx = (float)(xPos - centerX);
-			const float dy = (float)(yPos - centerY);
-			m_mouse.pos += Vec2(dx, dy);
-
-			if (dx != 0.0f || dy != 0.0f)
-			{
-				POINT screenCenter = {centerX, centerY};
-				ClientToScreen(m_hwnd, &screenCenter);
-				SetCursorPos(screenCenter.x, screenCenter.y);
-			}
+			POINT screenCenter = {centerX, centerY};
+			ClientToScreen(m_hwnd, &screenCenter);
+			SetCursorPos(screenCenter.x, screenCenter.y);
 		}
-		else
-		{
-			const Tuple2i size = getSize();
-			m_mouse.pos = Vec2(clamp((float)xPos, 0.0f, (float)size.x), clamp((float)yPos, 0.0f, (float)size.y));
-		}
+	}
+	else
+	{
+		const Tuple2i size = getSize();
+		pos = Vec2(clamp((float)xPos, 0.0f, (float)size.x), clamp((float)yPos, 0.0f, (float)size.y));
 	}
 
 	switch (message)
 	{
-	case WM_MOUSEMOVE: broadcast(WindowEvent::MouseMove(m_mouse.pos)); break;
-
-	case WM_LBUTTONDOWN: onMouseDown(0, false); break;
-	case WM_LBUTTONUP: onMouseUp(0); break;
-	case WM_LBUTTONDBLCLK: onMouseDown(0, true); break;
-	case WM_RBUTTONDOWN: onMouseDown(1, false); break;
-	case WM_RBUTTONUP: onMouseUp(1); break;
-	case WM_RBUTTONDBLCLK: onMouseDown(1, true); break;
-	case WM_MBUTTONDOWN: onMouseDown(2, false); break;
-	case WM_MBUTTONUP: onMouseUp(2); break;
-	case WM_MBUTTONDBLCLK: onMouseDown(2, true); break;
-
-	case WM_MOUSEHWHEEL:
-		// WM_MOUSEHWHEEL is > 0 for right: negated to the x > 0 left of the other platforms
-		m_mouse.wheelH -= (int)GET_WHEEL_DELTA_WPARAM(wparam);
-		broadcast(WindowEvent::Scroll(-(float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA, 0.0f));
-		break;
-
-	case WM_MOUSEWHEEL:
-		m_mouse.wheelV += (int)GET_WHEEL_DELTA_WPARAM(wparam);
-		broadcast(WindowEvent::Scroll(0.0f, (float)GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA));
-		break;
+	case WM_MOUSEMOVE: processInput(WindowEvent::MouseMove(pos)); break;
+	case WM_LBUTTONDOWN: onMouseButton(0, true, pos); break;
+	case WM_LBUTTONUP: onMouseButton(0, false, pos); break;
+	case WM_RBUTTONDOWN: onMouseButton(1, true, pos); break;
+	case WM_RBUTTONUP: onMouseButton(1, false, pos); break;
+	case WM_MBUTTONDOWN: onMouseButton(2, true, pos); break;
+	case WM_MBUTTONUP: onMouseButton(2, false, pos); break;
 	}
 }
 
-void WindowWin32::onMouseDown(u32 button, bool doubleClick)
+void WindowWin32::onMouseButton(u32 button, bool down, Vec2 pos)
 {
-	if (GetCapture() != m_hwnd)
+	if (down && GetCapture() != m_hwnd)
 	{
 		SetCapture(m_hwnd);
 	}
-	m_mouse.buttons[button] = true;
-	m_mouse.doubleclick = doubleClick;
-	broadcast(WindowEvent::MouseDown(m_mouse.pos, button, doubleClick));
-}
-
-void WindowWin32::onMouseUp(u32 button)
-{
-	if (!m_mouse.buttons[button])
-	{
-		return;
-	}
-	m_mouse.buttons[button] = false;
-	broadcast(WindowEvent::MouseUp(m_mouse.pos, button));
-	if (!m_mouse.buttons[0] && !m_mouse.buttons[1] && !m_mouse.buttons[2] && GetCapture() == m_hwnd)
+	processInput(down ? WindowEvent::MouseDown(pos, button) : WindowEvent::MouseUp(pos, button));
+	if (!down && !m_mouse.buttons[0] && !m_mouse.buttons[1] && !m_mouse.buttons[2] && GetCapture() == m_hwnd)
 	{
 		ReleaseCapture();
 	}
@@ -491,32 +479,35 @@ void WindowWin32::onMouseUp(u32 button)
 
 bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
-	RUSH_UNUSED(wparam);
-	RUSH_UNUSED(lparam);
-
-	Key key = translateKeyWin32((int)wparam);
+	const Key key = translateKeyWin32(wparam, lparam);
 
 	switch (message)
 	{
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
-		if (key == Key_F4 && (GetKeyState(VK_MENU) & 0x8000) && getDesc().handleShortcutQuit)
+		if (key == Key_F4 && (m_keyboard.isKeyDown(Key_LeftAlt) || m_keyboard.isKeyDown(Key_RightAlt)) && getDesc().handleShortcutQuit)
 		{
 			return false;
 		}
-		else if (key == Key_Enter && (GetKeyState(VK_MENU) & 0x8000) && getDesc().handleShortcutFullScreen)
-		{
-			toggleFullscreen();
-			return true;
-		}
-		m_keyboard.keys[key] = true;
-		broadcast(WindowEvent::KeyDown(key));
+		processInput(WindowEvent::KeyDown(key));
 		return true;
 
 	case WM_SYSKEYUP:
 	case WM_KEYUP:
-		m_keyboard.keys[key] = false;
-		broadcast(WindowEvent::KeyUp(key));
+		// With both Shift keys down, releasing the first sends nothing
+		if (key == Key_LeftShift || key == Key_RightShift)
+		{
+			if (!(GetKeyState(VK_LSHIFT) & 0x8000))
+			{
+				processInput(WindowEvent::KeyUp(Key_LeftShift));
+			}
+			if (!(GetKeyState(VK_RSHIFT) & 0x8000))
+			{
+				processInput(WindowEvent::KeyUp(Key_RightShift));
+			}
+			return true;
+		}
+		processInput(WindowEvent::KeyUp(key));
 		return true;
 
 	case WM_SYSCHAR:
@@ -526,14 +517,7 @@ bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	return false;
 }
 
-void WindowWin32::finishResizing()
-{
-	if (m_size != m_pendingSize)
-	{
-		m_size = m_pendingSize;
-		broadcast(WindowEvent::Resize(m_size.x, m_size.y));
-	}
-}
+void WindowWin32::finishResizing() { processResize(m_pendingSize); }
 
 void WindowWin32::processSizeEvent(WPARAM wparam, LPARAM lparam)
 {
@@ -544,7 +528,7 @@ void WindowWin32::processSizeEvent(WPARAM wparam, LPARAM lparam)
 	{
 		m_maximized = false;
 		m_minimized = true;
-		m_focused = false;
+		setFocused(false);
 	}
 	if (wparam == SIZE_MAXIMIZED)
 	{
