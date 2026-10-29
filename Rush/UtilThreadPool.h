@@ -42,6 +42,7 @@ public:
 		u32 workers = 0; // how many threads to create
 		u32 joinSpinUs = 50; // spin for this many microseconds before sleeping on join
 		u32 minWorkPerHelper = 0; // in wake times, 0 means twice the hardware threads
+		u32 initialHelpers = 0;
 		DynamicArray<Cpu> cpus; // optional description of CPU topology
 	};
 

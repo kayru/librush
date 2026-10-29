@@ -278,6 +278,7 @@ struct ThreadPoolWorkers
 	std::atomic<u32> count = 0;
 	Topology topology;
 	u32 minWorkPerHelper = 0;
+	u32 initialHelpers = 0;
 	alignas(64) std::atomic<s64> sleeperWakeTicks = 0;
 	WorkerSlot slots[ThreadPool::kMaxThreads];
 
@@ -522,6 +523,7 @@ ThreadPool::ThreadPool(const Desc& desc)
 {
 	m_workers->topology = buildTopology(desc.cpus);
 	m_workers->minWorkPerHelper = desc.minWorkPerHelper ? desc.minWorkPerHelper : 2 * std::max(1u, std::thread::hardware_concurrency());
+	m_workers->initialHelpers = desc.initialHelpers ? desc.initialHelpers : std::max(kInitialHelpers, std::thread::hardware_concurrency() / 2 - 1);
 	m_defaultDomain = createDomain(0);
 	const u32 hardware = std::max(1u, std::thread::hardware_concurrency()) - 1;
 	startWorkers(std::min(desc.workers == Desc::kHardwareWorkers ? hardware : desc.workers, kMaxThreads));
@@ -832,7 +834,7 @@ void ThreadPool::runParallelSegment(const ParallelJob& job) noexcept
 	}
 
 	u32 helpers[kMaxThreads];
-	const u32 initial = job.count <= width ? width - 1 : std::min(width - 1, kInitialHelpers);
+	const u32 initial = job.count <= width ? width - 1 : std::min(width - 1, m_workers->initialHelpers);
 	const u32 got = m_workers->claim(ArrayView<u32>(helpers, initial));
 	union Lanes
 	{
