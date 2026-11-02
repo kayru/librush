@@ -8,6 +8,7 @@
 #include "WindowWin32.h"
 
 #include <debugapi.h>
+#include <math.h>
 #include <string.h>
 
 namespace Rush
@@ -111,7 +112,19 @@ const char* Platform_GetExecutableDirectory()
 	return path.text;
 }
 
-void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
+static const HANDLE g_activityEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+
+void Platform_NotifyActivity() { SetEvent(g_activityEvent); }
+
+double takeActivityTimeout();
+
+static void waitForActivity(double timeoutSeconds)
+{
+	const DWORD timeoutMs = DWORD(ceil(timeoutSeconds * 1000.0));
+	MsgWaitForMultipleObjectsEx(1, &g_activityEvent, timeoutMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+}
+
+void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
 	while (!Platform_IsExitRequested() && (!g_mainWindow || g_mainWindow->isClosed() == false))
 	{
@@ -133,6 +146,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 
 		Gfx_EndFrame();
 		Gfx_Present();
+
+		if (const double timeout = takeActivityTimeout(); timeout >= 0.0)
+		{
+			waitForActivity(timeout);
+		}
 	}
 }
 

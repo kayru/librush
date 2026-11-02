@@ -743,6 +743,23 @@ void WindowXCB::pollEvents()
 	}
 }
 
+void WindowXCB::waitForActivity(int timeoutMs, int activityFd)
+{
+	if (!m_deferredEvents.empty())
+	{
+		return;
+	}
+	xcb_flush(g_xcbConnection);
+	// Already read from the socket: poll would not see it
+	if (xcb_generic_event_t* event = xcb_poll_for_queued_event(g_xcbConnection))
+	{
+		m_deferredEvents.push_back(event);
+		return;
+	}
+	pollfd fds[] = {{xcb_get_file_descriptor(g_xcbConnection), POLLIN, 0}, {activityFd, POLLIN, 0}};
+	poll(fds, 2, timeoutMs);
+}
+
 void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 {
 	const u32 mouseButtonRemap[4] = {0, 0, 2, 1};

@@ -1,5 +1,6 @@
 #include "Platform.h"
 #include "GfxDevice.h"
+#include "MathCommon.h"
 #include "UtilLog.h"
 #include "Window.h"
 
@@ -27,6 +28,21 @@ void Platform_TerminateProcessFatal(int status)
 void Platform_RequestExit() { g_exitRequested = true; }
 bool Platform_IsExitRequested() { return g_exitRequested; }
 
+static double g_activityTimeout = -1.0;
+
+void Platform_WaitForActivity(double timeoutSeconds)
+{
+	timeoutSeconds = max(timeoutSeconds, 0.0);
+	g_activityTimeout = g_activityTimeout < 0.0 ? timeoutSeconds : min(g_activityTimeout, timeoutSeconds);
+}
+
+double takeActivityTimeout()
+{
+	const double timeout = g_activityTimeout;
+	g_activityTimeout = -1.0;
+	return timeout;
+}
+
 // Handlers may run on any thread (a new one on Windows): volatile sig_atomic_t covers only the interrupted thread
 static std::atomic<int> g_terminationSignal = 0;
 static_assert(std::atomic<int>::is_always_lock_free);
@@ -35,6 +51,9 @@ static void terminationSignalHandler(int signal)
 {
 	g_terminationSignal = signal;
 	std::signal(signal, SIG_DFL);
+#if defined(RUSH_PLATFORM_LINUX) || defined(RUSH_PLATFORM_WINDOWS)
+	Platform_NotifyActivity();
+#endif
 }
 
 static const struct

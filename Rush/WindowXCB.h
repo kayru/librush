@@ -23,6 +23,7 @@ public:
 	virtual void  setSize(const Tuple2i& size) override;
 	virtual bool  setFullscreen(bool state) override;
 	virtual void  pollEvents() override;
+	void          waitForActivity(int timeoutMs, int activityFd);
 
 	// The CLIPBOARD selection, served from this window's event loop (Platform_SetClipboardText)
 	void   setClipboardText(const char* text);

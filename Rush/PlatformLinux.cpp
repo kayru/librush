@@ -6,14 +6,25 @@
 #include "GfxDevice.h"
 #include "WindowXCB.h"
 
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <poll.h>
+#include <sys/eventfd.h>
 
 namespace Rush
 {
+
+static const int g_activityFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+
+void Platform_NotifyActivity()
+{
+	const u64 one = 1;
+	[[maybe_unused]] const ssize_t written = write(g_activityFd, &one, sizeof(one));
+}
 
 extern Window*     g_mainWindow;
 void closeWindowOnTerminationSignal();
@@ -81,7 +92,25 @@ const char* Platform_GetExecutableDirectory()
 	return path.text;
 }
 
-void Platform_Run(PlatformCallback_Update onUpdate, void* userData) 
+double takeActivityTimeout();
+
+static void waitForActivity(double timeoutSeconds)
+{
+	const int timeoutMs = int(ceil(timeoutSeconds * 1000.0));
+	if (g_mainWindow)
+	{
+		static_cast<WindowXCB*>(g_mainWindow)->waitForActivity(timeoutMs, g_activityFd);
+	}
+	else
+	{
+		pollfd fd = {g_activityFd, POLLIN, 0};
+		poll(&fd, 1, timeoutMs);
+	}
+	u64 count = 0;
+	[[maybe_unused]] const ssize_t read_ = read(g_activityFd, &count, sizeof(count));
+}
+
+void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
 	while (!Platform_IsExitRequested() && (!g_mainWindow || g_mainWindow->isClosed() == false))
 	{
@@ -100,6 +129,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 
 		Gfx_EndFrame();
 		Gfx_Present();
+
+		if (const double timeout = takeActivityTimeout(); timeout >= 0.0)
+		{
+			waitForActivity(timeout);
+		}
 	}
 }
 

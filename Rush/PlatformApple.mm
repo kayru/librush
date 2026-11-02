@@ -83,6 +83,11 @@ const char* Platform_GetExecutableDirectory()
 
 #import <Cocoa/Cocoa.h>
 
+#include <atomic>
+
+static constexpr short kActivityEventSubtype = 0x5257;
+static std::atomic<bool> g_activityQueued = false;
+
 @interface AppDelegate : NSObject<NSApplicationDelegate>
 {
 	bool terminated;
@@ -145,6 +150,41 @@ namespace Rush
 
 Window* Platform_CreateWindow(const WindowDesc& desc) { return new WindowMac(desc); }
 
+double takeActivityTimeout();
+
+static void waitForActivity(double timeoutSeconds)
+{
+	g_activityQueued = false;
+	@autoreleasepool
+	{
+		[NSApp nextEventMatchingMask:NSEventMaskAny
+						   untilDate:[NSDate dateWithTimeIntervalSinceNow:timeoutSeconds]
+							  inMode:NSDefaultRunLoopMode
+							 dequeue:NO];
+	}
+}
+
+void Platform_NotifyActivity()
+{
+	if (!NSApp || g_activityQueued.exchange(true))
+	{
+		return;
+	}
+	@autoreleasepool
+	{
+		NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+											location:NSZeroPoint
+									   modifierFlags:0
+										   timestamp:0
+										windowNumber:0
+											 context:nil
+											 subtype:kActivityEventSubtype
+											   data1:0
+											   data2:0];
+		[NSApp postEvent:event atStart:NO];
+	}
+}
+
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
 	@autoreleasepool
@@ -203,6 +243,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 						inMode:NSDefaultRunLoopMode
 						dequeue:YES])
 				{
+					if ([event type] == NSEventTypeApplicationDefined && [event subtype] == kActivityEventSubtype)
+					{
+						g_activityQueued = false;
+						continue;
+					}
 					if (g_mainWindow)
 					{
 						WindowMac* window = static_cast<WindowMac*>(g_mainWindow);
@@ -219,6 +264,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 				}
 				Gfx_EndFrame();
 				Gfx_Present();
+
+				if (const double timeout = takeActivityTimeout(); timeout >= 0.0)
+				{
+					waitForActivity(timeout);
+				}
 			}
 		}
 	}
@@ -253,6 +303,8 @@ void Platform_Run(PlatformCallback_Update, void*)
 {
 	RUSH_ASSERT_MSG(false, "Platform_Run should not be called directly on iOS");
 }
+
+void Platform_NotifyActivity() {}
 
 }
 
