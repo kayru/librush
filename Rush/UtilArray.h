@@ -3,6 +3,7 @@
 #include "Rush.h"
 #include "UtilBuffer.h"
 #include "UtilLog.h"
+#include <initializer_list>
 #include <new>
 #include <string_view> // declares ranges::enable_borrowed_range/enable_view, lighter than <ranges>
 #include <type_traits>
@@ -134,32 +135,49 @@ template <typename T>
 class DynamicArray
 {
 public:
+	using value_type = T;
 
 	DynamicArray() = default;
+
+	DynamicArray(std::initializer_list<T> values)
+		: DynamicArray()
+	{
+		Buffer<T>::allocate(m_buffer, values.size());
+		Buffer<T>::constructCopyRange(begin(), values.begin(), values.end());
+		m_buffer.m_size = values.size();
+	}
+
+	template <typename It>
+		requires(!std::is_integral_v<It>)
+	DynamicArray(It first, It last)
+		: DynamicArray()
+	{
+		append(first, last);
+	}
 
 	DynamicArray(size_t size)
 		: DynamicArray()
 	{
-		resize(size);
+		create(size);
 	}
 
 	DynamicArray(size_t size, NoInit)
 		: DynamicArray()
 	{
-		resize(size, noInit);
+		create(size, noInit);
 	}
 
 	DynamicArray(size_t size, const T& defaultValue)
 		: DynamicArray()
 	{
 		static_assert(std::is_copy_constructible<T>::value, "Type must be copy-constructible");
-		resize(size, defaultValue);
+		create(size, defaultValue);
 	}
 
 	DynamicArray(const DynamicArray& other)
 		: DynamicArray()
 	{
-		Buffer<T>::reserve(m_buffer, other.m_buffer.m_size);
+		Buffer<T>::allocate(m_buffer, other.m_buffer.m_size);
 		Buffer<T>::constructCopyRange(begin(), other.begin(), other.end());
 		m_buffer.m_size = other.m_buffer.m_size;
 	}
@@ -223,6 +241,7 @@ public:
 	const T& back() const { return m_buffer.m_data[m_buffer.m_size - 1]; }
 
 	size_t size() const { return m_buffer.m_size; }
+	size_t capacity() const { return m_buffer.m_capacity; }
 
 	ArrayView<T> slice(size_t start, size_t count)
 	{
@@ -294,7 +313,111 @@ public:
 		Buffer<T>::pop(m_buffer);
 	}
 
+	template <typename... A> T& emplace(A&&... args)
+	{
+		Buffer<T>::push(m_buffer, std::forward<A>(args)...);
+		return back();
+	}
+
+	template <typename It> void append(It first, It last)
+	{
+		if constexpr (requires { last - first; })
+		{
+			Buffer<T>::grow(m_buffer, m_buffer.m_size + size_t(last - first));
+		}
+		for (; first != last; ++first)
+		{
+			Buffer<T>::push(m_buffer, *first);
+		}
+	}
+
+	void append(std::initializer_list<T> values)
+	{
+		append(values.begin(), values.end());
+	}
+
+	T& insert(size_t index, const T& val)
+	{
+		Buffer<T>::push(m_buffer, val);
+		return rotateIn(index);
+	}
+
+	T& insert(size_t index, T&& val)
+	{
+		Buffer<T>::push(m_buffer, std::move(val));
+		return rotateIn(index);
+	}
+
+	void remove(size_t index, size_t count = 1)
+	{
+		T* to = begin() + index;
+		for (T* from = to + count; from != end(); ++from, ++to)
+		{
+			*to = std::move(*from);
+		}
+		Buffer<T>::destructRange(to, end());
+		m_buffer.m_size -= count;
+	}
+
+	template <typename Pred> size_t removeIf(Pred pred)
+	{
+		T* to = begin();
+		for (T* from = begin(); from != end(); ++from)
+		{
+			if (!pred(*from))
+			{
+				if (to != from)
+				{
+					*to = std::move(*from);
+				}
+				++to;
+			}
+		}
+		const size_t count = size_t(end() - to);
+		Buffer<T>::destructRange(to, end());
+		m_buffer.m_size -= count;
+		return count;
+	}
+
+	bool operator==(const DynamicArray& other) const
+	{
+		if (size() != other.size())
+		{
+			return false;
+		}
+		for (size_t i = 0; i < size(); ++i)
+		{
+			if (!(m_buffer.m_data[i] == other.m_buffer.m_data[i]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 private:
+
+	template <typename... A> void create(size_t size, const A&... args)
+	{
+		Buffer<T>::allocate(m_buffer, size);
+		Buffer<T>::constructRange(begin(), begin() + size, args...);
+		m_buffer.m_size = size;
+	}
+
+	T& rotateIn(size_t i)
+	{
+		T* at = begin() + i;
+		if (at != end() - 1)
+		{
+			T value = std::move(back());
+			for (T* p = end() - 1; p != at; --p)
+			{
+				*p = std::move(*(p - 1));
+			}
+			*at = std::move(value);
+		}
+		return *at;
+	}
 
 	Buffer<T> m_buffer;
 };

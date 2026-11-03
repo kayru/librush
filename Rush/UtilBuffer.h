@@ -28,18 +28,18 @@ struct Buffer
 		}
 	}
 
-	template <typename U> static void push(Buffer& buf, U&& val)
+	template <typename... U> static void push(Buffer& buf, U&&... args)
 	{
 		if (buf.m_size < buf.m_capacity)
 		{
-			new(&buf.m_data[buf.m_size++]) T(std::forward<U>(val));
+			new(&buf.m_data[buf.m_size++]) T(std::forward<U>(args)...);
 			return;
 		}
 
-		// val may live in the old storage, so the new element is constructed before that is released
+		// args may live in the old storage, so the new element is constructed before that is released
 		const size_t newCapacity = (buf.m_capacity > 0) ? (2 * buf.m_capacity) : 1;
 		T* newData = (T*)allocateBytes(newCapacity * sizeof(T));
-		new(&newData[buf.m_size]) T(std::forward<U>(val));
+		new(&newData[buf.m_size]) T(std::forward<U>(args)...);
 		constructMoveRange(newData, buf.begin(), buf.end());
 		destructRange(buf.begin(), buf.end());
 		deallocateBytes(buf.m_data);
@@ -102,6 +102,15 @@ struct Buffer
 		}
 	}
 
+	static void allocate(Buffer& buf, size_t capacity)
+	{
+		if (capacity)
+		{
+			buf.m_data = (T*)allocateBytes(capacity * sizeof(T));
+			buf.m_capacity = capacity;
+		}
+	}
+
 	static void reserve(Buffer& buf, size_t newCapacity)
 	{
 		if (newCapacity <= buf.m_capacity) return;
@@ -116,9 +125,17 @@ struct Buffer
 		buf.m_capacity = newCapacity;
 	}
 
+	static void grow(Buffer& buf, size_t size)
+	{
+		if (size > buf.m_capacity)
+		{
+			reserve(buf, size > 2 * buf.m_capacity ? size : 2 * buf.m_capacity);
+		}
+	}
+
 	static void resize(Buffer& buf, size_t newSize)
 	{
-		reserve(buf, newSize);
+		grow(buf, newSize);
 
 		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize);
 		destructRange(buf.m_data + newSize, buf.m_data + buf.m_size);
@@ -128,7 +145,7 @@ struct Buffer
 
 	static void resize(Buffer& buf, size_t newSize, NoInit)
 	{
-		reserve(buf, newSize);
+		grow(buf, newSize);
 
 		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize, noInit);
 		destructRange(buf.m_data + newSize, buf.m_data + buf.m_size);
@@ -140,7 +157,7 @@ struct Buffer
 	{
 		// defaultValue may live in the storage that reserve releases
 		const T value(defaultValue);
-		reserve(buf, newSize);
+		grow(buf, newSize);
 
 		constructRange(buf.m_data + buf.m_size, buf.m_data + newSize, value);
 		destructRange(buf.m_data + newSize, buf.m_data + buf.m_size);
