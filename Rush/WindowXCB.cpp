@@ -698,7 +698,8 @@ Key translateKeyXCB(xcb_keycode_t code)
 
 void WindowXCB::processKeyPress(const xcb_key_press_event_t* event)
 {
-	processInput(WindowEvent::KeyDown(translateKeyXCB(event->detail)));
+	m_keyOfCode[event->detail] = translateKeyXCB(event->detail);
+	processInput(WindowEvent::KeyDown(m_keyOfCode[event->detail]));
 
 	if (!g_xkbState)
 	{
@@ -820,7 +821,7 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 	}
 
 	const bool isInputEvent = eventCode == XCB_MOTION_NOTIFY || eventCode == XCB_BUTTON_PRESS ||
-		eventCode == XCB_BUTTON_RELEASE || eventCode == XCB_KEY_PRESS || eventCode == XCB_KEY_RELEASE;
+		eventCode == XCB_BUTTON_RELEASE || eventCode == XCB_KEY_PRESS || eventCode == XCB_KEY_RELEASE || eventCode == XCB_KEYMAP_NOTIFY;
 	if (isInputEvent && !m_osInputEnabled)
 	{
 		return;
@@ -966,7 +967,23 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 		case XCB_KEY_RELEASE:
 		{
 			const xcb_key_release_event_t* event = (const xcb_key_release_event_t *)xcbEvent;
+			m_keyOfCode[event->detail] = Key_Unknown;
 			processInput(WindowEvent::KeyUp(translateKeyXCB(event->detail)));
+			break;
+		}
+		case XCB_KEYMAP_NOTIFY:
+		{
+			// The server sends this after every FocusIn, including when a keyboard grab ends. The bitmap starts at keycode 8.
+			const u8* held = ((const xcb_keymap_notify_event_t*)xcbEvent)->keys;
+			for (u32 code = 8; code < RUSH_COUNTOF(m_keyOfCode); ++code)
+			{
+				const Key key = m_keyOfCode[code];
+				if (key != Key_Unknown && !(held[code / 8 - 1] & (1 << (code % 8))))
+				{
+					m_keyOfCode[code] = Key_Unknown;
+					processInput(WindowEvent::KeyUp(key));
+				}
+			}
 			break;
 		}
 		default:

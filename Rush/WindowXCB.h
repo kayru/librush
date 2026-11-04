@@ -54,6 +54,7 @@ private:
 
 	xcb_window_t m_nativeHandle = 0;
 	String m_caption;
+	Key m_keyOfCode[256] = {};
 
 	// Events that arrived while waiting for a selection reply, processed by the next pollEvents
 	DynamicArray<xcb_generic_event_t*> m_deferredEvents;

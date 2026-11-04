@@ -257,6 +257,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 					[NSApp updateWindows];
 				}
 
+				if (g_mainWindow)
+				{
+					g_mainWindow->pollEvents();
+				}
+
 				Gfx_BeginFrame();
 				if (onUpdate)
 				{

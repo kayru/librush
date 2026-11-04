@@ -137,6 +137,10 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 		}
+		if (g_mainWindow)
+		{
+			g_mainWindow->pollEvents();
+		}
 		closeWindowOnTerminationSignal();
 
 		if (onUpdate)

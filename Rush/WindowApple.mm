@@ -10,7 +10,10 @@ using namespace Rush;
 
 #if defined(RUSH_PLATFORM_MAC)
 
+#include <CoreGraphics/CoreGraphics.h>
 #include <IOKit/hidsystem/IOLLEvent.h> // NX_DEVICE*KEYMASK
+#include <algorithm>
+#include <iterator>
 
 @interface RushWindow: NSWindow
 {
@@ -545,6 +548,56 @@ bool WindowMac::isContentMouseDown(NSEvent* event) const
 	return NSPointInRect(pos, [contentView bounds]);
 }
 
+namespace
+{
+struct Modifier
+{
+	u16 keyCode;
+	Key key;
+	NSUInteger mask;
+	NSUInteger family; // 0 for Caps Lock, which toggles instead of being held
+};
+constexpr Modifier g_modifiers[] = {
+	{59, Key_LeftControl, NX_DEVICELCTLKEYMASK, NSEventModifierFlagControl},
+	{62, Key_RightControl, NX_DEVICERCTLKEYMASK, NSEventModifierFlagControl},
+	{56, Key_LeftShift, NX_DEVICELSHIFTKEYMASK, NSEventModifierFlagShift},
+	{60, Key_RightShift, NX_DEVICERSHIFTKEYMASK, NSEventModifierFlagShift},
+	{55, Key_LeftSuper, NX_DEVICELCMDKEYMASK, NSEventModifierFlagCommand},
+	{54, Key_RightSuper, NX_DEVICERCMDKEYMASK, NSEventModifierFlagCommand},
+	{58, Key_LeftAlt, NX_DEVICELALTKEYMASK, NSEventModifierFlagOption},
+	{61, Key_RightAlt, NX_DEVICERALTKEYMASK, NSEventModifierFlagOption},
+	{57, Key_CapsLock, NSEventModifierFlagCapsLock, 0},
+};
+} // namespace
+
+void WindowMac::pollEvents()
+{
+	if (!m_osInputEnabled)
+	{
+		return;
+	}
+	const CGEventFlags flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
+	for (u16 code = 0; code < RUSH_COUNTOF(m_keyOfCode); ++code)
+	{
+		const Key key = m_keyOfCode[code];
+		if (key == Key_Unknown)
+		{
+			continue;
+		}
+		// CGEventSourceKeyState misses modifiers remapped in System Settings, so check the modifier flags instead.
+		const Modifier* const modifier = std::find_if(std::begin(g_modifiers), std::end(g_modifiers), [&](const Modifier& m) { return m.keyCode == code; });
+		const bool held = modifier != std::end(g_modifiers) ? (NSUInteger(flags) & modifier->family) != 0 : CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, code);
+		if (!held || !m_keyboard.keys[key])
+		{
+			m_keyOfCode[code] = Key_Unknown;
+			if (m_keyboard.keys[key])
+			{
+				processInput(WindowEvent::KeyUp(key));
+			}
+		}
+	}
+}
+
 bool WindowMac::processEvent(NSEvent* event)
 {
 	NSEventType eventType = [event type];
@@ -688,28 +741,19 @@ bool WindowMac::processEvent(NSEvent* event)
 		}
 		case NSEventTypeFlagsChanged:
 		{
-			struct Modifier
-			{
-				u16 keyCode;
-				Key key;
-				NSUInteger mask;
-			};
-			static constexpr Modifier modifiers[] = {
-				{59, Key_LeftControl, NX_DEVICELCTLKEYMASK}, {62, Key_RightControl, NX_DEVICERCTLKEYMASK},
-				{56, Key_LeftShift, NX_DEVICELSHIFTKEYMASK}, {60, Key_RightShift, NX_DEVICERSHIFTKEYMASK},
-				{55, Key_LeftSuper, NX_DEVICELCMDKEYMASK},   {54, Key_RightSuper, NX_DEVICERCMDKEYMASK},
-				{58, Key_LeftAlt, NX_DEVICELALTKEYMASK},     {61, Key_RightAlt, NX_DEVICERALTKEYMASK},
-				{57, Key_CapsLock, NSEventModifierFlagCapsLock},
-			};
 			const u16 keyCode = [event keyCode];
 			const NSUInteger flags = [event modifierFlags];
-			for (const Modifier& m : modifiers)
+			for (const Modifier& m : g_modifiers)
 			{
 				if (m.keyCode != keyCode)
 				{
 					continue;
 				}
 				const bool down = (flags & m.mask) != 0;
+				if (m.family != 0 && keyCode < RUSH_COUNTOF(m_keyOfCode))
+				{
+					m_keyOfCode[keyCode] = down ? m.key : Key_Unknown;
+				}
 				if (down != m_keyboard.keys[m.key])
 				{
 					processInput(down ? WindowEvent::KeyDown(m.key) : WindowEvent::KeyUp(m.key));

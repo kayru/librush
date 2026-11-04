@@ -522,6 +522,25 @@ void WindowWin32::onMouseButton(u32 button, bool down, Vec2 pos)
 	}
 }
 
+// Win+Space and Win+G swallow the Win key's release without taking focus
+void WindowWin32::pollEvents()
+{
+	if (!m_osInputEnabled)
+	{
+		return;
+	}
+	const auto releaseIfUp = [this](bool& pressed, int virtualKey, Key key)
+	{
+		if (pressed && !(GetKeyState(virtualKey) & 0x8000))
+		{
+			pressed = false;
+			processInput(WindowEvent::KeyUp(key));
+		}
+	};
+	releaseIfUp(m_leftWinPressed, VK_LWIN, Key_LeftSuper);
+	releaseIfUp(m_rightWinPressed, VK_RWIN, Key_RightSuper);
+}
+
 bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 {
 	const Key key = translateKeyWin32(wparam, lparam);
@@ -534,6 +553,8 @@ bool WindowWin32::processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam)
 		{
 			return false;
 		}
+		m_leftWinPressed |= key == Key_LeftSuper;
+		m_rightWinPressed |= key == Key_RightSuper;
 		processInput(WindowEvent::KeyDown(key));
 		return true;
 

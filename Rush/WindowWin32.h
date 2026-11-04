@@ -21,6 +21,7 @@ public:
 	virtual void  setCaption(const char* str);
 	virtual void  setSize(const Tuple2i& size);
 	virtual bool  setFullscreen(bool state);
+	virtual void  pollEvents() override;
 
 private:
 	bool processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -52,6 +53,9 @@ private:
 	u32 m_windowStyle = 0;
 
 	u32 m_highSurrogate = 0; // the first half of a pair, until its second arrives
+
+	bool m_leftWinPressed = false;
+	bool m_rightWinPressed = false;
 
 	Vec2 m_rawAbsolute = Vec2(0.0f);
 	bool m_rawAbsoluteValid = false;

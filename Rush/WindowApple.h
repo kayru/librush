@@ -80,6 +80,8 @@ public:
 	virtual float displayHeadroom() const override;
 	virtual float displayHeadroomPotential() const override;
 
+	virtual void pollEvents() override;
+
 	bool processEvent(NSEvent* event);
 	void updateResolutionScale();
 
