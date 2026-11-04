@@ -321,6 +321,18 @@ void WindowWin32::setCaption(const char* str)
 	SetWindowTextW(m_hwnd, toWide(str).data());
 }
 
+static void clipCursorToClient(HWND hwnd)
+{
+	RECT clientRect;
+	GetClientRect(hwnd, &clientRect);
+	POINT topLeft = { clientRect.left, clientRect.top };
+	POINT bottomRight = { clientRect.right, clientRect.bottom };
+	ClientToScreen(hwnd, &topLeft);
+	ClientToScreen(hwnd, &bottomRight);
+	RECT clipRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+	ClipCursor(&clipRect);
+}
+
 bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	switch (msg)
@@ -341,6 +353,13 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		processMouseEvent(msg, wparam, lparam);
 		return true;
 
+	case WM_INPUT:
+		if (m_mouseLocked && m_osInputEnabled)
+		{
+			processRawMouse(HRAWINPUT(lparam));
+		}
+		break; // DefWindowProc releases the input
+
 	case WM_SYSKEYDOWN:
 	case WM_SYSKEYUP:
 	case WM_KEYDOWN:
@@ -357,7 +376,14 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		finishResizing();
 		break;
 
-	case WM_SETFOCUS: setFocused(true); break;
+	case WM_SETFOCUS:
+		setFocused(true);
+		// Losing focus drops the clip
+		if (m_mouseLocked)
+		{
+			clipCursorToClient(m_hwnd);
+		}
+		break;
 
 	case WM_KILLFOCUS: setFocused(false); break;
 
@@ -377,27 +403,55 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	return false;
 }
 
+static void registerRawMouse(DWORD flags, HWND target)
+{
+	const RAWINPUTDEVICE mouse = {0x01, 0x02, flags, target}; // HID generic desktop, mouse
+	if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)))
+	{
+		RUSH_LOG_ERROR("RegisterRawInputDevices failed (%lu)", GetLastError());
+	}
+}
+
+void WindowWin32::processRawMouse(HRAWINPUT handle)
+{
+	RAWINPUT raw;
+	UINT size = sizeof(raw);
+	if (GetRawInputData(handle, RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) == UINT(-1) || raw.header.dwType != RIM_TYPEMOUSE)
+	{
+		return;
+	}
+	const RAWMOUSE& mouse = raw.data.mouse;
+	Vec2 delta((float)mouse.lLastX, (float)mouse.lLastY);
+	// Remote desktops and VMs report absolute positions
+	if (mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
+	{
+		const bool virtualDesktop = (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+		const float width = (float)GetSystemMetrics(virtualDesktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
+		const float height = (float)GetSystemMetrics(virtualDesktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
+		const Vec2 absolute(delta.x / 65535.0f * width, delta.y / 65535.0f * height);
+		delta = m_rawAbsoluteValid ? absolute - m_rawAbsolute : Vec2(0.0f);
+		m_rawAbsolute = absolute;
+		m_rawAbsoluteValid = true;
+	}
+	if (delta.x != 0.0f || delta.y != 0.0f)
+	{
+		processInput(WindowEvent::MouseMove(m_mouse.pos + delta));
+	}
+}
+
 void WindowWin32::applyMouseLock(bool state)
 {
 	if (state)
 	{
-		RECT clientRect;
-		GetClientRect(m_hwnd, &clientRect);
-		POINT topLeft = { clientRect.left, clientRect.top };
-		POINT bottomRight = { clientRect.right, clientRect.bottom };
-		ClientToScreen(m_hwnd, &topLeft);
-		ClientToScreen(m_hwnd, &bottomRight);
-		RECT clipRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
-		ClipCursor(&clipRect);
-
-		// Locked-mode deltas are measured from the client center, so park the
-		// cursor there now; otherwise the first move reports its full offset
-		SetCursorPos((topLeft.x + bottomRight.x) / 2, (topLeft.y + bottomRight.y) / 2);
+		clipCursorToClient(m_hwnd);
+		m_rawAbsoluteValid = false;
+		registerRawMouse(0, m_hwnd);
 
 		ShowCursor(FALSE);
 	}
 	else
 	{
+		registerRawMouse(RIDEV_REMOVE, nullptr);
 		ClipCursor(nullptr);
 
 		POINT restorePos;
@@ -430,21 +484,12 @@ void WindowWin32::processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam)
 	Vec2 pos;
 	if (m_mouseLocked)
 	{
-		RECT clientRect;
-		GetClientRect(m_hwnd, &clientRect);
-		const int centerX = (clientRect.left + clientRect.right) / 2;
-		const int centerY = (clientRect.top + clientRect.bottom) / 2;
-
-		const float dx = (float)(xPos - centerX);
-		const float dy = (float)(yPos - centerY);
-		pos = m_mouse.pos + Vec2(dx, dy);
-
-		if (dx != 0.0f || dy != 0.0f)
+		// Locked motion comes from WM_INPUT
+		if (message == WM_MOUSEMOVE)
 		{
-			POINT screenCenter = {centerX, centerY};
-			ClientToScreen(m_hwnd, &screenCenter);
-			SetCursorPos(screenCenter.x, screenCenter.y);
+			return;
 		}
+		pos = m_mouse.pos;
 	}
 	else
 	{

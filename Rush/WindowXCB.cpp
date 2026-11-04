@@ -7,6 +7,7 @@
 #include "UtilLog.h"
 
 #include <xcb/xcb_keysyms.h>
+#include <xcb/xinput.h>
 // The generated XKB header is C: a struct field is named `explicit`
 #define explicit explicit_
 #include <xcb/xkb.h>
@@ -62,6 +63,7 @@ namespace
 	xkb_compose_state* g_composeState = nullptr;
 	s32 g_xkbDeviceId = -1;
 	u8 g_xkbEventBase = 0;
+	u8 g_xinputOpcode = 0; // 0: no raw motion, locked deltas come from pointer warps
 
 	// Bounds the wait for another client that may never answer a selection request
 	constexpr auto kSelectionTimeout = std::chrono::seconds(2);
@@ -310,6 +312,19 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 
 		internAtoms();
 		setupKeyboard();
+
+		// Raw events reach a client holding a pointer grab from XI 2.1
+		const xcb_query_extension_reply_t* xinput = xcb_get_extension_data(g_xcbConnection, &xcb_input_id);
+		if (xinput && xinput->present)
+		{
+			xcb_input_xi_query_version_reply_t* version = xcb_input_xi_query_version_reply(
+				g_xcbConnection, xcb_input_xi_query_version(g_xcbConnection, 2, 1), nullptr);
+			if (version && (version->major_version > 2 || (version->major_version == 2 && version->minor_version >= 1)))
+			{
+				g_xinputOpcode = xinput->major_opcode;
+			}
+			free(version);
+		}
 	}
 
 	g_xcbConnectionRefCount++;
@@ -395,6 +410,7 @@ WindowXCB::~WindowXCB()
 		releaseKeyboard();
 		xcb_disconnect(g_xcbConnection);
 		g_xcbConnection = nullptr;
+		g_xinputOpcode = 0;
 	}
 }
 
@@ -506,6 +522,15 @@ void WindowXCB::grabPointer()
 
 void WindowXCB::applyMouseLock(bool state)
 {
+	if (g_xinputOpcode)
+	{
+		struct
+		{
+			xcb_input_event_mask_t head;
+			u32 bits;
+		} mask = {{XCB_INPUT_DEVICE_ALL_MASTER, 1}, state ? u32(XCB_INPUT_XI_EVENT_MASK_RAW_MOTION) : 0u};
+		xcb_input_xi_select_events(g_xcbConnection, g_xcbScreen->root, 1, &mask.head);
+	}
 	if (state)
 	{
 		if (!m_hiddenCursor)
@@ -872,11 +897,45 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 				{
 					break;
 				}
-				processInput(WindowEvent::MouseMove(m_mouse.pos + delta));
+				if (!g_xinputOpcode)
+				{
+					processInput(WindowEvent::MouseMove(m_mouse.pos + delta));
+				}
 			}
 			else
 			{
 				processInput(WindowEvent::MouseMove(clampToClient(pointerPos)));
+			}
+			break;
+		}
+		case XCB_GE_GENERIC:
+		{
+			const xcb_ge_generic_event_t* generic = (const xcb_ge_generic_event_t*)xcbEvent;
+			if (generic->extension != g_xinputOpcode || generic->event_type != XCB_INPUT_RAW_MOTION ||
+				!m_mouseLocked || !m_focused || !m_osInputEnabled)
+			{
+				break;
+			}
+			const xcb_input_raw_motion_event_t* event = (const xcb_input_raw_motion_event_t*)xcbEvent;
+			if (xcb_input_raw_button_press_valuator_mask_length(event) == 0)
+			{
+				break;
+			}
+			const u32 axes = *xcb_input_raw_button_press_valuator_mask(event);
+			const xcb_input_fp3232_t* value = xcb_input_raw_button_press_axisvalues_raw(event);
+			Vec2 delta(0.0f);
+			if (axes & 1)
+			{
+				delta.x = float(double(value->integral) + double(value->frac) / 4294967296.0);
+				++value;
+			}
+			if (axes & 2)
+			{
+				delta.y = float(double(value->integral) + double(value->frac) / 4294967296.0);
+			}
+			if (delta.x != 0.0f || delta.y != 0.0f)
+			{
+				processInput(WindowEvent::MouseMove(m_mouse.pos + delta));
 			}
 			break;
 		}

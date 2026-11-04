@@ -27,6 +27,7 @@ private:
 	void applyMouseLock(bool state) override;
 
 	void processMouseEvent(UINT message, WPARAM wparam, LPARAM lparam);
+	void processRawMouse(HRAWINPUT handle);
 	void onMouseButton(u32 button, bool down, Vec2 pos);
 	bool processKeyEvent(UINT message, WPARAM wparam, LPARAM lparam);
 	void processChar(u32 unit);
@@ -51,6 +52,9 @@ private:
 	u32 m_windowStyle = 0;
 
 	u32 m_highSurrogate = 0; // the first half of a pair, until its second arrives
+
+	Vec2 m_rawAbsolute = Vec2(0.0f);
+	bool m_rawAbsoluteValid = false;
 };
 }
 
