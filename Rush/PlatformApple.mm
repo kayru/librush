@@ -337,13 +337,69 @@ void Platform_Run(PlatformCallback_Update, void*)
 
 void Platform_NotifyActivity() {}
 
+u64 takeNextFrameStart();
+
 }
 
 static CADisplayLink* g_displayLink = nil;
+static dispatch_source_t g_frameStartTimer = nil;
+static bool g_framePending = false;
+
+static void runFrame()
+{
+	@autoreleasepool
+	{
+		Gfx_BeginFrame();
+		if (g_appConfig.onUpdate)
+		{
+			g_appConfig.onUpdate(g_appConfig.userData);
+		}
+		Gfx_EndFrame();
+		Gfx_Present();
+	}
+}
+
+// The run loop keeps delivering touches while a frame waits for its start, so they reach that frame
+static void runFrameAtStart()
+{
+	const u64 start = Rush::takeNextFrameStart();
+	const u64 now   = Timer::nowNs();
+	if (start <= now || start - now > 100'000'000)
+	{
+		runFrame();
+		return;
+	}
+
+	if (!g_frameStartTimer)
+	{
+		g_frameStartTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, DISPATCH_TIMER_STRICT, dispatch_get_main_queue());
+		dispatch_source_set_event_handler(g_frameStartTimer, ^{
+			if (g_framePending)
+			{
+				g_framePending = false;
+				runFrame();
+			}
+		});
+		dispatch_resume(g_frameStartTimer);
+	}
+
+	g_framePending = true;
+	dispatch_source_set_timer(g_frameStartTimer, dispatch_time(DISPATCH_TIME_NOW, s64(start - now)), DISPATCH_TIME_FOREVER, 0);
+}
+
+static void cancelPendingFrame()
+{
+	g_framePending = false;
+	if (g_frameStartTimer)
+	{
+		dispatch_source_set_timer(g_frameStartTimer, DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, 0);
+	}
+}
 static RushViewController* g_viewController = nil; // outlives scenes: iOS may reconnect one
 
 static void shutdownIOS()
 {
+	cancelPendingFrame();
 	[g_displayLink invalidate];
 	g_displayLink = nil;
 
@@ -424,6 +480,7 @@ static void shutdownIOS()
 		return;
 	}
 	g_displayLink.paused = YES;
+	cancelPendingFrame();
 	Gfx_QueryProgress(Gfx_GetPendingProgressId(), GfxProgressFlags::Wait);
 	if (g_appConfig.onSuspend)
 	{
@@ -455,19 +512,18 @@ static void shutdownIOS()
 			return;
 		}
 
+		if (g_framePending)
+		{
+			return;
+		}
+
 		if (g_mainWindow)
 		{
 			const CFTimeInterval interval = displayLink.targetTimestamp - displayLink.timestamp;
 			static_cast<WindowIOS*>(g_mainWindow)->setFrameInterval(interval > 0.0 ? u64(llround(interval * 1e9)) : 0);
 		}
 
-		Gfx_BeginFrame();
-		if (g_appConfig.onUpdate)
-		{
-			g_appConfig.onUpdate(g_appConfig.userData);
-		}
-		Gfx_EndFrame();
-		Gfx_Present();
+		runFrameAtStart();
 	}
 }
 

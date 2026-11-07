@@ -74,7 +74,6 @@ bool Platform_IsExitRequested();
 // After this frame presents, the main loop waits for an event, Platform_NotifyActivity or the timeout
 void Platform_WaitForActivity(double timeoutSeconds);
 void Platform_NotifyActivity(); // any thread
-// Windows, Linux and macOS; ignored elsewhere
 void Platform_SetNextFrameStart(u64 steadyNs);
 
 class Application
