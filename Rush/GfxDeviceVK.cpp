@@ -589,6 +589,8 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, "VK_KHR_get_physical_device_properties2");
 	m_supportedExtensions.EXT_swapchain_colorspace = useSwapChain
 	    && enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME, false);
+	m_surfaceCapabilities2 = useSwapChain
+	    && enableExtension(enabledInstanceExtensions, enumeratedInstanceExtensions, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, false);
 
 	VkApplicationInfo appInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
 	appInfo.pApplicationName  = "Rush";
@@ -817,6 +819,20 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	const bool calibratedTimestampsEXT =
 	    !calibratedTimestampsKHR && enableDeviceExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, false);
 
+	if (useSwapChain && m_surfaceCapabilities2 && isExtensionSupported(enumeratedDeviceExtensions, VK_KHR_PRESENT_ID_2_EXTENSION_NAME))
+	{
+		const bool timing = calibratedTimestampsKHR && isExtensionSupported(enumeratedDeviceExtensions, VK_EXT_PRESENT_TIMING_EXTENSION_NAME);
+
+		VkPhysicalDeviceFeatures2 query = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+		query.pNext                = &m_presentId2Features;
+		m_presentId2Features.pNext = timing ? &m_presentTimingFeatures : nullptr;
+		vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
+
+		m_supportedExtensions.KHR_present_id2 = m_presentId2Features.presentId2 && enableDeviceExtension(VK_KHR_PRESENT_ID_2_EXTENSION_NAME);
+		m_supportedExtensions.EXT_present_timing = m_supportedExtensions.KHR_present_id2 && timing && m_presentTimingFeatures.presentTiming
+			&& enableDeviceExtension(VK_EXT_PRESENT_TIMING_EXTENSION_NAME);
+	}
+
 	void* physicalDeviceProps2Next = nullptr;
 
 	if (m_supportedExtensions.KHR_ray_tracing)
@@ -894,6 +910,20 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	{
 		m_synchronization2Features.pNext = m_physicalDeviceFeatures2.pNext;
 		m_physicalDeviceFeatures2.pNext = &m_synchronization2Features;
+	}
+
+	if (m_supportedExtensions.KHR_present_id2)
+	{
+		m_presentId2Features.pNext      = m_physicalDeviceFeatures2.pNext;
+		m_physicalDeviceFeatures2.pNext = &m_presentId2Features;
+	}
+
+	if (m_supportedExtensions.EXT_present_timing)
+	{
+		m_presentTimingFeatures.presentAtAbsoluteTime = VK_FALSE;
+		m_presentTimingFeatures.presentAtRelativeTime = VK_FALSE;
+		m_presentTimingFeatures.pNext   = m_physicalDeviceFeatures2.pNext;
+		m_physicalDeviceFeatures2.pNext = &m_presentTimingFeatures;
 	}
 
 	VkDeviceCreateInfo deviceCreateInfo      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
@@ -1831,7 +1861,41 @@ void GfxDevice::createSwapChain()
 		    surfCaps.supportedCompositeAlpha & (~surfCaps.supportedCompositeAlpha + 1));
 	}
 
+	m_swapChainPresentId   = false;
+	m_swapChainTimingStage = 0;
+
+	if (m_supportedExtensions.KHR_present_id2)
+	{
+		VkPhysicalDeviceSurfaceInfo2KHR       surfaceInfo = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR};
+		VkSurfaceCapabilities2KHR             caps2       = {VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
+		VkSurfaceCapabilitiesPresentId2KHR    id2         = {VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_ID_2_KHR};
+		VkPresentTimingSurfaceCapabilitiesEXT timing      = {VK_STRUCTURE_TYPE_PRESENT_TIMING_SURFACE_CAPABILITIES_EXT};
+		surfaceInfo.surface = m_swapChainSurface;
+		caps2.pNext         = &id2;
+		id2.pNext           = m_supportedExtensions.EXT_present_timing ? &timing : nullptr;
+
+		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(m_physicalDevice, &surfaceInfo, &caps2) == VK_SUCCESS)
+		{
+			m_swapChainPresentId = id2.presentId2Supported;
+			if (m_swapChainPresentId && m_supportedExtensions.EXT_present_timing && timing.presentTimingSupported)
+			{
+				for (const VkPresentStageFlagBitsEXT stage : {VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT,
+				         VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT, VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT,
+				         VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT})
+				{
+					if (timing.presentStageQueries & stage)
+					{
+						m_swapChainTimingStage = stage;
+						break;
+					}
+				}
+			}
+		}
+	}
+
 	VkSwapchainCreateInfoKHR swapChainCreateInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+	swapChainCreateInfo.flags = (m_swapChainPresentId ? VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR : 0)
+		| (m_swapChainTimingStage ? VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT : 0);
 	swapChainCreateInfo.surface                  = m_swapChainSurface;
 	swapChainCreateInfo.minImageCount            = desiredSwapChainImageCount;
 	swapChainCreateInfo.imageFormat              = swapChainColorFormat;
@@ -1866,6 +1930,7 @@ void GfxDevice::createSwapChain()
 		vkDestroySwapchainKHR(m_vulkanDevice, oldSwapChain, g_allocationCallbacks);
 	}
 	applyHdrMetadata();
+	createPresentTiming();
 
 	u32 swapChainImageCount = 0;
 	V(vkGetSwapchainImagesKHR(m_vulkanDevice, m_swapChain, &swapChainImageCount, nullptr));
@@ -3893,6 +3958,7 @@ void Gfx_BeginFrame()
 
 	g_device->beginFrame();
 
+	g_device->pollPresentTimings();
 	g_device->pollTiming();
 	g_device->m_timing.beginFrame(g_device->m_frameCount);
 
@@ -4044,6 +4110,7 @@ GfxProgressId Gfx_Present()
 		// Otherwise kept for the next presented frame
 	}
 
+	g_device->m_lastPresentId = 0;
 	if (presenting)
 	{
 		VkPresentInfoKHR presentInfo   = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -4052,6 +4119,27 @@ GfxProgressId Gfx_Present()
 		presentInfo.swapchainCount     = 1;
 		presentInfo.pSwapchains        = &g_device->m_swapChain;
 		presentInfo.pImageIndices      = &g_device->m_swapChainIndex;
+
+		const u64 presentId = g_device->m_nextPresentId++;
+		VkPresentId2KHR presentIds = {VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR};
+		presentIds.swapchainCount  = 1;
+		presentIds.pPresentIds     = &presentId;
+		VkPresentTimingInfoEXT timingInfo = {VK_STRUCTURE_TYPE_PRESENT_TIMING_INFO_EXT};
+		timingInfo.presentStageQueries    = g_device->m_swapChainTimingStage;
+		timingInfo.timeDomainId           = g_device->m_presentTimeDomainId;
+		VkPresentTimingsInfoEXT timingsInfo = {VK_STRUCTURE_TYPE_PRESENT_TIMINGS_INFO_EXT};
+		timingsInfo.swapchainCount          = 1;
+		timingsInfo.pTimingInfos            = &timingInfo;
+		if (g_device->m_swapChainPresentId)
+		{
+			presentInfo.pNext = &presentIds;
+			if (g_device->reservePresentTimingSlot())
+			{
+				presentIds.pNext = &timingsInfo;
+			}
+		}
+
+		g_device->m_lastPresentId = presentId;
 
 		const u64 waitBegin = Timer::nowNs();
 		VkResult  result    = vkQueuePresentKHR(g_device->m_graphicsQueue, &presentInfo);
@@ -4143,6 +4231,19 @@ void Gfx_SkipPresent() {}
 
 // Unsynced present modes (Gfx_SetPresentInterval(0)) do not block
 bool Gfx_PresentWouldWait() { return false; }
+
+u64 Gfx_GetLastPresentId() { return g_device->m_lastPresentId; }
+
+u32 Gfx_GetPresentTimings(ArrayView<GfxPresentTiming> out)
+{
+	const u32 count = u32(min(out.size(), g_device->m_presentTimings.size()));
+	std::copy_n(g_device->m_presentTimings.begin(), count, out.begin());
+	g_device->m_presentTimings.remove(0, count);
+	return count;
+}
+
+GfxDisplayTiming Gfx_GetDisplayTiming() { return g_device->m_displayTiming; }
+
 
 GfxProgressId Gfx_Submit()
 {
@@ -4353,6 +4454,250 @@ static u64 hostClockToNs(u64 value)
 #else
 	return value;
 #endif
+}
+
+namespace
+{
+
+#if defined(RUSH_PLATFORM_WINDOWS)
+constexpr VkTimeDomainKHR kPresentHostDomain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR;
+#else
+constexpr VkTimeDomainKHR kPresentHostDomain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR;
+#endif
+constexpr u32 kMaxQueuedPresentTimings = 64;
+
+s64 hostToSteadyNs()
+{
+	const u64 before = hostClockToNs(readHostClockNs(kPresentHostDomain));
+	const u64 steady = Timer::nowNs();
+	const u64 after  = hostClockToNs(readHostClockNs(kPresentHostDomain));
+	return s64(steady) - s64(before + (after - before) / 2);
+}
+
+GfxPresentStage toPresentStage(VkPresentStageFlagsEXT stage)
+{
+	switch (stage)
+	{
+	case VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT: return GfxPresentStage::QueueEnd;
+	case VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT: return GfxPresentStage::Dequeued;
+	case VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT: return GfxPresentStage::FirstPixelOut;
+	case VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT: return GfxPresentStage::FirstPixelVisible;
+	default: return GfxPresentStage::None;
+	}
+}
+
+const char* timeDomainName(VkTimeDomainKHR domain)
+{
+	switch (domain)
+	{
+	case VK_TIME_DOMAIN_DEVICE_KHR: return "device";
+	case VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR: return "CLOCK_MONOTONIC";
+	case VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR: return "CLOCK_MONOTONIC_RAW";
+	case VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR: return "QueryPerformanceCounter";
+	case VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT: return "present stage local";
+	case VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT: return "swap chain local";
+	default: return "unknown";
+	}
+}
+
+} // namespace
+
+void GfxDevice::createPresentTiming()
+{
+	m_swapChainFirstPresentId   = m_nextPresentId;
+	m_timedPresentsOutstanding  = 0;
+	m_presentTimingQueueSize    = InitialPresentTimingQueueSize;
+	m_presentTimeDomain         = VK_TIME_DOMAIN_MAX_ENUM_KHR;
+	m_presentTimeDomainsCounter = ~0ull;
+	m_timingPropertiesCounter   = ~0ull;
+	m_displayTiming             = {};
+
+	if (m_swapChainTimingStage && vkSetSwapchainPresentTimingQueueSizeEXT(m_vulkanDevice, m_swapChain, m_presentTimingQueueSize) != VK_SUCCESS)
+	{
+		RUSH_LOG_WARNING("vkSetSwapchainPresentTimingQueueSizeEXT failed: presents are not timed");
+		m_swapChainTimingStage = 0;
+	}
+
+	m_caps.presentTimingStage = toPresentStage(m_swapChainTimingStage);
+}
+
+bool GfxDevice::reservePresentTimingSlot()
+{
+	if (!m_swapChainTimingStage)
+	{
+		return false;
+	}
+
+	if (m_timedPresentsOutstanding >= m_presentTimingQueueSize && m_presentTimingQueueSize < MaxPresentTimingQueueSize
+		&& vkSetSwapchainPresentTimingQueueSizeEXT(m_vulkanDevice, m_swapChain, m_presentTimingQueueSize * 2) == VK_SUCCESS)
+	{
+		m_presentTimingQueueSize *= 2;
+	}
+
+	if (m_timedPresentsOutstanding >= m_presentTimingQueueSize)
+	{
+		return false;
+	}
+
+	++m_timedPresentsOutstanding;
+	return true;
+}
+
+void GfxDevice::refreshPresentTimeDomain(u64 domainsCounter)
+{
+	VkSwapchainTimeDomainPropertiesEXT props = {VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT};
+	u64 counter = 0;
+	if (vkGetSwapchainTimeDomainPropertiesEXT(m_vulkanDevice, m_swapChain, &props, &counter) != VK_SUCCESS || props.timeDomainCount == 0)
+	{
+		return;
+	}
+
+	DynamicArray<VkTimeDomainKHR> domains(props.timeDomainCount);
+	DynamicArray<u64> ids(props.timeDomainCount);
+	props.pTimeDomains   = domains.data();
+	props.pTimeDomainIds = ids.data();
+	if (vkGetSwapchainTimeDomainPropertiesEXT(m_vulkanDevice, m_swapChain, &props, &counter) != VK_SUCCESS)
+	{
+		return;
+	}
+
+	const VkTimeDomainKHR preferred[] = {kPresentHostDomain, VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT, VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT};
+	const VkTimeDomainKHR previous = m_presentTimeDomain;
+
+	m_presentTimeDomain = VK_TIME_DOMAIN_MAX_ENUM_KHR;
+	for (const VkTimeDomainKHR want : preferred)
+	{
+		for (u32 i = 0; i < props.timeDomainCount && m_presentTimeDomain == VK_TIME_DOMAIN_MAX_ENUM_KHR; ++i)
+		{
+			if (domains[i] == want && (want == kPresentHostDomain || m_getCalibratedTimestamps))
+			{
+				m_presentTimeDomain   = want;
+				m_presentTimeDomainId = ids[i];
+			}
+		}
+	}
+
+	m_presentTimeDomainsCounter     = domainsCounter;
+	m_presentDomainCalibrated       = false;
+	m_framesSincePresentCalibration = 0;
+	if (m_presentTimeDomain != previous)
+	{
+		RUSH_LOG("Present timing: %s at %s", timeDomainName(m_presentTimeDomain), m_caps.presentTimingStage == GfxPresentStage::FirstPixelOut ? "first pixel out"
+			: m_caps.presentTimingStage == GfxPresentStage::FirstPixelVisible ? "first pixel visible"
+			: m_caps.presentTimingStage == GfxPresentStage::Dequeued ? "dequeue" : "queue end");
+	}
+}
+
+u64 GfxDevice::presentTimeToSteadyNs(u64 time) const
+{
+	if (m_presentTimeDomain == kPresentHostDomain)
+	{
+		return u64(s64(hostClockToNs(time)) + hostToSteadyNs());
+	}
+
+	return u64(s64(time) + m_presentDomainToSteadyNs);
+}
+
+void GfxDevice::pollPresentTimings()
+{
+	if (!m_swapChainTimingStage || !m_swapChainValid)
+	{
+		return;
+	}
+
+	VkPresentStageTimeEXT       stages[PresentTimingPollSize] = {};
+	VkPastPresentationTimingEXT timings[PresentTimingPollSize];
+	for (u32 i = 0; i < PresentTimingPollSize; ++i)
+	{
+		timings[i]                   = {VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_EXT};
+		timings[i].presentStageCount = 1;
+		timings[i].pPresentStages    = &stages[i];
+	}
+
+	VkPastPresentationTimingInfoEXT info = {VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_INFO_EXT};
+	info.swapchain = m_swapChain;
+	info.flags     = VK_PAST_PRESENTATION_TIMING_ALLOW_OUT_OF_ORDER_RESULTS_BIT_EXT;
+
+	VkPastPresentationTimingPropertiesEXT props = {VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_PROPERTIES_EXT};
+	props.presentationTimingCount = PresentTimingPollSize;
+	props.pPresentationTimings    = timings;
+
+	const VkResult result = vkGetPastPresentationTimingEXT(m_vulkanDevice, &info, &props);
+	if (result != VK_SUCCESS && result != VK_INCOMPLETE)
+	{
+		return;
+	}
+
+	if (props.timingPropertiesCounter != m_timingPropertiesCounter)
+	{
+		VkSwapchainTimingPropertiesEXT timing = {VK_STRUCTURE_TYPE_SWAPCHAIN_TIMING_PROPERTIES_EXT};
+		u64 counter = 0;
+		if (vkGetSwapchainTimingPropertiesEXT(m_vulkanDevice, m_swapChain, &timing, &counter) == VK_SUCCESS)
+		{
+			const GfxDisplayTiming previous = m_displayTiming;
+			m_timingPropertiesCounter       = props.timingPropertiesCounter;
+			m_displayTiming.refreshNs       = timing.refreshDuration;
+			const u64 change = max(m_displayTiming.refreshNs, previous.refreshNs) - min(m_displayTiming.refreshNs, previous.refreshNs);
+			if (change * 200 > previous.refreshNs)
+			{
+				RUSH_LOG("Display refresh: %.3f ms", double(timing.refreshDuration) * 1e-6);
+			}
+		}
+	}
+
+	if (props.timeDomainsCounter != m_presentTimeDomainsCounter)
+	{
+		refreshPresentTimeDomain(props.timeDomainsCounter);
+	}
+
+	if (m_presentTimeDomain != VK_TIME_DOMAIN_MAX_ENUM_KHR && m_presentTimeDomain != kPresentHostDomain && (!m_presentDomainCalibrated || ++m_framesSincePresentCalibration >= 60))
+	{
+		VkSwapchainCalibratedTimestampInfoEXT swapchainInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_CALIBRATED_TIMESTAMP_INFO_EXT};
+		swapchainInfo.swapchain    = m_swapChain;
+		swapchainInfo.presentStage = m_swapChainTimingStage;
+		swapchainInfo.timeDomainId = m_presentTimeDomainId;
+
+		VkCalibratedTimestampInfoKHR infos[2] = {{VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR}, {VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR}};
+		infos[0].pNext      = &swapchainInfo;
+		infos[0].timeDomain = m_presentTimeDomain;
+		infos[1].timeDomain = kPresentHostDomain;
+
+		u64 stamps[2] = {};
+		u64 deviation = 0;
+		if (m_getCalibratedTimestamps(m_vulkanDevice, 2, infos, stamps, &deviation) == VK_SUCCESS)
+		{
+			m_presentDomainToSteadyNs       = s64(hostClockToNs(stamps[1])) + hostToSteadyNs() - s64(stamps[0]);
+			m_framesSincePresentCalibration = 0;
+			m_presentDomainCalibrated       = true;
+		}
+		else if (!m_presentDomainCalibrated && m_framesSincePresentCalibration++ == 0)
+		{
+			RUSH_LOG_WARNING("Present timing: the %s clock cannot be calibrated", timeDomainName(m_presentTimeDomain));
+		}
+	}
+
+	for (u32 i = 0; i < props.presentationTimingCount; ++i)
+	{
+		const VkPastPresentationTimingEXT& t = timings[i];
+		m_timedPresentsOutstanding -= t.reportComplete && m_timedPresentsOutstanding > 0 ? 1 : 0;
+		GfxPresentTiming report;
+		report.presentId = t.presentId;
+
+		const bool known = t.timeDomain == m_presentTimeDomain && t.timeDomainId == m_presentTimeDomainId
+			&& (m_presentTimeDomain == kPresentHostDomain || m_presentDomainCalibrated);
+		if (known && t.presentStageCount == 1 && stages[i].stage == m_swapChainTimingStage && stages[i].time != 0)
+		{
+			report.presentedNs = presentTimeToSteadyNs(stages[i].time);
+			report.stage       = m_caps.presentTimingStage;
+		}
+
+		if (m_presentTimings.size() >= kMaxQueuedPresentTimings)
+		{
+			m_presentTimings.remove(0, 1);
+		}
+
+		m_presentTimings.push_back(report);
+	}
 }
 
 bool GfxDevice::calibrateTimestamps()

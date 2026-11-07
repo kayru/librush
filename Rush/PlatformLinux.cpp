@@ -4,6 +4,7 @@
 
 #include "GfxCommon.h"
 #include "GfxDevice.h"
+#include "UtilTimer.h"
 #include "WindowXCB.h"
 
 #include <math.h>
@@ -14,6 +15,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <sys/eventfd.h>
+#include <time.h>
 
 namespace Rush
 {
@@ -93,6 +95,22 @@ const char* Platform_GetExecutableDirectory()
 }
 
 double takeActivityTimeout();
+u64 takeNextFrameStart();
+
+static void sleepUntilFrameStart()
+{
+	const u64 start = takeNextFrameStart();
+	const u64 now   = Timer::nowNs();
+	if (start <= now || start - now > 100'000'000)
+	{
+		return;
+	}
+
+	const timespec until = {time_t(start / 1'000'000'000), long(start % 1'000'000'000)};
+	while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, nullptr) == EINTR)
+	{
+	}
+}
 
 static void waitForActivity(double timeoutSeconds)
 {
@@ -114,6 +132,8 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
 	while (!Platform_IsExitRequested() && (!g_mainWindow || g_mainWindow->isClosed() == false))
 	{
+		sleepUntilFrameStart();
+
 		if (g_mainWindow)
 		{
 			g_mainWindow->pollEvents();

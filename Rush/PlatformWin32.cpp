@@ -5,6 +5,7 @@
 #include "GfxCommon.h"
 #include "GfxDevice.h"
 #include "UtilLog.h"
+#include "UtilTimer.h"
 #include "WindowWin32.h"
 
 #include <debugapi.h>
@@ -124,10 +125,40 @@ static void waitForActivity(double timeoutSeconds)
 	MsgWaitForMultipleObjectsEx(1, &g_activityEvent, timeoutMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
 }
 
+u64 takeNextFrameStart();
+
+static void sleepUntilFrameStart()
+{
+	const u64 start = takeNextFrameStart();
+	const u64 now   = Timer::nowNs();
+	if (start <= now || start - now > 100'000'000)
+	{
+		return;
+	}
+
+	static const HANDLE timer = []
+	{
+		const HANDLE highResolution = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+		return highResolution ? highResolution : CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
+	}();
+	if (!timer)
+	{
+		return;
+	}
+
+	LARGE_INTEGER due;
+	due.QuadPart = -LONGLONG((start - now) / 100);
+	if (SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE))
+	{
+		WaitForSingleObject(timer, INFINITE);
+	}
+}
+
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
 	while (!Platform_IsExitRequested() && (!g_mainWindow || g_mainWindow->isClosed() == false))
 	{
+		sleepUntilFrameStart();
 		Gfx_BeginFrame();
 
 		MSG msg;

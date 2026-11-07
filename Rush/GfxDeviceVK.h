@@ -623,6 +623,34 @@ public:
 	u32 m_desiredPresentInterval     = m_presentInterval;
 	u32 m_desiredSwapChainImageCount = 2;
 
+	VkPhysicalDevicePresentId2FeaturesKHR    m_presentId2Features    = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR};
+	VkPhysicalDevicePresentTimingFeaturesEXT m_presentTimingFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_TIMING_FEATURES_EXT};
+	bool m_surfaceCapabilities2 = false;
+	bool                  m_swapChainPresentId   = false;
+	VkPresentStageFlagsEXT m_swapChainTimingStage = 0;
+	u64                    m_swapChainFirstPresentId = 1;
+	u64                    m_nextPresentId  = 1;
+	u64                    m_lastPresentId  = 0;
+	static constexpr u32   PresentTimingPollSize = 16;
+	static constexpr u32   InitialPresentTimingQueueSize = 64;
+	static constexpr u32   MaxPresentTimingQueueSize = 512;
+	u32                    m_presentTimingQueueSize = InitialPresentTimingQueueSize;
+	u32                    m_timedPresentsOutstanding = 0;
+	VkTimeDomainKHR m_presentTimeDomain   = VK_TIME_DOMAIN_MAX_ENUM_KHR;
+	u64             m_presentTimeDomainId = 0;
+	u64             m_presentTimeDomainsCounter = ~0ull;
+	u64             m_timingPropertiesCounter   = ~0ull;
+	s64             m_presentDomainToSteadyNs   = 0;
+	u32             m_framesSincePresentCalibration = 0;
+	bool            m_presentDomainCalibrated       = false;
+	GfxDisplayTiming m_displayTiming;
+	DynamicArray<GfxPresentTiming> m_presentTimings;
+	void createPresentTiming();
+	bool reservePresentTimingSlot();
+	void pollPresentTimings();
+	void refreshPresentTimeDomain(u64 domainsCounter);
+	u64  presentTimeToSteadyNs(u64 time) const;
+
 	Window*             m_window = nullptr;
 	WindowEventListener m_resizeEvents;
 
@@ -659,6 +687,8 @@ public:
 		bool KHR_portability_subset               = false;
 		bool EXT_swapchain_colorspace             = false;
 		bool EXT_hdr_metadata                     = false;
+		bool KHR_present_id2                      = false;
+		bool EXT_present_timing                   = false;
 	} m_supportedExtensions;
 
 	GfxOutputMode m_outputMode              = GfxOutputMode::SDR;

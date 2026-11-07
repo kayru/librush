@@ -731,6 +731,10 @@ void Gfx_SkipPresent()
 	g_device->m_skipPresent = true;
 }
 
+u64 Gfx_GetLastPresentId() { return 0; }
+u32 Gfx_GetPresentTimings(ArrayView<GfxPresentTiming>) { return 0; }
+GfxDisplayTiming Gfx_GetDisplayTiming() { return {}; }
+
 void GfxDevice::applyPresentInterval(u32 interval)
 {
 #if defined(RUSH_PLATFORM_IOS)

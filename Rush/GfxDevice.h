@@ -103,6 +103,27 @@ enum class GfxOutputMode : u8
 	ScRGB,
 };
 
+enum class GfxPresentStage : u8
+{
+	None,
+	QueueEnd,
+	Dequeued,
+	FirstPixelOut,
+	FirstPixelVisible,
+};
+
+struct GfxPresentTiming
+{
+	u64             presentId   = 0;
+	u64             presentedNs = 0;
+	GfxPresentStage stage       = GfxPresentStage::None;
+};
+
+struct GfxDisplayTiming
+{
+	u64 refreshNs = 0;
+};
+
 struct GfxConfig
 {
 	GfxConfig() = default;
@@ -172,6 +193,8 @@ struct GfxCapability
 	u32 rtShaderHandleSize = 0;
 	u32 rtSbtMaxStride = 0;
 	u32 rtSbtAlignment = 0;
+
+	GfxPresentStage presentTimingStage = GfxPresentStage::None;
 
 	bool   timestamps           = false;
 	bool   timestampsAsyncCompute = false;
@@ -263,6 +286,9 @@ void                 Gfx_SkipPresent();
 // Callers that must not be paced by the display skip such frames. Backends
 // that cannot tell return false.
 bool                 Gfx_PresentWouldWait();
+u64                  Gfx_GetLastPresentId();
+u32                  Gfx_GetPresentTimings(ArrayView<GfxPresentTiming> out);
+GfxDisplayTiming     Gfx_GetDisplayTiming();
 const GfxCapability& Gfx_GetCapability();
 
 // GPU progress tracking: Submit/Present return a GfxProgressId.
@@ -572,6 +598,9 @@ inline void Gfx_SetOutputMode(GfxOutputMode) {}
 inline void Gfx_SetHdrMetadata(float, float) {}
 inline void Gfx_SkipPresent() {}
 inline bool Gfx_PresentWouldWait() { return false; }
+inline u64 Gfx_GetLastPresentId() { return 0; }
+inline u32 Gfx_GetPresentTimings(ArrayView<GfxPresentTiming>) { return 0; }
+inline GfxDisplayTiming Gfx_GetDisplayTiming() { return {}; }
 inline GfxProgressId Gfx_Submit() { return {}; }
 inline GfxProgressId Gfx_GetPendingProgressId() { return {}; }
 inline GfxProgressStatus Gfx_QueryProgress(GfxProgressId, GfxProgressFlags) { return GfxProgressStatus::Complete; }

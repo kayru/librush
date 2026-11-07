@@ -43,6 +43,17 @@ double takeActivityTimeout()
 	return timeout;
 }
 
+static u64 g_nextFrameStartNs = 0;
+
+void Platform_SetNextFrameStart(u64 steadyNs) { g_nextFrameStartNs = steadyNs; }
+
+u64 takeNextFrameStart()
+{
+	const u64 start = g_nextFrameStartNs;
+	g_nextFrameStartNs = 0;
+	return start;
+}
+
 // Handlers may run on any thread (a new one on Windows): volatile sig_atomic_t covers only the interrupted thread
 static std::atomic<int> g_terminationSignal = 0;
 static_assert(std::atomic<int>::is_always_lock_free);
