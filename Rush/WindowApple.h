@@ -57,6 +57,7 @@ public:
 
 	virtual float displayHeadroom() const = 0;
 	virtual float displayHeadroomPotential() const = 0;
+	virtual u64 refreshNs() const = 0;
 
 protected:
 	CAMetalLayer* m_metalLayer = nullptr;
@@ -79,6 +80,7 @@ public:
 
 	virtual float displayHeadroom() const override;
 	virtual float displayHeadroomPotential() const override;
+	virtual u64 refreshNs() const override;
 
 	virtual void pollEvents() override;
 
@@ -113,6 +115,8 @@ public:
 
 	virtual float displayHeadroom() const override;
 	virtual float displayHeadroomPotential() const override;
+	virtual u64 refreshNs() const override { return m_frameIntervalNs; }
+	void setFrameInterval(u64 intervalNs) { m_frameIntervalNs = intervalNs; }
 
 	void setUIWindow(UIWindow* window) { m_uiWindow = window; }
 	void setViewController(RushViewController* vc);
@@ -137,6 +141,7 @@ private:
 
 	UIWindow* m_uiWindow = nullptr;
 	RushViewController* m_viewController = nullptr;
+	u64 m_frameIntervalNs = 0;
 };
 
 #endif // RUSH_PLATFORM_MAC

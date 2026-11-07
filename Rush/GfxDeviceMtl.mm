@@ -5,6 +5,7 @@
 #include "UtilFile.h"
 #include "UtilImage.h"
 
+#include <cmath>
 #include <cstring>
 #include <mach/mach_time.h>
 
@@ -33,6 +34,25 @@ static void waitForSharedEvent(id<MTLSharedEvent> event, uint64_t targetValue)
 
 namespace Rush
 {
+
+static u64 hostTimeNs()
+{
+	static const mach_timebase_info_data_t timebase = []() {
+		mach_timebase_info_data_t result = {};
+		mach_timebase_info(&result);
+		return result;
+	}();
+	const u64 ticks = mach_absolute_time();
+	return u64((__uint128_t(ticks) * timebase.numer) / timebase.denom);
+}
+
+static s64 hostToSteadyNs()
+{
+	const u64 before = hostTimeNs();
+	const u64 steady = Timer::nowNs();
+	const u64 after  = hostTimeNs();
+	return s64(steady) - s64(before + (after - before) / 2);
+}
 
 static DescriptorSetMTL createDescriptorSet(const GfxDescriptorSetDesc& desc);
 static void updateDescriptorSet(DescriptorSetMTL& ds,
@@ -330,6 +350,9 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 		m_caps.hdrOutputSupported = static_cast<WindowApple*>(m_window)->displayHeadroomPotential() > 1.0f;
 		m_caps.backBufferDesc.depthFormat = GfxFormat_D32_Float;
 		applyOutputMode();
+#if !TARGET_OS_SIMULATOR
+		m_caps.presentTimingStage = GfxPresentStage::FirstPixelOut;
+#endif
 	}
 }
 
@@ -504,6 +527,8 @@ void GfxDevice::beginFrame()
 		{
 			m_caps.displayHeadroom = window->displayHeadroom();
 		}
+
+		updateDisplayTiming();
 	}
 
 	// The drawable is acquired on first use (acquireBackBuffer): nextDrawable
@@ -627,14 +652,27 @@ GfxProgressId Gfx_Present()
 	GfxTimingCollector& timing = g_device->m_timing;
 	timing.closeOpenScopes(GfxContextType::Graphics, []() { return g_device->timingBoundary(); });
 
+	g_device->m_lastPresentId = 0;
 	if (!g_device->m_headless && g_device->m_drawable)
 	{
+		const u64 presentId = g_device->m_nextPresentId++;
+		g_device->m_lastPresentId = presentId;
 #if !TARGET_OS_SIMULATOR
 		// Called once the drawable is shown or discarded
-		const std::shared_ptr<std::atomic<u32>> presentsInFlight = g_device->m_presentsInFlight;
-		++*presentsInFlight;
-		[g_device->m_drawable addPresentedHandler:^(id<MTLDrawable>) {
-			--*presentsInFlight;
+		const std::shared_ptr<GfxDevice::PresentFeedback> feedback = g_device->m_presentFeedback;
+		++feedback->inFlight;
+		[g_device->m_drawable addPresentedHandler:^(id<MTLDrawable> drawable) {
+			{
+				const std::lock_guard<std::mutex> lock(feedback->mutex);
+				if (feedback->presented.size() >= GfxDevice::MaxQueuedPresentTimings)
+				{
+					feedback->presented.remove(0, 1);
+				}
+
+				feedback->presented.push_back({presentId, drawable.presentedTime});
+			}
+
+			--feedback->inFlight;
 		}];
 #endif
 		[g_device->m_commandBuffer presentDrawable:g_device->m_drawable];
@@ -721,7 +759,7 @@ bool Gfx_PresentWouldWait()
 #else
 	// One drawable stays on screen; each presented one not yet shown holds
 	// another, and nextDrawable blocks when none of the pool is left
-	return g_device->m_presentsInFlight->load() + 1 >= (u32)g_device->m_metalLayer.maximumDrawableCount;
+	return g_device->m_presentFeedback->inFlight.load() + 1 >= (u32)g_device->m_metalLayer.maximumDrawableCount;
 #endif
 }
 
@@ -731,9 +769,54 @@ void Gfx_SkipPresent()
 	g_device->m_skipPresent = true;
 }
 
-u64 Gfx_GetLastPresentId() { return 0; }
-u32 Gfx_GetPresentTimings(ArrayView<GfxPresentTiming>) { return 0; }
-GfxDisplayTiming Gfx_GetDisplayTiming() { return {}; }
+u64 Gfx_GetLastPresentId() { return g_device->m_lastPresentId; }
+
+u32 Gfx_GetPresentTimings(ArrayView<GfxPresentTiming> out)
+{
+#if TARGET_OS_SIMULATOR
+	(void)out;
+	return 0;
+#else
+	GfxDevice::PresentFeedback& feedback = *g_device->m_presentFeedback;
+	const std::lock_guard<std::mutex> lock(feedback.mutex);
+	const u32 count = u32(min(out.size(), feedback.presented.size()));
+	if (count == 0)
+	{
+		return 0;
+	}
+
+	const s64 offset = hostToSteadyNs();
+	for (u32 i = 0; i < count; ++i)
+	{
+		const GfxDevice::PresentFeedback::Presented& presented = feedback.presented[i];
+		GfxPresentTiming& report = out[i];
+		report = {};
+		report.presentId = presented.presentId;
+		if (presented.hostSeconds > 0.0)
+		{
+			report.presentedNs = u64(s64(llround(presented.hostSeconds * 1e9)) + offset);
+			report.stage       = g_device->m_caps.presentTimingStage;
+		}
+	}
+
+	feedback.presented.remove(0, count);
+	return count;
+#endif
+}
+
+GfxDisplayTiming Gfx_GetDisplayTiming() { return g_device->m_displayTiming; }
+
+void GfxDevice::updateDisplayTiming()
+{
+	const u64 refreshNs = static_cast<WindowApple*>(m_window)->refreshNs();
+	const u64 previous  = m_displayTiming.refreshNs;
+	m_displayTiming.refreshNs = refreshNs;
+	const u64 change = max(refreshNs, previous) - min(refreshNs, previous);
+	if (refreshNs != 0 && change * 200 > previous)
+	{
+		RUSH_LOG("Display refresh: %.3f ms", double(refreshNs) * 1e-6);
+	}
+}
 
 void GfxDevice::applyPresentInterval(u32 interval)
 {
@@ -846,17 +929,6 @@ GfxProgressStatus Gfx_QueryProgress(GfxProgressId id, GfxProgressFlags flags)
 		: GfxProgressStatus::Pending;
 }
 
-
-static u64 hostTimeNs()
-{
-	static const mach_timebase_info_data_t timebase = []() {
-		mach_timebase_info_data_t result = {};
-		mach_timebase_info(&result);
-		return result;
-	}();
-	const u64 ticks = mach_absolute_time();
-	return u64((__uint128_t(ticks) * timebase.numer) / timebase.denom);
-}
 
 static float currentThermalState()
 {
@@ -999,10 +1071,7 @@ void GfxDevice::resolveTimingFrame(TimingFrame& frame)
 	{
 		frame.thermalState = currentThermalState();
 
-		const u64 hostBefore = hostTimeNs();
-		const u64 steadyNow = Timer::nowNs();
-		const u64 hostAfter = hostTimeNs();
-		const s64 hostToSteady = s64(steadyNow) - s64(hostBefore + (hostAfter - hostBefore) / 2);
+		const s64 hostToSteady = hostToSteadyNs();
 
 		std::lock_guard<std::mutex> lock(frame.gpu->mutex);
 

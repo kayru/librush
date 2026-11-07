@@ -321,9 +321,26 @@ public:
 	void suspendComputeMarkers(id<MTLComputeCommandEncoder> encoder); // the compute encoder ends
 
 #if !TARGET_OS_SIMULATOR
-	// Presented, not yet on screen. Shared: presented handlers may outlive the device.
-	std::shared_ptr<std::atomic<u32>> m_presentsInFlight = std::make_shared<std::atomic<u32>>(0);
+	// Shared: presented handlers may outlive the device
+	struct PresentFeedback
+	{
+		struct Presented
+		{
+			u64 presentId = 0;
+			CFTimeInterval hostSeconds = 0.0;
+		};
+
+		std::atomic<u32> inFlight = 0;
+		std::mutex mutex;
+		DynamicArray<Presented> presented;
+	};
+	std::shared_ptr<PresentFeedback> m_presentFeedback = std::make_shared<PresentFeedback>();
 #endif
+	static constexpr u32 MaxQueuedPresentTimings = 64;
+	u64 m_nextPresentId = 1;
+	u64 m_lastPresentId = 0;
+	GfxDisplayTiming m_displayTiming;
+	void updateDisplayTiming();
 
 	u32 m_uniqueResourceCounter = 1;
 	u64 m_encoderSerialCounter = 0;

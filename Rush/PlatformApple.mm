@@ -2,12 +2,15 @@
 #include "WindowApple.h"
 #include "UtilLog.h"
 #include "GfxDevice.h"
+#include "UtilTimer.h"
 
 #if defined(RUSH_PLATFORM_MAC) || defined(RUSH_PLATFORM_IOS)
 
 #include <sys/sysctl.h>
 #include <unistd.h>
+#include <cmath>
 #include <cstdlib>
+#include <mach/mach_time.h>
 
 using namespace Rush;
 
@@ -151,6 +154,27 @@ namespace Rush
 Window* Platform_CreateWindow(const WindowDesc& desc) { return new WindowMac(desc); }
 
 double takeActivityTimeout();
+u64 takeNextFrameStart();
+
+static void sleepUntilFrameStart()
+{
+	const u64 start = takeNextFrameStart();
+	const u64 now   = Timer::nowNs();
+	if (start <= now || start - now > 100'000'000)
+	{
+		return;
+	}
+
+	static const mach_timebase_info_data_t timebase = []
+	{
+		mach_timebase_info_data_t info = {};
+		mach_timebase_info(&info);
+		return info;
+	}();
+
+	const u64 waitTicks = u64(__uint128_t(start - now) * timebase.denom / timebase.numer);
+	mach_wait_until(mach_absolute_time() + waitTicks);
+}
 
 static void waitForActivity(double timeoutSeconds)
 {
@@ -236,6 +260,8 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 				{
 					break;
 				}
+
+				sleepUntilFrameStart();
 
 				while (NSEvent* event = [NSApp
 						nextEventMatchingMask:NSEventMaskAny
@@ -427,6 +453,12 @@ static void shutdownIOS()
 			shutdownIOS();
 			Platform_TerminateProcess(0);
 			return;
+		}
+
+		if (g_mainWindow)
+		{
+			const CFTimeInterval interval = displayLink.targetTimestamp - displayLink.timestamp;
+			static_cast<WindowIOS*>(g_mainWindow)->setFrameInterval(interval > 0.0 ? u64(llround(interval * 1e9)) : 0);
 		}
 
 		Gfx_BeginFrame();

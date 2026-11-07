@@ -13,6 +13,7 @@ using namespace Rush;
 #include <CoreGraphics/CoreGraphics.h>
 #include <IOKit/hidsystem/IOLLEvent.h> // NX_DEVICE*KEYMASK
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 
 @interface RushWindow: NSWindow
@@ -442,6 +443,18 @@ float WindowMac::displayHeadroomPotential() const
 		screen = [NSScreen mainScreen];
 	}
 	return screen ? (float)[screen maximumPotentialExtendedDynamicRangeColorComponentValue] : 1.0f;
+}
+
+u64 WindowMac::refreshNs() const
+{
+	NSScreen* screen = m_nativeWindow ? [m_nativeWindow screen] : nil;
+	if (!screen)
+	{
+		screen = [NSScreen mainScreen];
+	}
+
+	const NSTimeInterval interval = screen ? [screen minimumRefreshInterval] : 0.0;
+	return interval > 0.0 ? u64(llround(interval * 1e9)) : 0;
 }
 
 void WindowMac::updateResolutionScale()
