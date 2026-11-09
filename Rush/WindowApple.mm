@@ -176,7 +176,9 @@ static Key translateKeyMac(const NSEvent* event)
 		default: break;
 	}
 
-	NSString* key = [event charactersByApplyingModifiers:0];
+	NSString* ignoring = [event charactersIgnoringModifiers];
+	const unichar plain = [ignoring length] ? [ignoring characterAtIndex:0] : 0;
+	NSString* key = plain >= NSUpArrowFunctionKey || plain == 127 ? ignoring : [event charactersByApplyingModifiers:0];
 	if ([key length] == 0)
 	{
 		return Key_Unknown;
