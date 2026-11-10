@@ -714,7 +714,11 @@ bool WindowMac::processEvent(NSEvent* event)
 		}
 		case NSEventTypeMagnify:
 		{
-			processInput(WindowEvent::Magnify((float)[event magnification]));
+			const NSEventPhase phase = [event phase];
+			const GesturePhase gesturePhase = (phase & NSEventPhaseBegan) ? GesturePhase::Begin
+				: (phase & (NSEventPhaseEnded | NSEventPhaseCancelled)) ? GesturePhase::End
+				: GesturePhase::Update;
+			processInput(WindowEvent::Magnify((float)[event magnification], gesturePhase));
 			return true;
 		}
 		case NSEventTypeKeyDown:

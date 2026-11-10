@@ -247,6 +247,7 @@ typedef struct rush_window_event
 	uint64_t touch_id;
 	float scroll_distance[2];
 	float magnify;
+	uint32_t gesture_phase;
 } rush_window_event;
 
 struct rush_window* rush_platform_get_main_window();

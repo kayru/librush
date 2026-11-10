@@ -365,6 +365,13 @@ enum WindowEventMask : u32
 	WindowEventMask_All       = RUSH_WINDOW_EVENT_MASK_ALL,
 };
 
+enum class GesturePhase : u8
+{
+	Update,
+	Begin,
+	End,
+};
+
 struct WindowEvent
 {
 	WindowEventType type = WindowEventType_Unknown;
@@ -381,6 +388,7 @@ struct WindowEvent
 	Vec2 scroll = Vec2(0.0f); // wheel steps: x > 0 left, y > 0 up, on every platform
 	Vec2 scrollDistance = Vec2(0.0f); // a trackpad's exact scroll in the units of pos, signed as scroll; zero from a wheel
 	float magnify = 0.0f;
+	GesturePhase gesturePhase = GesturePhase::Update;
 
 	u64 touchId = 0;
 
@@ -453,11 +461,12 @@ struct WindowEvent
 		return e;
 	}
 
-	static WindowEvent Magnify(float amount)
+	static WindowEvent Magnify(float amount, GesturePhase phase = GesturePhase::Update)
 	{
 		WindowEvent e;
-		e.type    = WindowEventType_Magnify;
-		e.magnify = amount;
+		e.type         = WindowEventType_Magnify;
+		e.magnify      = amount;
+		e.gesturePhase = phase;
 		return e;
 	}
 
