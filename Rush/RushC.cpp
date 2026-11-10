@@ -324,6 +324,9 @@ uint32_t rush_window_event_listener_receive(struct rush_window_event_listener* l
 		out_events[i].scroll[0]    = events[i].scroll.x;
 		out_events[i].scroll[1]    = events[i].scroll.y;
 		out_events[i].touch_id     = events[i].touchId;
+		out_events[i].scroll_distance[0] = events[i].scrollDistance.x;
+		out_events[i].scroll_distance[1] = events[i].scrollDistance.y;
+		out_events[i].magnify      = events[i].magnify;
 	}
 	std::move(events+receive_count, events+listener->size(), events);
 	listener->resize(listener->size() - receive_count);

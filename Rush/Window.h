@@ -342,6 +342,7 @@ enum WindowEventType : u32
 	WindowEventType_TouchMove  = RUSH_WINDOW_EVENT_TYPE_TOUCH_MOVE,
 	WindowEventType_TouchEnd   = RUSH_WINDOW_EVENT_TYPE_TOUCH_END,
 	WindowEventType_CloseRequest = RUSH_WINDOW_EVENT_TYPE_CLOSE_REQUEST,
+	WindowEventType_Magnify   = RUSH_WINDOW_EVENT_TYPE_MAGNIFY,
 
 	WindowEventType_COUNT     = RUSH_WINDOW_EVENT_TYPE_COUNT
 };
@@ -360,6 +361,7 @@ enum WindowEventMask : u32
 	WindowEventMask_Mouse     = RUSH_WINDOW_EVENT_MASK_MOUSE,
 	WindowEventMask_Touch     = RUSH_WINDOW_EVENT_MASK_TOUCH,
 	WindowEventMask_CloseRequest = RUSH_WINDOW_EVENT_MASK_CLOSE_REQUEST,
+	WindowEventMask_Magnify   = RUSH_WINDOW_EVENT_MASK_MAGNIFY,
 	WindowEventMask_All       = RUSH_WINDOW_EVENT_MASK_ALL,
 };
 
@@ -377,6 +379,8 @@ struct WindowEvent
 	u32  button = 0;
 
 	Vec2 scroll = Vec2(0.0f); // wheel steps: x > 0 left, y > 0 up, on every platform
+	Vec2 scrollDistance = Vec2(0.0f); // a trackpad's exact scroll in the units of pos, signed as scroll; zero from a wheel
+	float magnify = 0.0f;
 
 	u64 touchId = 0;
 
@@ -439,12 +443,21 @@ struct WindowEvent
 		return e;
 	}
 
-	static WindowEvent Scroll(float x, float y)
+	static WindowEvent Scroll(float x, float y, Vec2 distance = Vec2(0.0f))
 	{
 		WindowEvent e;
-		e.type     = WindowEventType_Scroll;
-		e.scroll.x = x;
-		e.scroll.y = y;
+		e.type           = WindowEventType_Scroll;
+		e.scroll.x       = x;
+		e.scroll.y       = y;
+		e.scrollDistance = distance;
+		return e;
+	}
+
+	static WindowEvent Magnify(float amount)
+	{
+		WindowEvent e;
+		e.type    = WindowEventType_Magnify;
+		e.magnify = amount;
 		return e;
 	}
 

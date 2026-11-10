@@ -631,6 +631,7 @@ bool WindowMac::processEvent(NSEvent* event)
 			case NSEventTypeOtherMouseDown:
 			case NSEventTypeOtherMouseUp:
 			case NSEventTypeScrollWheel:
+			case NSEventTypeMagnify:
 			case NSEventTypeKeyDown:
 			case NSEventTypeKeyUp:
 			case NSEventTypeFlagsChanged:
@@ -700,7 +701,20 @@ bool WindowMac::processEvent(NSEvent* event)
 		}
 		case NSEventTypeScrollWheel:
 		{
-			processInput(WindowEvent::Scroll([event deltaX] * 0.25f, [event deltaY] * 0.25f));
+			if ([event hasPreciseScrollingDeltas])
+			{
+				const Vec2 distance((float)[event scrollingDeltaX], (float)[event scrollingDeltaY]);
+				processInput(WindowEvent::Scroll(distance.x / 40.0f, distance.y / 40.0f, distance));
+			}
+			else
+			{
+				processInput(WindowEvent::Scroll([event deltaX] * 0.25f, [event deltaY] * 0.25f));
+			}
+			return true;
+		}
+		case NSEventTypeMagnify:
+		{
+			processInput(WindowEvent::Magnify((float)[event magnification]));
 			return true;
 		}
 		case NSEventTypeKeyDown:
