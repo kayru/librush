@@ -17,12 +17,13 @@ public:
 		copyFrom(other);
 	}
 
-	String(const char* data, size_t length=0)
+	String(const char* data)
 	{
-		if (length == 0 && data)
-		{
-			length = strlen(data);
-		}
+		copyFrom(data, data ? strlen(data) : 0);
+	}
+
+	String(const char* data, size_t length)
+	{
 		copyFrom(data, length);
 	}
 
@@ -102,19 +103,21 @@ private:
 
 	void copyFrom(const char* inData, size_t inLength)
 	{
-		delete[] m_data;
-		if (inData)
+		char* newData = nullptr;
+		if (inData && inLength)
 		{
-			m_length = inLength;
-			m_data = new char[inLength + 1];
-			memcpy(m_data, inData, inLength);
-			m_data[inLength] = 0;
+			newData = new char[inLength + 1];
+			memcpy(newData, inData, inLength);
+			newData[inLength] = 0;
 		}
 		else
 		{
-			m_length = 0;
-			m_data = nullptr;
+			inLength = 0;
 		}
+
+		delete[] m_data;
+		m_data = newData;
+		m_length = inLength;
 	}
 
 	void copyFrom(const String& other)
@@ -159,14 +162,14 @@ public:
 
 	bool operator == (const char* other) const
 	{
-		const char* rhs = other ? other : String::getEmptyString();
-		return strncmp(data(), rhs, m_length) == 0;
+		const char*  rhs = other ? other : String::getEmptyString();
+		const size_t rhsLength = strlen(rhs);
+		return rhsLength == m_length && memcmp(data(), rhs, m_length) == 0;
 	}
 
 	bool operator != (const char* other) const
 	{
-		const char* rhs = other ? other : String::getEmptyString();
-		return strncmp(data(), rhs, m_length) != 0;
+		return !(*this == other);
 	}
 
 	bool operator == (const StringView& other) const
