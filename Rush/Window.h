@@ -504,9 +504,12 @@ public:
 
 	WindowEventListener& operator=(const WindowEventListener& rhs)
 	{
-		owner = rhs.owner;
-		registerListener();
-		DynamicArray<WindowEvent>::operator=(rhs);
+		if (this != &rhs)
+		{
+			setOwner(rhs.owner);
+			mask = rhs.mask;
+			DynamicArray<WindowEvent>::operator=(rhs);
+		}
 		return *this;
 	}
 
