@@ -399,7 +399,7 @@ GfxViewport::GfxViewport(Tuple2i size) : x(0), y(0), w((float)size.x), h((float)
 GfxViewport::GfxViewport(Tuple2u size) : x(0), y(0), w((float)size.x), h((float)size.y), depthMin(0), depthMax(1) {}
 
 GfxViewport::GfxViewport(const Box2& bounds, float _depth_min, float _depth_max)
-: x(bounds.tl().x), y(bounds.tl().y), w(bounds.width()), h(bounds.height()), depthMin(_depth_min), depthMax(_depth_max)
+: x(bounds.m_min.x), y(bounds.m_min.y), w(bounds.width()), h(bounds.height()), depthMin(_depth_min), depthMax(_depth_max)
 {
 }
 

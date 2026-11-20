@@ -644,7 +644,7 @@ struct GfxViewport
 	GfxViewport();
 	GfxViewport(Tuple2i size);
 	GfxViewport(Tuple2u size);
-	GfxViewport(const Box2& bounds, float _depthMin = 0, float _depthMax = 1);
+	explicit GfxViewport(const Box2& bounds, float _depthMin = 0, float _depthMax = 1);
 	GfxViewport(float _x, float _y, float _w, float _h, float _depthMin = 0, float _depthMax = 1);
 
 	bool operator==(const GfxViewport& rhs) const;
