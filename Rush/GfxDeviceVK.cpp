@@ -66,7 +66,7 @@ GfxOwn<HandleType> retainResourceT(ResourcePool<ObjectType, PoolHandleType>& poo
 {
 	RUSH_ASSERT(object.getId() != 0);
 	auto handle = pool.push(std::forward<ObjectType>(object));
-	Gfx_Retain(HandleType(handle));
+	pool[handle].addReference();
 	return GfxDevice::makeOwn(HandleType(handle));
 }
 
@@ -7186,7 +7186,12 @@ void Gfx_Retain(GfxDevice* dev) { dev->addReference(); }
 void Gfx_Retain(GfxContext* rc) { rc->addReference(); }
 
 #define RUSH_GFX_RETAIN_IMPL(descType, handleType, memberName) \
-	void Gfx_Retain(handleType h) { g_device->m_resources.memberName[h].addReference(); }
+	void Gfx_Retain(handleType h)                                                                                       \
+	{                                                                                                                  \
+		GfxRefCount& r = g_device->m_resources.memberName[h];                                                          \
+		RUSH_ASSERT_MSG(r.m_refs != 0, "Gfx_Retain on a destroyed resource");                                          \
+		r.addReference();                                                                                              \
+	}
 RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RETAIN_IMPL)
 #undef RUSH_GFX_RETAIN_IMPL
 
