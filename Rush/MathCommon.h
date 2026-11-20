@@ -36,6 +36,10 @@ inline constexpr u32 alignCeiling(u32 x, u32 boundary) { return x % boundary ? x
 inline constexpr u32 alignFloor(u32 x, u32 boundary) { return x - (x % boundary); }
 inline constexpr u64 alignCeiling(u64 x, u64 boundary) { return x % boundary ? x + (boundary - x % boundary) : x; }
 inline constexpr u64 alignFloor(u64 x, u64 boundary) { return x - (x % boundary); }
+inline constexpr u32 alignCeilingPow2(u32 x, u32 boundary) { return (x + (boundary - 1)) & ~(boundary - 1); }
+inline constexpr u32 alignFloorPow2(u32 x, u32 boundary) { return x & ~(boundary - 1); }
+inline constexpr u64 alignCeilingPow2(u64 x, u64 boundary) { return (x + (boundary - 1)) & ~(boundary - 1); }
+inline constexpr u64 alignFloorPow2(u64 x, u64 boundary) { return x & ~(boundary - 1); }
 
 inline u32 nextPow2(u32 n)
 {

@@ -2295,7 +2295,7 @@ MemoryBlockVK MemoryAllocatorVK::alloc(u64 size, u64 alignment)
 		}
 
 		MemoryBlockVK& currentBlock  = m_availableBlocks.back();
-		u64            alignedOffset = alignCeiling(currentBlock.offset, alignment);
+		u64            alignedOffset = alignCeilingPow2(currentBlock.offset, alignment);
 
 		if (alignedOffset + size > currentBlock.size)
 		{
@@ -6501,7 +6501,7 @@ void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size)
 
 	const VkDeviceSize alignment = getBufferAlignmentRequirements(buffer.desc.flags);
 
-	size = alignCeiling(size, u32(alignment));
+	size = alignCeilingPow2(size, u32(alignment));
 
 	// Rename device local buffer
 	{
@@ -7446,7 +7446,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 		shaderStages.pushBack(stage);
 
 		const u32 raygenShaderCount = 1;
-		sbtBufferSize = alignCeiling(sbtBufferSize + handleSize * raygenShaderCount, shaderGroupBaseAlignment);
+		sbtBufferSize = alignCeilingPow2(sbtBufferSize + handleSize * raygenShaderCount, shaderGroupBaseAlignment);
 	}
 
 	if (result.miss != VK_NULL_HANDLE)
@@ -7472,7 +7472,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 		shaderStages.pushBack(stage);
 
 		const u32 missShaderCount = 1;
-		sbtBufferSize = alignCeiling(sbtBufferSize + handleSize * missShaderCount, shaderGroupBaseAlignment);
+		sbtBufferSize = alignCeilingPow2(sbtBufferSize + handleSize * missShaderCount, shaderGroupBaseAlignment);
 	}
 
 	if (result.closestHit != VK_NULL_HANDLE)
@@ -7498,7 +7498,7 @@ GfxOwn<GfxRayTracingPipeline> Gfx_CreateRayTracingPipeline(const GfxRayTracingPi
 		shaderStages.pushBack(stage);
 
 		const u32 hitShaderCount = 1;
-		sbtBufferSize = alignCeiling(sbtBufferSize + handleSize * hitShaderCount, shaderGroupBaseAlignment);
+		sbtBufferSize = alignCeilingPow2(sbtBufferSize + handleSize * hitShaderCount, shaderGroupBaseAlignment);
 	}
 
 	RUSH_ASSERT_MSG(result.anyHit == VK_NULL_HANDLE, "Any hit shaders are not implemented");

@@ -2293,7 +2293,7 @@ GfxDevice::UploadAllocation GfxDevice::allocateUpload(u64 size, u64 alignment)
 {
 	static constexpr u64 ChunkSize = 4 * 1024 * 1024;
 
-	u64 offset = alignCeiling(m_uploadOffset, alignment);
+	u64 offset = alignCeilingPow2(m_uploadOffset, alignment);
 	if (!m_uploadChunk.buffer || offset + size > m_uploadChunk.size)
 	{
 		if (m_uploadChunk.buffer)
