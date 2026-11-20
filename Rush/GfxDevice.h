@@ -316,8 +316,8 @@ u64            Gfx_GetFrameIndex();
 bool Gfx_GetFrameTimes(GfxFrameTimes& out);
 
 // Balanced within a frame and context, outside render passes. Timed on the immediate and async compute contexts.
-void Gfx_BeginScope(GfxContext* rc, const char* name);
-void Gfx_EndScope(GfxContext* rc);
+void Gfx_BeginScope(GfxContext* ctx, const char* name);
+void Gfx_EndScope(GfxContext* ctx);
 
 GfxOwn<GfxVertexShader>      Gfx_CreateVertexShader(const GfxShaderSource& code);
 GfxOwn<GfxPixelShader>       Gfx_CreatePixelShader(const GfxShaderSource& code);
@@ -350,10 +350,10 @@ void                             Gfx_TraceRays(GfxContext* ctx, GfxRayTracingPip
 
 // Declares resource residency for bindless resources.
 // NOTE: Gaphics usage requires an active render pass.
-void Gfx_UseResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxResourceUsage usage);
+void Gfx_UseResources(GfxContext* ctx, const GfxResidencySet& residencySet, GfxResourceUsage usage);
 
 void Gfx_Retain(GfxDevice* dev);
-void Gfx_Retain(GfxContext* rc);
+void Gfx_Retain(GfxContext* ctx);
 
 #define RUSH_GFX_RETAIN_DECL(descType, handleType, memberName) void Gfx_Retain(handleType h);
 RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RETAIN_DECL)
@@ -365,7 +365,7 @@ RUSH_GFX_RESOURCE_LIST(RUSH_GFX_RELEASE_DECL)
 
 #ifdef RUSH_RENDER_SUPPORT_DESCRIPTOR_SETS
 GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc);
-void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h);
+void Gfx_SetDescriptors(GfxContext* ctx, u32 index, GfxDescriptorSetArg h);
 void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxBuffer* constantBuffers = nullptr,
 	const GfxSampler* samplers = nullptr,
@@ -379,9 +379,9 @@ const GfxTextureDesc&  Gfx_GetTextureDesc(GfxTextureArg h);
 
 GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg h, u32 offset = 0, u32 size = 0);
 void            Gfx_UnmapBuffer(GfxMappedBuffer& lock);
-void            Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size = 0);
-void*           Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size);
-void            Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h);
+void            Gfx_UpdateBuffer(GfxContext* ctx, GfxBufferArg h, const void* data, u32 size = 0);
+void*           Gfx_BeginUpdateBuffer(GfxContext* ctx, GfxBufferArg h, u32 size);
+void            Gfx_EndUpdateBuffer(GfxContext* ctx, GfxBufferArg h);
 
 #ifdef RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
 u64 Gfx_GetBufferAddress(GfxBufferArg h);
@@ -390,18 +390,18 @@ inline u64 Gfx_GetBufferAddress(GfxBufferArg) { return 0; }
 #endif // RUSH_RENDER_SUPPORT_BUFFER_ADDRESS
 
 GfxContext* Gfx_AcquireContext();
-void        Gfx_Release(GfxContext* rc);
+void        Gfx_Release(GfxContext* ctx);
 
 GfxContext* Gfx_BeginAsyncCompute(GfxContext* ctx);
 void        Gfx_EndAsyncCompute(GfxContext* parentContext, GfxContext* asyncContext);
 
-void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc);
-void Gfx_EndPass(GfxContext* rc);
-const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc);
+void Gfx_BeginPass(GfxContext* ctx, const GfxPassDesc& desc);
+void Gfx_EndPass(GfxContext* ctx);
+const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* ctx);
 
-inline GfxRenderTargetDesc Gfx_GetRenderTargetDesc(GfxContext* rc)
+inline GfxRenderTargetDesc Gfx_GetRenderTargetDesc(GfxContext* ctx)
 {
-	const GfxPassDesc* pass = Gfx_GetCurrentPassDesc(rc);
+	const GfxPassDesc* pass = Gfx_GetCurrentPassDesc(ctx);
 	RUSH_ASSERT_MSG(pass, "Gfx_GetRenderTargetDesc called outside of a render pass");
 	GfxRenderTargetDesc result = GfxRenderTargetDesc::fromPassDesc(*pass);
 	// TODO: this conflates "no attachments" with "use back buffer", which breaks UAV-only passes.
@@ -417,23 +417,23 @@ inline GfxRenderTargetDesc Gfx_GetRenderTargetDesc(GfxContext* rc)
 	return result;
 }
 
-void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport);
-void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect);
-void Gfx_SetRenderPipeline(GfxContext* rc, GfxRenderPipelineArg h);
-void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h);
-void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h);
-void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h);
-void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h);
-void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h);
-void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h);
-void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h);
-void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h);
-void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset = 0);
-void Gfx_FlushBarriers(GfxContext* rc);
-void Gfx_AddFullPipelineBarrier(GfxContext* rc);
-void Gfx_AddImageBarrier(GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState,
+void Gfx_SetViewport(GfxContext* ctx, const GfxViewport& _viewport);
+void Gfx_SetScissorRect(GfxContext* ctx, const GfxRect& rect);
+void Gfx_SetRenderPipeline(GfxContext* ctx, GfxRenderPipelineArg h);
+void Gfx_SetComputePipeline(GfxContext* ctx, GfxComputePipelineArg h);
+void Gfx_SetIndexStream(GfxContext* ctx, u32 offset, GfxFormat format, GfxBufferArg h);
+void Gfx_SetIndexStream(GfxContext* ctx, GfxBufferArg h);
+void Gfx_SetVertexStream(GfxContext* ctx, u32 idx, u32 offset, GfxBufferArg h);
+void Gfx_SetTexture(GfxContext* ctx, u32 idx, GfxTextureArg h);
+void Gfx_SetSampler(GfxContext* ctx, u32 idx, GfxSamplerArg h);
+void Gfx_SetStorageImage(GfxContext* ctx, u32 idx, GfxTextureArg h);
+void Gfx_SetStorageBuffer(GfxContext* ctx, u32 idx, GfxBufferArg h);
+void Gfx_SetConstantBuffer(GfxContext* ctx, u32 index, GfxBufferArg h, size_t offset = 0);
+void Gfx_FlushBarriers(GfxContext* ctx);
+void Gfx_AddFullPipelineBarrier(GfxContext* ctx);
+void Gfx_AddImageBarrier(GfxContext* ctx, GfxTextureArg textureHandle, GfxResourceState desiredState,
     GfxSubresourceRange* subresourceRange = nullptr);
-void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst);
+void Gfx_ResolveImage(GfxContext* ctx, GfxTextureArg src, GfxTextureArg dst);
 
 GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat format, Tuple3u size);
 
@@ -444,51 +444,51 @@ GfxImageCopyInfo Gfx_CopyTextureToBuffer(
     GfxBufferArg          dst,
     u64                   dstOffset = 0);
 
-void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ);
-void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize);
+void Gfx_Dispatch(GfxContext* ctx, u32 sizeX, u32 sizeY, u32 sizeZ);
+void Gfx_Dispatch(GfxContext* ctx, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize);
 
-void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount);
-void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount);
-void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
+void Gfx_Draw(GfxContext* ctx, u32 firstVertex, u32 vertexCount);
+void Gfx_DrawIndexed(GfxContext* ctx, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount);
+void Gfx_DrawIndexed(GfxContext* ctx, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
     const void* pushConstants, u32 pushConstantsSize);
-void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
+void Gfx_DrawIndexedInstanced(GfxContext* ctx, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount,
     u32 instanceCount, u32 instanceOffset);
 
-void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount);
-void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset,
+void Gfx_DrawIndexedIndirect(GfxContext* ctx, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount);
+void Gfx_DispatchIndirect(GfxContext* ctx, GfxBufferArg argsBuffer, size_t argsBufferOffset,
     const void* pushConstants = nullptr, u32 pushConstantsSize = 0);
 
-void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize);
+void Gfx_DrawMesh(GfxContext* ctx, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize);
 
 // Debug labels only, legal inside render passes
-void Gfx_PushMarker(GfxContext* rc, const char* marker);
-void Gfx_PopMarker(GfxContext* rc);
+void Gfx_PushMarker(GfxContext* ctx, const char* marker);
+void Gfx_PopMarker(GfxContext* ctx);
 
 using GfxScreenshotCallback = void (*)(const ColorRGBA8* pixels, Tuple2u size, void* userData);
 void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData = nullptr);
 
-template <typename T> inline void Gfx_SetViewport(GfxContext* rc, const Tuple2<T>& size)
+template <typename T> inline void Gfx_SetViewport(GfxContext* ctx, const Tuple2<T>& size)
 {
 	GfxViewport viewport;
 	viewport.x = 0;
 	viewport.y = 0;
 	viewport.w = (float)size.x;
 	viewport.h = (float)size.y;
-	Gfx_SetViewport(rc, viewport);
+	Gfx_SetViewport(ctx, viewport);
 }
 
-template <typename T> inline void Gfx_SetScissorRect(GfxContext* rc, const Tuple2<T>& size)
+template <typename T> inline void Gfx_SetScissorRect(GfxContext* ctx, const Tuple2<T>& size)
 {
 	GfxRect rect;
 	rect.left   = 0;
 	rect.top    = 0;
 	rect.right  = (int)size.x;
 	rect.bottom = (int)size.y;
-	Gfx_SetScissorRect(rc, rect);
+	Gfx_SetScissorRect(ctx, rect);
 }
 
-inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, GfxBufferArg h) { Gfx_SetVertexStream(rc, idx, 0, h); }
-inline void Gfx_SetIndexStream(GfxContext* rc, GfxBufferArg h) { Gfx_SetIndexStream(rc, 0, GfxFormat_Unknown, h); }
+inline void Gfx_SetVertexStream(GfxContext* ctx, u32 idx, GfxBufferArg h) { Gfx_SetVertexStream(ctx, idx, 0, h); }
+inline void Gfx_SetIndexStream(GfxContext* ctx, GfxBufferArg h) { Gfx_SetIndexStream(ctx, 0, GfxFormat_Unknown, h); }
 
 inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(GfxBufferFlags flags, GfxFormat format, u32 count = 0, u32 stride = 0, const void* data = nullptr)
 {
@@ -518,58 +518,58 @@ inline GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& desc, const st
 
 struct GfxMarkerScope
 {
-	GfxMarkerScope(GfxContext* rc, const char* marker) : m_rc(rc) { Gfx_PushMarker(m_rc, marker); }
-	~GfxMarkerScope() { Gfx_PopMarker(m_rc); }
+	GfxMarkerScope(GfxContext* ctx, const char* marker) : m_ctx(ctx) { Gfx_PushMarker(m_ctx, marker); }
+	~GfxMarkerScope() { Gfx_PopMarker(m_ctx); }
 
-	GfxContext* m_rc;
+	GfxContext* m_ctx;
 };
 
 struct GfxScope
 {
-	GfxScope(GfxContext* rc, const char* name) : m_rc(rc)
+	GfxScope(GfxContext* ctx, const char* name) : m_ctx(ctx)
 	{
-		Gfx_BeginScope(m_rc, name);
+		Gfx_BeginScope(m_ctx, name);
 	}
 	~GfxScope() { end(); }
 
 	void end()
 	{
-		if (m_rc)
+		if (m_ctx)
 		{
-			Gfx_EndScope(m_rc);
-			m_rc = nullptr;
+			Gfx_EndScope(m_ctx);
+			m_ctx = nullptr;
 		}
 	}
 
 	GfxScope(const GfxScope&)            = delete;
 	GfxScope& operator=(const GfxScope&) = delete;
 
-	GfxContext* m_rc;
+	GfxContext* m_ctx;
 };
 
-template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferArg h, const T& data)
+template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* ctx, GfxBufferArg h, const T& data)
 {
-	Gfx_UpdateBuffer(rc, h, &data, sizeof(data));
+	Gfx_UpdateBuffer(ctx, h, &data, sizeof(data));
 	return (u32)sizeof(data);
 }
 
-template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* rc, GfxBufferArg h, const DynamicArray<T>& data)
+template <typename T> inline u32 Gfx_UpdateBufferT(GfxContext* ctx, GfxBufferArg h, const DynamicArray<T>& data)
 {
 	u32 dataSize = (u32)(data.size() * sizeof(data[0]));
-	Gfx_UpdateBuffer(rc, h, data.data(), dataSize);
+	Gfx_UpdateBuffer(ctx, h, data.data(), dataSize);
 	return dataSize;
 }
 
-template <typename T> inline T* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 arrayCount=1)
+template <typename T> inline T* Gfx_BeginUpdateBuffer(GfxContext* ctx, GfxBufferArg h, u32 arrayCount=1)
 {
-	return reinterpret_cast<T*>(Gfx_BeginUpdateBuffer(rc, h, u32(sizeof(T)* arrayCount)));
+	return reinterpret_cast<T*>(Gfx_BeginUpdateBuffer(ctx, h, u32(sizeof(T)* arrayCount)));
 }
 
 #ifndef RUSH_RENDER_SUPPORT_BARRIERS
 inline void Gfx_FlushBarriers(GfxContext*) {};
 inline void Gfx_AddFullPipelineBarrier(GfxContext*) {};
 inline void Gfx_AddImageBarrier(
-    GfxContext* rc, GfxTextureArg textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
+    GfxContext* ctx, GfxTextureArg textureHandle, GfxResourceState desiredState, GfxSubresourceRange* subresourceRange)
 {
 }
 #endif // RUSH_RENDER_SUPPORT_BARRIERS
@@ -581,7 +581,7 @@ inline void        Gfx_EndAsyncCompute(GfxContext*, GfxContext*) {}
 
 #ifndef RUSH_RENDER_SUPPORT_MESH_SHADER
 inline GfxOwn<GfxMeshShader> Gfx_CreateMeshShader(const GfxShaderSource& code) { return InvalidResourceHandle(); };
-inline void Gfx_DrawMesh(GfxContext* rc, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
+inline void Gfx_DrawMesh(GfxContext* ctx, u32 taskCount, u32 firstTask, const void* pushConstants, u32 pushConstantsSize) {};
 #endif // RUSH_RENDER_SUPPORT_MESH_SHADER
 
 #ifndef RUSH_RENDER_SUPPORT_RAY_TRACING
@@ -632,7 +632,7 @@ inline GfxOwn<GfxTexture> Gfx_CreateTexture(const GfxTextureDesc& tex, const Gfx
 inline GfxOwn<GfxSampler> Gfx_CreateSamplerState(const GfxSamplerDesc& desc) { return {}; }
 inline GfxOwn<GfxBuffer> Gfx_CreateBuffer(const GfxBufferDesc& desc, const void* data) { return {}; }
 inline void Gfx_Retain(GfxDevice* dev) {}
-inline void Gfx_Retain(GfxContext* rc) {}
+inline void Gfx_Retain(GfxContext* ctx) {}
 #define RUSH_GFX_NULL_RETAIN(descType, handleType, memberName) inline void Gfx_Retain(handleType h) {}
 RUSH_GFX_RESOURCE_LIST(RUSH_GFX_NULL_RETAIN)
 #undef RUSH_GFX_NULL_RETAIN
@@ -642,41 +642,41 @@ RUSH_GFX_RESOURCE_LIST(RUSH_GFX_NULL_RELEASE)
 inline const GfxTextureDesc& Gfx_GetTextureDesc(GfxTextureArg h) { static const GfxTextureDesc desc; return desc; }
 inline GfxMappedBuffer Gfx_MapBuffer(GfxBufferArg h, u32 offset, u32 size) { return {}; }
 inline void Gfx_UnmapBuffer(GfxMappedBuffer& lock) {}
-inline void Gfx_UpdateBuffer(GfxContext* rc, GfxBufferArg h, const void* data, u32 size) {}
-inline void* Gfx_BeginUpdateBuffer(GfxContext* rc, GfxBufferArg h, u32 size) { return {}; }
-inline void Gfx_EndUpdateBuffer(GfxContext* rc, GfxBufferArg h) {}
+inline void Gfx_UpdateBuffer(GfxContext* ctx, GfxBufferArg h, const void* data, u32 size) {}
+inline void* Gfx_BeginUpdateBuffer(GfxContext* ctx, GfxBufferArg h, u32 size) { return {}; }
+inline void Gfx_EndUpdateBuffer(GfxContext* ctx, GfxBufferArg h) {}
 inline GfxContext* Gfx_AcquireContext() { return {}; }
-inline void Gfx_Release(GfxContext* rc) {}
-inline void Gfx_BeginPass(GfxContext* rc, const GfxPassDesc& desc) {}
-inline void Gfx_EndPass(GfxContext* rc) {}
-inline const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* rc) { return nullptr; }
-inline void Gfx_SetViewport(GfxContext* rc, const GfxViewport& _viewport) {}
-inline void Gfx_SetScissorRect(GfxContext* rc, const GfxRect& rect) {}
-inline void Gfx_SetRenderPipeline(GfxContext* rc, GfxRenderPipelineArg h) {}
-inline void Gfx_SetComputePipeline(GfxContext* rc, GfxComputePipelineArg h) {}
-inline void Gfx_SetIndexStream(GfxContext* rc, u32 offset, GfxFormat format, GfxBufferArg h) {}
-inline void Gfx_SetVertexStream(GfxContext* rc, u32 idx, u32 offset, GfxBufferArg h) {}
-inline void Gfx_SetTexture(GfxContext* rc, u32 idx, GfxTextureArg h) {}
-inline void Gfx_SetSampler(GfxContext* rc, u32 idx, GfxSamplerArg h) {}
-inline void Gfx_SetStorageImage(GfxContext* rc, u32 idx, GfxTextureArg h) {}
-inline void Gfx_SetStorageBuffer(GfxContext* rc, u32 idx, GfxBufferArg h) {}
-inline void Gfx_SetConstantBuffer(GfxContext* rc, u32 index, GfxBufferArg h, size_t offset) {}
-inline void Gfx_ResolveImage(GfxContext* rc, GfxTextureArg src, GfxTextureArg dst) {}
+inline void Gfx_Release(GfxContext* ctx) {}
+inline void Gfx_BeginPass(GfxContext* ctx, const GfxPassDesc& desc) {}
+inline void Gfx_EndPass(GfxContext* ctx) {}
+inline const GfxPassDesc* Gfx_GetCurrentPassDesc(GfxContext* ctx) { return nullptr; }
+inline void Gfx_SetViewport(GfxContext* ctx, const GfxViewport& _viewport) {}
+inline void Gfx_SetScissorRect(GfxContext* ctx, const GfxRect& rect) {}
+inline void Gfx_SetRenderPipeline(GfxContext* ctx, GfxRenderPipelineArg h) {}
+inline void Gfx_SetComputePipeline(GfxContext* ctx, GfxComputePipelineArg h) {}
+inline void Gfx_SetIndexStream(GfxContext* ctx, u32 offset, GfxFormat format, GfxBufferArg h) {}
+inline void Gfx_SetVertexStream(GfxContext* ctx, u32 idx, u32 offset, GfxBufferArg h) {}
+inline void Gfx_SetTexture(GfxContext* ctx, u32 idx, GfxTextureArg h) {}
+inline void Gfx_SetSampler(GfxContext* ctx, u32 idx, GfxSamplerArg h) {}
+inline void Gfx_SetStorageImage(GfxContext* ctx, u32 idx, GfxTextureArg h) {}
+inline void Gfx_SetStorageBuffer(GfxContext* ctx, u32 idx, GfxBufferArg h) {}
+inline void Gfx_SetConstantBuffer(GfxContext* ctx, u32 index, GfxBufferArg h, size_t offset) {}
+inline void Gfx_ResolveImage(GfxContext* ctx, GfxTextureArg src, GfxTextureArg dst) {}
 inline GfxImageCopyInfo Gfx_GetImageCopyInfo(GfxFormat format, Tuple3u size) { return {size.x * getBitsPerPixel(format) / 8, size.y}; }
 inline GfxImageCopyInfo Gfx_CopyTextureToBuffer(GfxContext*, GfxTextureArg, const GfxImageRegion&, GfxBufferArg, u64) { return {}; }
-inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ) {}
-inline void Gfx_Dispatch(GfxContext* rc, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize) {}
-inline void Gfx_Draw(GfxContext* rc, u32 firstVertex, u32 vertexCount) {}
-inline void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount) {}
-inline void Gfx_DrawIndexed(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount, const void* pushConstants, u32 pushConstantsSize) {}
-inline void Gfx_DrawIndexedInstanced(GfxContext* rc, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount, u32 instanceCount, u32 instanceOffset) {}
-inline void Gfx_DrawIndexedIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount) {}
-inline void Gfx_DispatchIndirect(GfxContext* rc, GfxBufferArg argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize) {}
-inline void Gfx_PushMarker(GfxContext* rc, const char* marker) {}
-inline void Gfx_PopMarker(GfxContext* rc) {}
+inline void Gfx_Dispatch(GfxContext* ctx, u32 sizeX, u32 sizeY, u32 sizeZ) {}
+inline void Gfx_Dispatch(GfxContext* ctx, u32 sizeX, u32 sizeY, u32 sizeZ, const void* pushConstants, u32 pushConstantsSize) {}
+inline void Gfx_Draw(GfxContext* ctx, u32 firstVertex, u32 vertexCount) {}
+inline void Gfx_DrawIndexed(GfxContext* ctx, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount) {}
+inline void Gfx_DrawIndexed(GfxContext* ctx, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount, const void* pushConstants, u32 pushConstantsSize) {}
+inline void Gfx_DrawIndexedInstanced(GfxContext* ctx, u32 indexCount, u32 firstIndex, u32 baseVertex, u32 vertexCount, u32 instanceCount, u32 instanceOffset) {}
+inline void Gfx_DrawIndexedIndirect(GfxContext* ctx, GfxBufferArg argsBuffer, size_t argsBufferOffset, u32 drawCount) {}
+inline void Gfx_DispatchIndirect(GfxContext* ctx, GfxBufferArg argsBuffer, size_t argsBufferOffset, const void* pushConstants, u32 pushConstantsSize) {}
+inline void Gfx_PushMarker(GfxContext* ctx, const char* marker) {}
+inline void Gfx_PopMarker(GfxContext* ctx) {}
 inline void Gfx_RequestScreenshot(GfxScreenshotCallback callback, void* userData) {};
 inline GfxOwn<GfxDescriptorSet> Gfx_CreateDescriptorSet(const GfxDescriptorSetDesc& desc) { return {}; }
-inline void Gfx_SetDescriptors(GfxContext* rc, u32 index, GfxDescriptorSetArg h) {}
+inline void Gfx_SetDescriptors(GfxContext* ctx, u32 index, GfxDescriptorSetArg h) {}
 inline void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxBuffer* constantBuffers = nullptr,
 	const GfxSampler* samplers = nullptr,
@@ -684,7 +684,7 @@ inline void Gfx_UpdateDescriptorSet(GfxDescriptorSetArg d,
 	const GfxTexture* storageImages = nullptr,
 	const GfxBuffer* storageBuffers = nullptr,
 	const GfxAccelerationStructure* accelStructures = nullptr) {}
-inline void gfx_useResources(GfxContext* rc, const GfxResidencySet& residencySet, GfxResourceUsage usage) {}
+inline void gfx_useResources(GfxContext* ctx, const GfxResidencySet& residencySet, GfxResourceUsage usage) {}
 #endif // RUSH_RENDER_API == RUSH_RENDER_API_NULL
 
 }
