@@ -289,7 +289,7 @@ void CameraManipulator::update(Camera* camera, float dt, const KeyboardState& ks
 
 		if (ks.isKeyDown(getKey(KeyFunction_MoveY_Pos)))
 			camMove.y = 1;
-		if (ks.isKeyDown(getKey(KeyFunction_MoveX_Neg)))
+		if (ks.isKeyDown(getKey(KeyFunction_MoveY_Neg)))
 			camMove.y = -1;
 
 		if (ks.isKeyDown(getKey(KeyFunction_MoveZ_Pos)))
