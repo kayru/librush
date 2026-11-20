@@ -3,6 +3,7 @@
 #include "Rush.h"
 #include "UtilMemory.h"
 
+#include <new>
 #include <string.h>
 #include <type_traits>
 #include <utility>
@@ -20,6 +21,30 @@ struct Buffer
 
 	T* begin() { return m_data; }
 	T* end()   { return m_data + m_size; }
+
+	static T* allocateStorage(size_t count)
+	{
+		if constexpr (alignof(T) > __STDCPP_DEFAULT_NEW_ALIGNMENT__)
+		{
+			return static_cast<T*>(::operator new(count * sizeof(T), std::align_val_t(alignof(T))));
+		}
+		else
+		{
+			return static_cast<T*>(::operator new(count * sizeof(T)));
+		}
+	}
+
+	static void freeStorage(T* data)
+	{
+		if constexpr (alignof(T) > __STDCPP_DEFAULT_NEW_ALIGNMENT__)
+		{
+			::operator delete(data, std::align_val_t(alignof(T)));
+		}
+		else
+		{
+			::operator delete(data);
+		}
+	}
 
 	static void destructRange(T* begin, T* end)
 	{
@@ -39,11 +64,11 @@ struct Buffer
 
 		// args may live in the old storage, so the new element is constructed before that is released
 		const size_t newCapacity = (buf.m_capacity > 0) ? (2 * buf.m_capacity) : 1;
-		T* newData = (T*)allocateBytes(newCapacity * sizeof(T));
+		T* newData = allocateStorage(newCapacity);
 		new(&newData[buf.m_size]) T(std::forward<U>(args)...);
 		constructMoveRange(newData, buf.begin(), buf.end());
 		destructRange(buf.begin(), buf.end());
-		deallocateBytes(buf.m_data);
+		freeStorage(buf.m_data);
 
 		buf.m_data     = newData;
 		buf.m_capacity = newCapacity;
@@ -117,7 +142,7 @@ struct Buffer
 	{
 		if (capacity)
 		{
-			buf.m_data = (T*)allocateBytes(capacity * sizeof(T));
+			buf.m_data = allocateStorage(capacity);
 			buf.m_capacity = capacity;
 		}
 	}
@@ -126,11 +151,11 @@ struct Buffer
 	{
 		if (newCapacity <= buf.m_capacity) return;
 
-		T* newData = (T*)allocateBytes(newCapacity * sizeof(T));
+		T* newData = allocateStorage(newCapacity);
 
 		constructMoveRange(newData, buf.begin(), buf.end());
 		destructRange(buf.begin(), buf.end());
-		deallocateBytes(buf.m_data);
+		freeStorage(buf.m_data);
 
 		buf.m_data = newData;
 		buf.m_capacity = newCapacity;
@@ -179,7 +204,7 @@ struct Buffer
 	static void destroy(Buffer& buf)
 	{
 		destructRange(buf.m_data, buf.m_data + buf.m_size);
-		deallocateBytes(buf.m_data);
+		freeStorage(buf.m_data);
 	}
 };
 

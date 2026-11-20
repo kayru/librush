@@ -4,6 +4,7 @@
 #include "UtilBuffer.h"
 #include "UtilLog.h"
 #include <initializer_list>
+#include <iterator>
 #include <new>
 #include <string_view> // declares ranges::enable_borrowed_range/enable_view, lighter than <ranges>
 #include <type_traits>
@@ -49,13 +50,15 @@ requires (requires(R& r) { r.data(); r.size(); })
 		return view;
 	}
 
-	static ArrayView fromBytes(u8* ptr, size_t count)
+	static ArrayView fromBytes(u8* ptr, size_t sizeBytes)
 	{
-		if (!count)
+		if (!sizeBytes)
 		{
 			return {};
 		}
-		return from(reinterpret_cast<T*>(ptr), count);
+		RUSH_ASSERT(sizeBytes % sizeof(T) == 0);
+		RUSH_ASSERT(reinterpret_cast<uintptr_t>(ptr) % alignof(T) == 0);
+		return from(reinterpret_cast<T*>(ptr), sizeBytes / sizeof(T));
 	}
 
 template <typename R>
@@ -113,6 +116,10 @@ requires (requires(R& r) { r.data(); r.size(); })
 	constexpr T* end() { return m_data + m_size; }
 	constexpr const T* begin() const { return m_data; }
 	constexpr const T* end() const { return m_data + m_size; }
+	constexpr std::reverse_iterator<T*>       rbegin() { return std::reverse_iterator<T*>(end()); }
+	constexpr std::reverse_iterator<T*>       rend() { return std::reverse_iterator<T*>(begin()); }
+	constexpr std::reverse_iterator<const T*> rbegin() const { return std::reverse_iterator<const T*>(end()); }
+	constexpr std::reverse_iterator<const T*> rend() const { return std::reverse_iterator<const T*>(begin()); }
 	constexpr void fill(const T& value)
 	{
 		for (size_t i = 0; i < m_size; ++i)
@@ -155,7 +162,7 @@ public:
 		append(first, last);
 	}
 
-	DynamicArray(size_t size)
+	explicit DynamicArray(size_t size)
 		: DynamicArray()
 	{
 		create(size);
@@ -222,8 +229,20 @@ public:
 		Buffer<T>::destroy(m_buffer);
 	}
 
-	T&       operator[](size_t i) { return m_buffer.m_data[i]; }
-	const T& operator[](size_t i) const { return m_buffer.m_data[i]; }
+	T& operator[](size_t i)
+	{
+#ifdef RUSH_DEBUG
+		RUSH_ASSERT(i < m_buffer.m_size);
+#endif
+		return m_buffer.m_data[i];
+	}
+	const T& operator[](size_t i) const
+	{
+#ifdef RUSH_DEBUG
+		RUSH_ASSERT(i < m_buffer.m_size);
+#endif
+		return m_buffer.m_data[i];
+	}
 
 	T*       data()       { return m_buffer.m_data; }
 	const T* data() const { return m_buffer.m_data; }
@@ -234,11 +253,32 @@ public:
 	const T* begin() const { return m_buffer.m_data; }
 	const T* end() const { return m_buffer.m_data + m_buffer.m_size; }
 
-	T& front() { return m_buffer.m_data[0]; }
-	const T& front() const { return m_buffer.m_data[0]; }
+	std::reverse_iterator<T*>       rbegin() { return std::reverse_iterator<T*>(end()); }
+	std::reverse_iterator<T*>       rend() { return std::reverse_iterator<T*>(begin()); }
+	std::reverse_iterator<const T*> rbegin() const { return std::reverse_iterator<const T*>(end()); }
+	std::reverse_iterator<const T*> rend() const { return std::reverse_iterator<const T*>(begin()); }
 
-	T& back() { return m_buffer.m_data[m_buffer.m_size-1]; }
-	const T& back() const { return m_buffer.m_data[m_buffer.m_size - 1]; }
+	T& front()
+	{
+		RUSH_ASSERT(m_buffer.m_size > 0);
+		return m_buffer.m_data[0];
+	}
+	const T& front() const
+	{
+		RUSH_ASSERT(m_buffer.m_size > 0);
+		return m_buffer.m_data[0];
+	}
+
+	T& back()
+	{
+		RUSH_ASSERT(m_buffer.m_size > 0);
+		return m_buffer.m_data[m_buffer.m_size - 1];
+	}
+	const T& back() const
+	{
+		RUSH_ASSERT(m_buffer.m_size > 0);
+		return m_buffer.m_data[m_buffer.m_size - 1];
+	}
 
 	size_t size() const { return m_buffer.m_size; }
 	size_t capacity() const { return m_buffer.m_capacity; }
@@ -281,6 +321,7 @@ public:
 
 	RUSH_FORCEINLINE void pop()
 	{
+		RUSH_ASSERT(m_buffer.m_size > 0);
 		Buffer<T>::pop(m_buffer);
 	}
 
@@ -310,7 +351,7 @@ public:
 
 	RUSH_FORCEINLINE void pop_back()
 	{
-		Buffer<T>::pop(m_buffer);
+		pop();
 	}
 
 	template <typename... A> T& emplace(A&&... args)
