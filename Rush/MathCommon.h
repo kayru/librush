@@ -31,9 +31,9 @@ template <typename T> inline T clamp(const T& val, const T& minVal, const T& max
 }
 inline float         saturate(float val) { return clamp(val, 0.0f, 1.0f); }
 inline float         quantize(float val, float step) { return float(int(val / step)) * step; }
-inline constexpr u32 alignCeiling(u32 x, u32 boundary) { return x + (~(x - 1) % boundary); }
+inline constexpr u32 alignCeiling(u32 x, u32 boundary) { return x % boundary ? x + (boundary - x % boundary) : x; }
 inline constexpr u32 alignFloor(u32 x, u32 boundary) { return x - (x % boundary); }
-inline constexpr u64 alignCeiling(u64 x, u64 boundary) { return x + (~(x - 1) % boundary); }
+inline constexpr u64 alignCeiling(u64 x, u64 boundary) { return x % boundary ? x + (boundary - x % boundary) : x; }
 inline constexpr u64 alignFloor(u64 x, u64 boundary) { return x - (x % boundary); }
 
 inline u32 nextPow2(u32 n)
