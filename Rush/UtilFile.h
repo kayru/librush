@@ -14,6 +14,8 @@ class FileBase : public DataStream
 public:
 	FileBase() : m_file(nullptr){};
 	virtual ~FileBase() override{};
+	FileBase(const FileBase&) = delete;
+	FileBase& operator=(const FileBase&) = delete;
 
 	virtual u64  tell() const override;
 	virtual void seek(u64 pos) override;
@@ -63,8 +65,6 @@ protected:
 	void flush();
 
 private:
-	FileOut& operator=(const FileOut&) = delete;
-
 	char*     m_buffer;
 	const u64 m_bufferSize;
 	u64       m_bufferPos;

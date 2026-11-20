@@ -50,6 +50,11 @@ u64 FileIn::length() const
 
 u64 FileOut::write(const void* buf, u64 size)
 {
+	if (!valid())
+	{
+		return 0;
+	}
+
 	u64 inBufPos    = 0;
 	u64 inBytesLeft = size;
 
