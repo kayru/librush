@@ -180,12 +180,17 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	wc.cbClsExtra    = 0;
 	wc.cbWndExtra    = 0;
 	wc.hInstance     = hInst;
-	wc.hIcon         = LoadIcon(nullptr, IDI_APPLICATION);
+	wc.hIcon         = HICON(LoadImageW(hInst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
 	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOWFRAME);
 	wc.lpszMenuName  = nullptr;
 	wc.lpszClassName = L"RushWindowWin32";
-	wc.hIconSm       = wc.hIcon;
+	wc.hIconSm       = HICON(LoadImageW(hInst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
+	if (!wc.hIcon)
+	{
+		wc.hIcon   = LoadIcon(nullptr, IDI_APPLICATION);
+		wc.hIconSm = wc.hIcon;
+	}
 
 	// Registered once per process: windows after the first find it there
 	if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
@@ -617,7 +622,7 @@ void WindowWin32::processSizeEvent(WPARAM wparam, LPARAM lparam)
 void WindowWin32::setSize(const Tuple2i& size)
 {
 	RECT rect = {0, 0, size.x, size.y};
-	AdjustWindowRect(&rect, m_windowStyle, FALSE);
+	AdjustWindowRect(&rect, m_windowStyle, GetMenu(m_hwnd) != nullptr);
 
 	SetWindowPos(m_hwnd, HWND_TOP, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
 	    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
@@ -652,7 +657,7 @@ bool WindowWin32::setFullscreen(bool wantFullScreen)
 	{
 		SetWindowLongPtr(m_hwnd, GWL_STYLE, WS_VISIBLE | m_windowStyle);
 		RECT rect = { 0, 0, m_windowedSize.x, m_windowedSize.y };
-		AdjustWindowRect(&rect, m_windowStyle, FALSE);
+		AdjustWindowRect(&rect, m_windowStyle, GetMenu(m_hwnd) != nullptr);
 		SetWindowPos(m_hwnd, HWND_TOP,
 			m_windowedPos.x, m_windowedPos.y,
 			rect.right - rect.left, rect.bottom - rect.top,
