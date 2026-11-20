@@ -530,7 +530,16 @@ struct GfxScope
 	{
 		Gfx_BeginScope(m_rc, name);
 	}
-	~GfxScope() { Gfx_EndScope(m_rc); }
+	~GfxScope() { end(); }
+
+	void end()
+	{
+		if (m_rc)
+		{
+			Gfx_EndScope(m_rc);
+			m_rc = nullptr;
+		}
+	}
 
 	GfxScope(const GfxScope&)            = delete;
 	GfxScope& operator=(const GfxScope&) = delete;
