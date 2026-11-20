@@ -4869,7 +4869,7 @@ static VkFormat convertFormat(const GfxVertexFormatDesc::Element& vertexElement)
 	case GfxVertexFormatDesc::DataType::Color: return VK_FORMAT_R8G8B8A8_UNORM;
 	case GfxVertexFormatDesc::DataType::UByte4N: return VK_FORMAT_R8G8B8A8_UNORM;
 	case GfxVertexFormatDesc::DataType::UInt: return VK_FORMAT_R32_UINT;
-	case GfxVertexFormatDesc::DataType::Short2N: return VK_FORMAT_R16G16_UNORM;
+	case GfxVertexFormatDesc::DataType::Short2N: return VK_FORMAT_R16G16_SNORM;
 	default: RUSH_LOG_ERROR("Unsupported vertex element format type"); return VK_FORMAT_UNDEFINED;
 	}
 }
