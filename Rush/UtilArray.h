@@ -321,13 +321,39 @@ public:
 
 	template <typename It> void append(It first, It last)
 	{
-		if constexpr (requires { last - first; })
+		if constexpr (std::is_convertible_v<It, const T*>)
+		{
+			const T*        src     = first;
+			const size_t    count   = size_t(last - first);
+			const uintptr_t data    = reinterpret_cast<uintptr_t>(m_buffer.m_data);
+			const uintptr_t address = reinterpret_cast<uintptr_t>(src);
+			const bool      inside  = address >= data && address < data + m_buffer.m_size * sizeof(T);
+			const size_t    offset  = inside ? size_t(src - m_buffer.m_data) : 0;
+
+			Buffer<T>::grow(m_buffer, m_buffer.m_size + count);
+			if (inside)
+			{
+				src = m_buffer.m_data + offset;
+			}
+
+			Buffer<T>::constructCopyRange(end(), src, src + count);
+			m_buffer.m_size += count;
+		}
+		else if constexpr (requires { last - first; })
 		{
 			Buffer<T>::grow(m_buffer, m_buffer.m_size + size_t(last - first));
+			for (T* where = end(); first != last; ++first, ++where)
+			{
+				new (where) T(*first);
+				++m_buffer.m_size;
+			}
 		}
-		for (; first != last; ++first)
+		else
 		{
-			Buffer<T>::push(m_buffer, *first);
+			for (; first != last; ++first)
+			{
+				Buffer<T>::push(m_buffer, *first);
+			}
 		}
 	}
 

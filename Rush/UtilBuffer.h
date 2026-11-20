@@ -3,6 +3,7 @@
 #include "Rush.h"
 #include "UtilMemory.h"
 
+#include <string.h>
 #include <type_traits>
 #include <utility>
 
@@ -57,9 +58,19 @@ struct Buffer
 
 	static void constructCopyRange(T* where, const T* begin, const T* end)
 	{
-		for (; begin < end; ++begin, ++where)
+		if constexpr (std::is_trivially_copyable_v<T>)
 		{
-			new(where) T(*begin);
+			if (begin != end)
+			{
+				memcpy(where, begin, size_t(end - begin) * sizeof(T));
+			}
+		}
+		else
+		{
+			for (; begin < end; ++begin, ++where)
+			{
+				new(where) T(*begin);
+			}
 		}
 	}
 
