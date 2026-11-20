@@ -670,8 +670,17 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	memset(&m_physicalDeviceProps, 0, sizeof(m_physicalDeviceProps));
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProps);
 
-	m_physicalDeviceFeatures2.pNext = &m_nvMeshShaderFeatures;
-	m_nvMeshShaderFeatures.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
+	auto enumeratedDeviceExtensions = enumerateDeviceExtensions(m_physicalDevice);
+
+	if (isExtensionSupported(enumeratedDeviceExtensions, VK_NV_MESH_SHADER_EXTENSION_NAME))
+	{
+		m_physicalDeviceFeatures2.pNext = &m_nvMeshShaderFeatures;
+		m_nvMeshShaderFeatures.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
+	}
+	else
+	{
+		m_physicalDeviceFeatures2.pNext = &m_physicalDeviceDescriptorIndexingFeatures;
+	}
 	m_physicalDeviceDescriptorIndexingFeatures.pNext = &m_bufferDeviceAddressFeatures;
 	m_bufferDeviceAddressFeatures.pNext = &m_shaderDrawParametersFeatures;
 	m_shaderDrawParametersFeatures.pNext = &m_timelineSemaphoreFeatures;
@@ -688,8 +697,6 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &m_physicalDeviceFeatures2);
 	RUSH_ASSERT(m_physicalDeviceFeatures2.features.shaderClipDistance);
 	RUSH_ASSERT(m_timelineSemaphoreFeatures.timelineSemaphore);
-
-	auto enumeratedDeviceExtensions = enumerateDeviceExtensions(m_physicalDevice);
 
 	u32 queueCount = 0;
 
