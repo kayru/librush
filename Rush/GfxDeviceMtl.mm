@@ -1298,6 +1298,7 @@ static MTLVertexFormat convertVertexFormat(const GfxVertexFormatDesc::Element& v
 	case GfxVertexFormatDesc::DataType::Float4:
 		return MTLVertexFormatFloat4;
 	case GfxVertexFormatDesc::DataType::Color:
+	case GfxVertexFormatDesc::DataType::UByte4N:
 		return MTLVertexFormatUChar4Normalized;
 	case GfxVertexFormatDesc::DataType::Short2N:
 		return MTLVertexFormatShort2Normalized;

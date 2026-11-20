@@ -172,6 +172,7 @@ u16 dataTypeSize(GfxVertexFormatDesc::DataType type)
 	case GfxVertexFormatDesc::DataType::Short2: return 4;
 	case GfxVertexFormatDesc::DataType::Short2N: return 4;
 	case GfxVertexFormatDesc::DataType::UByte4: return 4;
+	case GfxVertexFormatDesc::DataType::UByte4N: return 4;
 	case GfxVertexFormatDesc::DataType::Dec3N: return 4;
 	case GfxVertexFormatDesc::DataType::Color: return 4;
 	case GfxVertexFormatDesc::DataType::UInt: return 4;
