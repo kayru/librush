@@ -49,23 +49,23 @@ public:
 			return 0;
 		}
 
-		u64 pos2 = m_pos + size;
-		pos2     = min(pos2, m_size);
-		size     = pos2 - m_pos;
-
-		memcpy(&m_dataRW[m_pos], buf, size);
-		m_pos = pos2;
+		size = min(size, m_size - m_pos);
+		if (size)
+		{
+			memcpy(&m_dataRW[m_pos], buf, size);
+			m_pos += size;
+		}
 
 		return size;
 	}
 	virtual u64 read(void* buf, u64 size)
 	{
-		u64 pos2 = m_pos + size;
-		pos2     = min(pos2, m_size);
-		size     = pos2 - m_pos;
-
-		memcpy(buf, &m_dataRO[m_pos], size);
-		m_pos = pos2;
+		size = min(size, m_size - m_pos);
+		if (size)
+		{
+			memcpy(buf, &m_dataRO[m_pos], size);
+			m_pos += size;
+		}
 
 		return size;
 	}
@@ -74,9 +74,14 @@ public:
 	virtual void seek(u64 pos) { m_pos = min(pos, m_size); };
 	virtual void skip(int distance)
 	{
-		u64 pos2 = m_pos + distance;
-		pos2     = min(pos2, m_size);
-		m_pos    = pos2;
+		if (distance < 0)
+		{
+			m_pos -= min(m_pos, u64(-s64(distance)));
+		}
+		else
+		{
+			m_pos += min(u64(distance), m_size - m_pos);
+		}
 	};
 	virtual void rewind() { m_pos = 0; };
 
