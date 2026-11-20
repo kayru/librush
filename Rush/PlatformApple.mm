@@ -508,7 +508,7 @@ static void shutdownIOS()
 		if (Platform_IsExitRequested() || (g_mainWindow && g_mainWindow->isClosed()))
 		{
 			shutdownIOS();
-			Platform_TerminateProcess(0);
+			Platform_TerminateProcessFatal(0);
 			return;
 		}
 
