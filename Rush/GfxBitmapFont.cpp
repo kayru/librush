@@ -96,8 +96,12 @@ struct KerningBlock
 
 bool BitmapFontDesc::read(DataStream& stream)
 {
-	u32 magic;
-	stream.read(&magic, 4);
+	u32 magic = 0;
+	if (stream.read(&magic, 4) != 4)
+	{
+		RUSH_LOG_ERROR("BitmapFontDesc::read() file too short.");
+		return false;
+	}
 
 	bool magicFound = false;
 
@@ -130,8 +134,11 @@ bool BitmapFontDesc::read(DataStream& stream)
 	u8 type;
 	while (stream.read(&type, 1))
 	{
-		u32 blockSize;
-		stream.read(&blockSize, 4);
+		u32 blockSize = 0;
+		if (stream.read(&blockSize, 4) != 4)
+		{
+			break;
+		}
 
 		BlockType blockType = (BlockType)type;
 
