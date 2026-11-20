@@ -168,7 +168,7 @@ class KeyboardState
 public:
 	KeyboardState() { memset(keys, 0, sizeof(keys)); }
 
-	bool isKeyDown(u8 code) const { return keys[code]; }
+	bool isKeyDown(u8 code) const { return code < Key_COUNT && keys[code]; }
 
 	bool keys[Key_COUNT];
 };
