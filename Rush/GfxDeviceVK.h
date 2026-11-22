@@ -439,6 +439,7 @@ public:
 	VkDevice                         m_vulkanDevice   = VK_NULL_HANDLE;
 	VkPhysicalDevice                 m_physicalDevice = VK_NULL_HANDLE;
 	VkPhysicalDeviceProperties       m_physicalDeviceProps;
+	char                             m_driverVersion[32] = {};
 	VkPhysicalDeviceProperties2      m_physicalDeviceProps2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	VkPhysicalDeviceFeatures2        m_physicalDeviceFeatures2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	VkPhysicalDeviceRayTracingPipelineFeaturesKHR m_physicalDeviceRayTracingPipelineFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };

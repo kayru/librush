@@ -234,6 +234,7 @@ public:
 	WindowEventListener m_resizeEvents;
 
 	GfxCapability m_caps;
+	String m_adapterName;
 	GfxStats m_stats;
 	u64 m_frameCount = 0;
 

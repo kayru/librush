@@ -3,6 +3,7 @@
 #include "GfxCommon.h"
 #include "Platform.h"
 #include "UtilColor.h"
+#include "UtilString.h"
 #include "RushC.h"
 
 namespace Rush
@@ -156,8 +157,8 @@ struct GfxConfig
 struct GfxCapability
 {
 	const char* apiName              = nullptr;
-	char        adapterName[256]     = {};
-	char        driverVersion[64]    = {};
+	StringView  adapterName          = StringView(nullptr, 0);
+	StringView  driverVersion        = StringView(nullptr, 0);
 	bool        debugOutput          = false;
 	bool        debugMarkers         = false;
 	bool        compute              = false;

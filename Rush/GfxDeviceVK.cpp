@@ -1218,24 +1218,27 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	}
 
 	m_caps.apiName = "Vulkan";
-	snprintf(m_caps.adapterName, sizeof(m_caps.adapterName), "%s", m_physicalDeviceProps.deviceName);
+	m_caps.adapterName = StringView(m_physicalDeviceProps.deviceName, strlen(m_physicalDeviceProps.deviceName));
 
 	const u32 driver = m_physicalDeviceProps.driverVersion;
+	int length = 0;
 	if (m_physicalDeviceProps.vendorID == VendorID_NVIDIA)
 	{
-		snprintf(m_caps.driverVersion, sizeof(m_caps.driverVersion), "%u.%u.%u.%u", driver >> 22, (driver >> 14) & 0xFF, (driver >> 6) & 0xFF, driver & 0x3F);
+		length = snprintf(m_driverVersion, sizeof(m_driverVersion), "%u.%u.%u.%u", driver >> 22, (driver >> 14) & 0xFF, (driver >> 6) & 0xFF, driver & 0x3F);
 	}
 #if defined(RUSH_PLATFORM_WINDOWS)
 	else if (m_physicalDeviceProps.vendorID == 0x8086)
 	{
-		snprintf(m_caps.driverVersion, sizeof(m_caps.driverVersion), "%u.%u", driver >> 14, driver & 0x3FFF);
+		length = snprintf(m_driverVersion, sizeof(m_driverVersion), "%u.%u", driver >> 14, driver & 0x3FFF);
 	}
 #endif
 	else
 	{
-		snprintf(m_caps.driverVersion, sizeof(m_caps.driverVersion), "%u.%u.%u", VK_API_VERSION_MAJOR(driver), VK_API_VERSION_MINOR(driver),
+		length = snprintf(m_driverVersion, sizeof(m_driverVersion), "%u.%u.%u", VK_API_VERSION_MAJOR(driver), VK_API_VERSION_MINOR(driver),
 			VK_API_VERSION_PATCH(driver));
 	}
+
+	m_caps.driverVersion = StringView(m_driverVersion, size_t(length));
 }
 
 static void extendDescriptorPool(GfxDevice::FrameData* frameData)

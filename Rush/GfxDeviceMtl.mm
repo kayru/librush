@@ -325,7 +325,8 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 	}
 
 	m_caps.apiName = "Metal";
-	snprintf(m_caps.adapterName, sizeof(m_caps.adapterName), "%s", [[m_metalDevice name] UTF8String]);
+	m_adapterName = [[m_metalDevice name] UTF8String];
+	m_caps.adapterName = StringView(m_adapterName.c_str(), m_adapterName.length());
 
 	// The simulator has no counter sets and returns zero from sampleTimestamps
 	if ([m_metalDevice supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary])
