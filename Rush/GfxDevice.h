@@ -156,6 +156,8 @@ struct GfxConfig
 struct GfxCapability
 {
 	const char* apiName              = nullptr;
+	char        adapterName[256]     = {};
+	char        driverVersion[64]    = {};
 	bool        debugOutput          = false;
 	bool        debugMarkers         = false;
 	bool        compute              = false;
