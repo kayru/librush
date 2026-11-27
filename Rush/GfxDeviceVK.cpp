@@ -4647,8 +4647,6 @@ void GfxDevice::refreshPresentTimeDomain(u64 domainsCounter)
 	}
 
 	const VkTimeDomainKHR preferred[] = {kPresentHostDomain, VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT, VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT};
-	const VkTimeDomainKHR previous = m_presentTimeDomain;
-
 	m_presentTimeDomain = VK_TIME_DOMAIN_MAX_ENUM_KHR;
 	for (const VkTimeDomainKHR want : preferred)
 	{
@@ -4665,8 +4663,9 @@ void GfxDevice::refreshPresentTimeDomain(u64 domainsCounter)
 	m_presentTimeDomainsCounter     = domainsCounter;
 	m_presentDomainCalibrated       = false;
 	m_framesSincePresentCalibration = 0;
-	if (m_presentTimeDomain != previous)
+	if (m_presentTimeDomain != m_loggedPresentTimeDomain)
 	{
+		m_loggedPresentTimeDomain = m_presentTimeDomain;
 		RUSH_LOG("Present timing: %s at %s", timeDomainName(m_presentTimeDomain), m_caps.presentTimingStage == GfxPresentStage::FirstPixelOut ? "first pixel out"
 			: m_caps.presentTimingStage == GfxPresentStage::FirstPixelVisible ? "first pixel visible"
 			: m_caps.presentTimingStage == GfxPresentStage::Dequeued ? "dequeue" : "queue end");
@@ -4719,12 +4718,12 @@ void GfxDevice::pollPresentTimings()
 		u64 counter = 0;
 		if (vkGetSwapchainTimingPropertiesEXT(m_vulkanDevice, m_swapChain, &timing, &counter) == VK_SUCCESS)
 		{
-			const GfxDisplayTiming previous = m_displayTiming;
-			m_timingPropertiesCounter       = props.timingPropertiesCounter;
-			m_displayTiming.refreshNs       = timing.refreshDuration;
-			const u64 change = max(m_displayTiming.refreshNs, previous.refreshNs) - min(m_displayTiming.refreshNs, previous.refreshNs);
-			if (change * 200 > previous.refreshNs)
+			m_timingPropertiesCounter = props.timingPropertiesCounter;
+			m_displayTiming.refreshNs = timing.refreshDuration;
+			const u64 change = max(m_displayTiming.refreshNs, m_loggedRefreshNs) - min(m_displayTiming.refreshNs, m_loggedRefreshNs);
+			if (change * 200 > m_loggedRefreshNs)
 			{
+				m_loggedRefreshNs = m_displayTiming.refreshNs;
 				RUSH_LOG("Display refresh: %.3f ms", double(timing.refreshDuration) * 1e-6);
 			}
 		}

@@ -648,6 +648,8 @@ public:
 	u32             m_framesSincePresentCalibration = 0;
 	bool            m_presentDomainCalibrated       = false;
 	GfxDisplayTiming m_displayTiming;
+	u64             m_loggedRefreshNs         = 0;
+	VkTimeDomainKHR m_loggedPresentTimeDomain = VK_TIME_DOMAIN_MAX_ENUM_KHR;
 	DynamicArray<GfxPresentTiming> m_presentTimings;
 	void createPresentTiming();
 	bool reservePresentTimingSlot();
