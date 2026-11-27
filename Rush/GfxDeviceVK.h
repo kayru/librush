@@ -622,6 +622,9 @@ public:
 
 	u32 m_presentInterval            = 1;
 	u32 m_desiredPresentInterval     = m_presentInterval;
+
+	GfxPresentMode m_desiredPresentMode   = GfxPresentMode::Fifo;
+	GfxPresentMode m_requestedPresentMode = GfxPresentMode::Fifo;
 	u32 m_desiredSwapChainImageCount = 2;
 
 	VkPhysicalDevicePresentId2FeaturesKHR    m_presentId2Features    = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR};

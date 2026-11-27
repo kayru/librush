@@ -355,6 +355,9 @@ GfxDevice::GfxDevice(Window* _window, const GfxConfig& cfg)
 #if !TARGET_OS_SIMULATOR
 		m_caps.presentTimingStage = GfxPresentStage::FirstPixelOut;
 #endif
+#if !defined(RUSH_PLATFORM_IOS)
+		m_caps.presentModes |= 1u << u32(GfxPresentMode::Immediate);
+#endif
 	}
 }
 
@@ -837,6 +840,7 @@ void GfxDevice::applyPresentInterval(u32 interval)
 	// pool is required to actually run unsynced.
 	m_metalLayer.displaySyncEnabled = interval != 0;
 	m_metalLayer.maximumDrawableCount = interval != 0 ? 3 : 2;
+	m_presentMode = interval != 0 ? GfxPresentMode::Fifo : GfxPresentMode::Immediate;
 #endif
 }
 
@@ -846,6 +850,16 @@ void Gfx_SetPresentInterval(u32 interval)
 	{
 		g_device->applyPresentInterval(interval);
 	}
+}
+
+void Gfx_SetPresentMode(GfxPresentMode mode)
+{
+	Gfx_SetPresentInterval(Gfx_IsPresentModeSynced(mode) ? 1 : 0);
+}
+
+GfxPresentMode Gfx_GetPresentMode()
+{
+	return g_device ? g_device->m_presentMode : GfxPresentMode::Fifo;
 }
 
 void Gfx_SetOutputMode(GfxOutputMode mode)

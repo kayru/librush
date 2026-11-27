@@ -26,7 +26,7 @@ struct GfxStats
 	u32 triangles = 0;
 
 	// CPU time blocked on the display since Gfx_ResetStats: Metal nextDrawable, Vulkan swapchain
-	// acquire and present. The first MaxDisplayWaits waits are kept, for timelines.
+	// acquire, present and image reuse. The first MaxDisplayWaits waits are kept, for timelines.
 	static constexpr u32 MaxDisplayWaits = 4;
 	u64            displayWaitNs    = 0;
 	u32            displayWaitCount = 0;
@@ -113,6 +113,20 @@ enum class GfxPresentStage : u8
 	FirstPixelVisible,
 };
 
+enum class GfxPresentMode : u8
+{
+	Fifo,
+	FifoRelaxed,
+	Mailbox,
+	Immediate,
+	count
+};
+
+inline bool Gfx_IsPresentModeSynced(GfxPresentMode mode)
+{
+	return mode == GfxPresentMode::Fifo || mode == GfxPresentMode::FifoRelaxed;
+}
+
 struct GfxPresentTiming
 {
 	u64             presentId   = 0;
@@ -198,6 +212,9 @@ struct GfxCapability
 	u32 rtSbtAlignment = 0;
 
 	GfxPresentStage presentTimingStage = GfxPresentStage::None;
+	u32             presentModes       = 1u << u32(GfxPresentMode::Fifo);
+
+	bool supportsPresentMode(GfxPresentMode mode) const { return (presentModes >> u32(mode)) & 1; }
 
 	bool   timestamps           = false;
 	bool   timestampsAsyncCompute = false;
@@ -279,6 +296,8 @@ void                 Gfx_BeginFrame();
 void                 Gfx_EndFrame();
 GfxProgressId        Gfx_Present();                // submit commands + present swapchain, return progress ID
 void                 Gfx_SetPresentInterval(u32 interval);
+void                 Gfx_SetPresentMode(GfxPresentMode mode);
+GfxPresentMode       Gfx_GetPresentMode();
 void                 Gfx_SetOutputMode(GfxOutputMode mode);
 void                 Gfx_SetHdrMetadata(float maxLuminanceNits, float maxFrameAverageNits);
 // The current frame renders as usual but is not shown: back buffer passes land
@@ -606,6 +625,8 @@ inline void Gfx_BeginFrame() {}
 inline void Gfx_EndFrame() {}
 inline GfxProgressId Gfx_Present() { return {}; }
 inline void Gfx_SetPresentInterval(u32 interval) {}
+inline void Gfx_SetPresentMode(GfxPresentMode) {}
+inline GfxPresentMode Gfx_GetPresentMode() { return GfxPresentMode::Fifo; }
 inline void Gfx_SetOutputMode(GfxOutputMode) {}
 inline void Gfx_SetHdrMetadata(float, float) {}
 inline void Gfx_SkipPresent() {}

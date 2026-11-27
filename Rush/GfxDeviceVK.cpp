@@ -342,6 +342,28 @@ static VkSampleCountFlagBits convertSampleCount(u32 samples)
 	};
 }
 
+static VkPresentModeKHR toVkPresentMode(GfxPresentMode mode)
+{
+	switch (mode)
+	{
+	case GfxPresentMode::FifoRelaxed: return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+	case GfxPresentMode::Mailbox: return VK_PRESENT_MODE_MAILBOX_KHR;
+	case GfxPresentMode::Immediate: return VK_PRESENT_MODE_IMMEDIATE_KHR;
+	default: return VK_PRESENT_MODE_FIFO_KHR;
+	}
+}
+
+static GfxPresentMode fromVkPresentMode(VkPresentModeKHR mode)
+{
+	switch (mode)
+	{
+	case VK_PRESENT_MODE_FIFO_RELAXED_KHR: return GfxPresentMode::FifoRelaxed;
+	case VK_PRESENT_MODE_MAILBOX_KHR: return GfxPresentMode::Mailbox;
+	case VK_PRESENT_MODE_IMMEDIATE_KHR: return GfxPresentMode::Immediate;
+	default: return GfxPresentMode::Fifo;
+	}
+}
+
 static VkFormat convertFormat(GfxFormat format)
 {
 	switch (format)
@@ -994,6 +1016,7 @@ GfxDevice::GfxDevice(Window* window, const GfxConfig& cfg)
 	m_desiredSwapChainImageCount = cfg.minimizeLatency ? 1 : 2;
 	m_desiredOutputMode = cfg.outputMode;
 	m_desiredPresentInterval = cfg.presentInterval;
+	m_desiredPresentMode     = cfg.presentInterval != 0 ? GfxPresentMode::Fifo : GfxPresentMode::Immediate;
 	if (useSwapChain)
 	{
 		createSwapChain();
@@ -1852,23 +1875,34 @@ void GfxDevice::createSwapChain()
 		       m_availablePresentModes.end();
 	};
 
-	VkPresentModeKHR pendingPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-
-	if (m_desiredPresentInterval == 0)
+	m_caps.presentModes = 0;
+	for (u32 mode = 0; mode < u32(GfxPresentMode::count); ++mode)
 	{
-		if (presentModeSupported(VK_PRESENT_MODE_IMMEDIATE_KHR))
+		if (presentModeSupported(toVkPresentMode(GfxPresentMode(mode))))
 		{
-			pendingPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-		}
-		else if (presentModeSupported(VK_PRESENT_MODE_FIFO_RELAXED_KHR))
-		{
-			pendingPresentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
-		}
-		else if (presentModeSupported(VK_PRESENT_MODE_MAILBOX_KHR))
-		{
-			pendingPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+			m_caps.presentModes |= 1u << mode;
 		}
 	}
+
+	VkPresentModeKHR pendingPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	if (presentModeSupported(toVkPresentMode(m_desiredPresentMode)))
+	{
+		pendingPresentMode = toVkPresentMode(m_desiredPresentMode);
+	}
+	else if (!Gfx_IsPresentModeSynced(m_desiredPresentMode))
+	{
+		for (const VkPresentModeKHR mode :
+		    {VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_FIFO_RELAXED_KHR, VK_PRESENT_MODE_MAILBOX_KHR})
+		{
+			if (presentModeSupported(mode))
+			{
+				pendingPresentMode = mode;
+				break;
+			}
+		}
+	}
+
+	m_requestedPresentMode = m_desiredPresentMode;
 
 	RUSH_ASSERT(presentModeSupported(pendingPresentMode));
 
@@ -2195,7 +2229,9 @@ void GfxDevice::beginFrame()
 
 	if (m_currentFrame->lastPresentProgressId)
 	{
+		const u64 waitBegin = Timer::nowNs();
 		Gfx_QueryProgress(m_currentFrame->lastPresentProgressId, GfxProgressFlags::Wait);
+		Gfx_RecordDisplayWait(m_stats, waitBegin, Timer::nowNs());
 		m_currentFrame->lastPresentProgressId = {};
 		m_currentFrame->lastGraphicsFence = VK_NULL_HANDLE;
 	}
@@ -3971,6 +4007,7 @@ void Gfx_BeginFrame()
 {
 	if (!g_device->m_cfg.headless
 	    && (!g_device->m_resizeEvents.empty() || g_device->m_desiredPresentInterval != g_device->m_presentInterval
+	        || g_device->m_desiredPresentMode != g_device->m_requestedPresentMode
 	        || g_device->m_desiredOutputMode != g_device->m_outputMode))
 	{
 		// beginFrame recreates it
@@ -4243,7 +4280,27 @@ GfxProgressId Gfx_Present()
 	return GfxProgressId{progressValue};
 }
 
-void Gfx_SetPresentInterval(u32 interval) { g_device->m_desiredPresentInterval = interval; }
+void Gfx_SetPresentInterval(u32 interval)
+{
+	g_device->m_desiredPresentInterval = interval;
+
+	if (interval == 0 && Gfx_IsPresentModeSynced(g_device->m_desiredPresentMode))
+	{
+		g_device->m_desiredPresentMode = GfxPresentMode::Immediate;
+	}
+	else if (interval != 0 && !Gfx_IsPresentModeSynced(g_device->m_desiredPresentMode))
+	{
+		g_device->m_desiredPresentMode = GfxPresentMode::Fifo;
+	}
+}
+
+void Gfx_SetPresentMode(GfxPresentMode mode)
+{
+	g_device->m_desiredPresentMode     = mode;
+	g_device->m_desiredPresentInterval = Gfx_IsPresentModeSynced(mode) ? max(1u, g_device->m_desiredPresentInterval) : 0;
+}
+
+GfxPresentMode Gfx_GetPresentMode() { return fromVkPresentMode(g_device->m_swapChainPresentMode); }
 
 void Gfx_SetOutputMode(GfxOutputMode mode) { g_device->m_desiredOutputMode = mode; }
 
