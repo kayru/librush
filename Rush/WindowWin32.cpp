@@ -10,6 +10,11 @@
 #include <stdio.h>
 #include <windowsx.h>
 
+namespace Rush
+{
+void runModalFrame();
+}
+
 #ifndef WM_NCMOUSEHOVER
 #define WM_NCMOUSEHOVER 0x02A0
 #endif // WM_NCMOUSEHOVER
@@ -182,7 +187,7 @@ WindowWin32::WindowWin32(const WindowDesc& desc)
 	wc.hInstance     = hInst;
 	wc.hIcon         = HICON(LoadImageW(hInst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
 	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-	wc.hbrBackground = (HBRUSH)(COLOR_WINDOWFRAME);
+	wc.hbrBackground = nullptr;
 	wc.lpszMenuName  = nullptr;
 	wc.lpszClassName = L"RushWindowWin32";
 	wc.hIconSm       = HICON(LoadImageW(hInst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
@@ -374,10 +379,27 @@ bool WindowWin32::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 
 	case WM_SIZE: processSizeEvent(wparam, lparam); return true;
 
-	case WM_ENTERSIZEMOVE: m_resizing = true; break;
+	case WM_ENTERSIZEMOVE:
+		m_inSizeMove = true;
+		InvalidateRect(m_hwnd, nullptr, FALSE);
+		break;
+
+	case WM_PAINT:
+		if (!m_inSizeMove)
+		{
+			break;
+		}
+		{
+			PAINTSTRUCT paint;
+			BeginPaint(m_hwnd, &paint);
+			EndPaint(m_hwnd, &paint);
+		}
+		runModalFrame();
+		InvalidateRect(m_hwnd, nullptr, FALSE);
+		return true;
 
 	case WM_EXITSIZEMOVE:
-		m_resizing = false;
+		m_inSizeMove = false;
 		finishResizing();
 		break;
 
@@ -611,11 +633,12 @@ void WindowWin32::processSizeEvent(WPARAM wparam, LPARAM lparam)
 	{
 		m_minimized = false;
 		m_maximized = false;
+		finishResizing();
+	}
 
-		if (m_resizing == false)
-		{
-			finishResizing();
-		}
+	if (m_inSizeMove)
+	{
+		runModalFrame();
 	}
 }
 

@@ -154,12 +154,61 @@ static void sleepUntilFrameStart()
 	}
 }
 
+static PlatformCallback_Update g_onUpdate     = nullptr;
+static void*                   g_onUpdateData = nullptr;
+static bool                    g_frameBegun   = false;
+static bool                    g_inModalFrame = false;
+
+static void beginFrame()
+{
+	sleepUntilFrameStart();
+	Gfx_BeginFrame();
+	g_frameBegun = true;
+}
+
+static void finishFrame()
+{
+	if (g_mainWindow)
+	{
+		g_mainWindow->pollEvents();
+	}
+	closeWindowOnTerminationSignal();
+
+	if (g_onUpdate)
+	{
+		g_onUpdate(g_onUpdateData);
+	}
+
+	Gfx_EndFrame();
+	Gfx_Present();
+	g_frameBegun = false;
+}
+
+// Windows runs a modal loop while the user drags a window edge, so the window renders frames from inside it
+void runModalFrame()
+{
+	if (g_inModalFrame || !g_onUpdate || Platform_IsExitRequested())
+	{
+		return;
+	}
+
+	g_inModalFrame = true;
+	if (!g_frameBegun)
+	{
+		beginFrame();
+	}
+	finishFrame();
+	g_inModalFrame = false;
+}
+
 void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 {
+	g_onUpdate     = onUpdate;
+	g_onUpdateData = userData;
+
 	while (!Platform_IsExitRequested() && (!g_mainWindow || g_mainWindow->isClosed() == false))
 	{
-		sleepUntilFrameStart();
-		Gfx_BeginFrame();
+		beginFrame();
 
 		MSG msg;
 		// Unicode variants: WM_CHAR arrives as UTF-16
@@ -168,25 +217,21 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 		}
-		if (g_mainWindow)
-		{
-			g_mainWindow->pollEvents();
-		}
-		closeWindowOnTerminationSignal();
 
-		if (onUpdate)
+		if (!g_frameBegun)
 		{
-			onUpdate(userData);
+			beginFrame();
 		}
-
-		Gfx_EndFrame();
-		Gfx_Present();
+		finishFrame();
 
 		if (const double timeout = takeActivityTimeout(); timeout >= 0.0)
 		{
 			waitForActivity(timeout);
 		}
 	}
+
+	g_onUpdate     = nullptr;
+	g_onUpdateData = nullptr;
 }
 
 bool Platform_IsDebuggerPresent()

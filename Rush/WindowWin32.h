@@ -46,7 +46,7 @@ private:
 
 	bool m_maximized = false;
 	bool m_minimized = false;
-	bool m_resizing = false;
+	bool m_inSizeMove = false;
 	Tuple2i m_windowedSize;
 	Tuple2i m_windowedPos;
 

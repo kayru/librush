@@ -24,6 +24,7 @@ public:
 	virtual bool  setFullscreen(bool state) override;
 	virtual void  pollEvents() override;
 	void          waitForActivity(int timeoutMs, int activityFd);
+	void          finishFrame();
 
 	// The CLIPBOARD selection, served from this window's event loop (Platform_SetClipboardText)
 	void   setClipboardText(const char* text);
@@ -53,6 +54,11 @@ private:
 	template <typename Accept> xcb_generic_event_t* waitForEvent(Accept&& accept);
 
 	xcb_window_t m_nativeHandle = 0;
+	u32 m_syncCounter = 0;
+	u64 m_syncRequestValue = 0;
+	u64 m_syncConfiguredValue = 0;
+	bool m_syncRequested = false;
+	bool m_syncConfigured = false;
 	String m_caption;
 	Key m_keyOfCode[256] = {};
 

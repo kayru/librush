@@ -150,6 +150,11 @@ void Platform_Run(PlatformCallback_Update onUpdate, void* userData)
 		Gfx_EndFrame();
 		Gfx_Present();
 
+		if (g_mainWindow)
+		{
+			static_cast<WindowXCB*>(g_mainWindow)->finishFrame();
+		}
+
 		if (const double timeout = takeActivityTimeout(); timeout >= 0.0)
 		{
 			waitForActivity(timeout);

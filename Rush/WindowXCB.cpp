@@ -6,6 +6,7 @@
 #include "WindowXCB.h"
 #include "UtilLog.h"
 
+#include <xcb/sync.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xinput.h>
 // The generated XKB header is C: a struct field is named `explicit`
@@ -37,6 +38,8 @@ namespace
 	{
 		xcb_atom_t wmProtocols;
 		xcb_atom_t wmDeleteWindow;
+		xcb_atom_t netWmSyncRequest;
+		xcb_atom_t netWmSyncRequestCounter;
 		xcb_atom_t netSupported;
 		xcb_atom_t netWmName;
 		xcb_atom_t netWmState;
@@ -77,6 +80,8 @@ namespace
 		} atoms[] = {
 			{&g_atoms.wmProtocols, "WM_PROTOCOLS"},
 			{&g_atoms.wmDeleteWindow, "WM_DELETE_WINDOW"},
+			{&g_atoms.netWmSyncRequest, "_NET_WM_SYNC_REQUEST"},
+			{&g_atoms.netWmSyncRequestCounter, "_NET_WM_SYNC_REQUEST_COUNTER"},
 			{&g_atoms.netSupported, "_NET_SUPPORTED"},
 			{&g_atoms.netWmName, "_NET_WM_NAME"},
 			{&g_atoms.netWmState, "_NET_WM_STATE"},
@@ -331,10 +336,12 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 
 	m_nativeHandle = xcb_generate_id(g_xcbConnection);
 
+	// No background and NorthWest bit gravity keep the last frame on screen during a resize instead of clearing it
 	uint32_t valueMask, valueList[32];
-	valueMask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-	valueList[0] = g_xcbScreen->black_pixel;
-	valueList[1] =
+	valueMask = XCB_CW_BACK_PIXMAP | XCB_CW_BIT_GRAVITY | XCB_CW_EVENT_MASK;
+	valueList[0] = XCB_BACK_PIXMAP_NONE;
+	valueList[1] = XCB_GRAVITY_NORTH_WEST;
+	valueList[2] =
 		XCB_EVENT_MASK_KEY_PRESS |
 		XCB_EVENT_MASK_KEY_RELEASE |
 		XCB_EVENT_MASK_BUTTON_PRESS |
@@ -364,10 +371,25 @@ WindowXCB::WindowXCB(const WindowDesc& desc)
 	xcb_create_window(g_xcbConnection, XCB_COPY_FROM_PARENT, m_nativeHandle, g_xcbScreen->root, 0, 0, u16(desc.width), u16(desc.height),
 						0, XCB_WINDOW_CLASS_INPUT_OUTPUT, g_xcbScreen->root_visual, valueMask, valueList);
 
+	const xcb_query_extension_reply_t* sync = xcb_get_extension_data(g_xcbConnection, &xcb_sync_id);
+	if (sync && sync->present && g_atoms.netWmSyncRequest != XCB_ATOM_NONE && g_atoms.netWmSyncRequestCounter != XCB_ATOM_NONE)
+	{
+		if (xcb_sync_initialize_reply_t* version =
+				xcb_sync_initialize_reply(g_xcbConnection, xcb_sync_initialize(g_xcbConnection, 3, 1), nullptr))
+		{
+			free(version);
+			m_syncCounter = xcb_generate_id(g_xcbConnection);
+			xcb_sync_create_counter(g_xcbConnection, m_syncCounter, xcb_sync_int64_t{0, 0});
+			xcb_change_property(g_xcbConnection, XCB_PROP_MODE_REPLACE, m_nativeHandle, g_atoms.netWmSyncRequestCounter,
+				XCB_ATOM_CARDINAL, 32, 1, &m_syncCounter);
+		}
+	}
+
 	if (g_atoms.wmProtocols != XCB_ATOM_NONE && g_atoms.wmDeleteWindow != XCB_ATOM_NONE)
 	{
+		const xcb_atom_t protocols[] = {g_atoms.wmDeleteWindow, g_atoms.netWmSyncRequest};
 		xcb_change_property(g_xcbConnection, XCB_PROP_MODE_REPLACE, m_nativeHandle, g_atoms.wmProtocols,
-			XCB_ATOM_ATOM, 32, 1, &g_atoms.wmDeleteWindow);
+			XCB_ATOM_ATOM, 32, m_syncCounter ? 2 : 1, protocols);
 	}
 
 	// Before mapping, the window states the window manager applies are set directly (EWMH)
@@ -401,6 +423,11 @@ WindowXCB::~WindowXCB()
 	if (m_hiddenCursor)
 	{
 		xcb_free_cursor(g_xcbConnection, m_hiddenCursor);
+	}
+
+	if (m_syncCounter)
+	{
+		xcb_sync_destroy_counter(g_xcbConnection, m_syncCounter);
 	}
 	xcb_destroy_window(g_xcbConnection, m_nativeHandle);
 
@@ -786,6 +813,19 @@ void WindowXCB::waitForActivity(int timeoutMs, int activityFd)
 	poll(fds, 2, timeoutMs);
 }
 
+void WindowXCB::finishFrame()
+{
+	if (!m_syncConfigured)
+	{
+		return;
+	}
+
+	m_syncConfigured = false;
+	const xcb_sync_int64_t value = {s32(m_syncConfiguredValue >> 32), u32(m_syncConfiguredValue)};
+	xcb_sync_set_counter(g_xcbConnection, m_syncCounter, value);
+	xcb_flush(g_xcbConnection);
+}
+
 void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 {
 	const u32 mouseButtonRemap[4] = {0, 0, 2, 1};
@@ -840,6 +880,11 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 				RUSH_LOG("Close requested: WM_DELETE_WINDOW from the window manager");
 				requestClose();
 			}
+			else if (event->type == g_atoms.wmProtocols && m_syncCounter && event->data.data32[0] == g_atoms.netWmSyncRequest)
+			{
+				m_syncRequestValue = (u64(event->data.data32[3]) << 32) | event->data.data32[2];
+				m_syncRequested    = true;
+			}
 			break;
 		}
 		case XCB_PROPERTY_NOTIFY:
@@ -857,6 +902,13 @@ void WindowXCB::processEvent(const xcb_generic_event_t* xcbEvent)
 			if (event->window == m_nativeHandle && event->width > 0 && event->height > 0)
 			{
 				processResize({event->width, event->height});
+			}
+
+			if (event->window == m_nativeHandle && m_syncRequested)
+			{
+				m_syncRequested       = false;
+				m_syncConfigured      = true;
+				m_syncConfiguredValue = m_syncRequestValue;
 			}
 			break;
 		}
