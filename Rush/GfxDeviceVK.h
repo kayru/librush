@@ -338,7 +338,7 @@ public:
 	DescriptorSetLayoutArray createDescriptorSetLayouts(const GfxShaderBindingDesc& desc, u32 resourceStageFlags);
 
 	void          createSwapChain();
-	void          acquireBackBuffer();
+	bool          acquireBackBuffer();
 	GfxTexture    backBufferTexture();
 
 	void beginFrame();
@@ -508,12 +508,14 @@ public:
 	bool                  m_swapChainCopySupported = false;
 	// This frame owns m_swapChainIndex and must present it
 	bool                  m_backBufferAcquired = false;
+	bool                  m_skipPresent = false;
+	bool                  m_offscreenBackBufferUsed = false;
 
 	DynamicArray<VkPresentModeKHR> m_availablePresentModes;
 
 	GfxOwn<GfxTexture>               m_depthBufferTexture;
 	DynamicArray<GfxOwn<GfxTexture>> m_swapChainTextures;
-	// Back buffer passes render here in frames without an acquired image (e.g. minimized)
+	// Back buffer passes render here in frames without an acquired image (skipped present, minimized)
 	GfxOwn<GfxTexture>               m_offscreenBackBuffer;
 
 	// resources
@@ -669,6 +671,7 @@ public:
 		void* mapped = nullptr;
 		bool nonCoherent = false;
 		Tuple2u size = {};
+		GfxFormat format = GfxFormat_Unknown;
 		GfxContext* context = nullptr;
 		bool active = false;
 	};
